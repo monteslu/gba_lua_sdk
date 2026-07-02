@@ -72,6 +72,26 @@ export function check(chunk, file) {
       s.names.forEach((name, idx) => {
         if (globals.has(name) || functions.has(name)) { err(s, `'${name}' is already defined`); return; }
         const init = s.inits[idx] ?? null;
+        // fixed-capacity array: local pool = array(N [, initValue])
+        if (init && init.kind === "call" && init.callee.kind === "name" && init.callee.name === "array") {
+          const size = constEval(init.args[0]);
+          const iv = init.args[1] ? constEval(init.args[1]) : 0;
+          if (size === null || !Number.isInteger(size) || size < 1 || size > 4096) {
+            err(s, "array(n) needs a constant capacity between 1 and 4096");
+          }
+          if (init.args[1] && iv === null) {
+            err(s, "array(n, v) initial value must be a constant");
+          }
+          const ivv = iv ?? 0;
+          globals.set(name, {
+            kind: "array",
+            elemKind: Number.isInteger(ivv) ? "int" : "fixed",
+            size: size ?? 1,
+            initVal: ivv,
+            node: s,
+          });
+          return;
+        }
         const cv = init === null ? 0 : constEval(init);
         if (init !== null && cv === null) {
           err(s, `top-level 'local ${name}' must be initialized with a constant expression ` +
@@ -194,8 +214,29 @@ export function check(chunk, file) {
           break;
         }
         case "assign": {
+          if (s.target.kind === "index") {
+            // element store: a[i] = v (or compound)
+            const arr = arrayOf(s.target);
+            if (!arr) break;
+            const it = typeOf(s.target.index);
+            if (it === "bool") err(s.target.index, "array index must be a number");
+            const vt = typeOf(s.value);
+            if (vt === "bool") { err(s.value, "cannot store a boolean in a number array"); break; }
+            let rk = vt;
+            if (s.op === "/=") rk = "fixed";
+            if (s.op !== "=" && s.op !== "\\=") rk = join(rk, arr.elemKind);
+            if (rk === "fixed" && arr.elemKind !== "fixed") { arr.elemKind = "fixed"; changed = true; }
+            s.targetKind = arr.elemKind;
+            s.valueKind = vt;
+            if (s.op === "\\=" || s.op === "%=") {
+              const d = constEval(s.value);
+              s.divConst = d !== null && isPow2(d) ? d : null;
+            }
+            typeOf(s.target); // annotate target node kinds for the emitter
+            break;
+          }
           if (s.target.kind !== "name") {
-            err(s, "indexing is not supported yet; assign to a plain variable");
+            err(s, "cannot assign to this expression");
             break;
           }
           const sym = lookup(s.target.name);
@@ -313,6 +354,23 @@ export function check(chunk, file) {
       return sym.kind;
     }
 
+    // resolve `name[...]` to its top-level array symbol (or error)
+    function arrayOf(indexNode) {
+      const obj = indexNode.object;
+      if (obj.kind !== "name") {
+        err(indexNode, "only top-level arrays can be indexed");
+        return null;
+      }
+      const sym = globals.get(obj.name);
+      if (!sym || sym.kind !== "array") {
+        err(indexNode, `'${obj.name}' is not an array — declare one at top level with ` +
+                       `'local ${obj.name} = array(16)'`);
+        return null;
+      }
+      indexNode.arraySym = sym;
+      return sym;
+    }
+
     function condType(e) {
       const t = typeOf(e);
       if (t !== "bool") {
@@ -341,6 +399,10 @@ export function check(chunk, file) {
 
       // builtins
       const b = BUILTINS[callee.name];
+      if (b && b.special === "array") {
+        err(call, "array(n) is only allowed as a top-level initializer: 'local pool = array(16)'");
+        return "int";
+      }
       if (b) {
         checkArgs(call, b.params, callee.name);
         call.sig = b;
@@ -426,9 +488,21 @@ export function check(chunk, file) {
           err(e, "field access is not supported yet (structs land in the next release)");
           return "int";
         }
-        case "index":
-          err(e, "indexing is not supported yet (arrays land in the next release)");
+        case "index": {
+          const arr = arrayOf(e);
+          if (!arr) return "int";
+          const it = typeOf(e.index);
+          if (it === "bool") err(e.index, "array index must be a number");
+          return arr.elemKind;
+        }
+        case "len": {
+          if (e.expr.kind === "name") {
+            const sym = globals.get(e.expr.name);
+            if (sym && sym.kind === "array") { e.arraySym = sym; return "int"; }
+          }
+          err(e, "'#' works on top-level arrays only");
           return "int";
+        }
         case "call": return callType(e);
         case "neg": {
           const t = typeOf(e.expr);

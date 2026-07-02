@@ -326,8 +326,7 @@ export function parse(tokens, file) {
     if (at("~")) { next(); return { kind: "bnot", expr: unary(), line: tok.line, col: tok.col }; }
     if (at("#")) {
       next();
-      error("'#' (length) is not supported yet (arrays land in the next release)", tok);
-      return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
+      return { kind: "len", expr: unary(), line: tok.line, col: tok.col };
     }
     if (at("@") || at("$")) {
       error(`'${tok.type}' (memory peek) is not supported`, tok);

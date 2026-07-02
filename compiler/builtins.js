@@ -41,6 +41,10 @@ export const BUILTINS = {
   srand: { params: [["num", false]], ret: "void", c: "gt_p8_srand" },
   t:     { params: [], ret: "fixed", c: "gt_p8_time", isValue: false },
   time:  { params: [], ret: "fixed", c: "gt_p8_time" },
+
+  // fixed-capacity numeric array (v0.3): `local pool = array(16)`.
+  // Top-level only; 1-based indexing; #a is the capacity. Checker handles it.
+  array: { params: [["int", false], ["num", true]], ret: "array", special: "array" },
 };
 
 // gt.* extras (GameTank-specific)

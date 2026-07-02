@@ -44,6 +44,12 @@ export function emit(chunk, symbols, file) {
       }
       case "bool": return e.value ? "1" : "0";
       case "name": return cv(mangle(e.name), e.tk, want);
+      case "index": {
+        const arr = e.arraySym;
+        if (!arr) return "0";
+        return cv(`${mangle(e.object.name)}[${expr(e.index, "int")} - 1]`, arr.elemKind, want);
+      }
+      case "len": return String(e.arraySym?.size ?? 0);
       case "neg": {
         const k = e.tk;
         return cv(`(-${expr(e.expr, k)})`, k, want);
@@ -223,17 +229,23 @@ export function emit(chunk, symbols, file) {
   function stmt(s) {
     switch (s.kind) {
       case "assign": {
-        const t = mangle(s.target.name);
+        const isElem = s.target.kind === "index";
+        const t = isElem
+          ? `${mangle(s.target.object.name)}[${expr(s.target.index, "int")} - 1]`
+          : mangle(s.target.name);
         const tk = s.targetKind ?? "int";
         if (s.op === "=") {
           line(`${t} = ${expr(s.value, tk)};`);
           break;
         }
-        // compound: rebuild as t = t OP value with kind-correct lowering
+        // compound: rebuild as t = t OP value with kind-correct lowering.
+        // For array elements the index expression is evaluated twice —
+        // same as PICO-8's own compound-assignment expansion.
+        const left = isElem ? { ...s.target, tk } : { kind: "name", name: s.target.name, tk };
         const fake = {
           kind: "binop",
           op: s.op.slice(0, s.op.length - 1),
-          left: { kind: "name", name: s.target.name, tk },
+          left,
           right: s.value,
           tk: s.op === "/=" ? "fixed" : (s.op === "\\=" ? "int" : tk),
           divConst: s.divConst,
@@ -343,7 +355,17 @@ export function emit(chunk, symbols, file) {
   // module variables — non-static so they land in the symbol table for
   // RAM-level assertions in tests and debuggers
   for (const [name, g] of globals) {
-    if (g.kind === "fixed") {
+    if (g.kind === "array") {
+      const ct = g.elemKind === "fixed" ? "long" : "int";
+      if (g.initVal === 0) {
+        out.push(`${ct} ${mangle(name)}[${g.size}];`);
+      } else {
+        const v = g.elemKind === "fixed"
+          ? `${Math.round(g.initVal * 65536) | 0}L`
+          : String(Math.trunc(g.initVal));
+        out.push(`${ct} ${mangle(name)}[${g.size}] = { ${Array(g.size).fill(v).join(", ")} };`);
+      }
+    } else if (g.kind === "fixed") {
       const bits = (Math.round(g.value * 65536) | 0);
       out.push(`long ${mangle(name)} = ${bits}L; /* ${g.value} */`);
     } else {

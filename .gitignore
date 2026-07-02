@@ -3,3 +3,4 @@ build/
 examples/**/build/
 *.gtr
 node_modules/
+!roms/*.gtr
