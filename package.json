@@ -1,0 +1,1 @@
+{"name":"gametank-lua-sdk","private":true,"type":"module","bin":{"gtlua":"bin/gtlua.js"},"scripts":{"test":"node --test test/"}}

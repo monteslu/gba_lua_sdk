@@ -1,0 +1,5 @@
+tools/
+build/
+examples/**/build/
+*.gtr
+node_modules/
