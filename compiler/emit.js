@@ -107,6 +107,17 @@ function hasUserCall(node) {
   return false;
 }
 
+// How many times does the named variable appear in this expression tree?
+function countUses(node, name) {
+  if (!node || typeof node !== "object") return 0;
+  if (Array.isArray(node)) return node.reduce((a, n) => a + countUses(n, name), 0);
+  let c = node.kind === "name" && node.name === name ? 1 : 0;
+  for (const [k, v] of Object.entries(node)) {
+    if (!WALK_SKIP.has(k)) c += countUses(v, name);
+  }
+  return c;
+}
+
 // Does this statement tree assign to the named variable? (loop-var narrowing
 // must not fire if the body mutates the induction variable.)
 function assignsTo(node, name) {
@@ -160,6 +171,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   let tempCounter = 0;
   let currentFnName = null; // for cross-bank call rewriting
   const narrowedVars = new Set(); // u8 fornum counters currently in scope
+  let inlineMap = null;           // inlined callee: param name -> rendered arg
   const stubbed = new Set(); // callee names reached through a far-call stub
   const line = (s) => out.push("    ".repeat(s === "" ? 0 : indent) + s);
   const mangle = (name) => `gtl_${name}`;
@@ -197,7 +209,9 @@ export function emit(chunk, symbols, file, opts = {}) {
         return String(Math.trunc(e.value));
       }
       case "bool": return e.value ? "1" : "0";
-      case "name": return cv(mangle(e.name), e.tk, want);
+      case "name":
+        if (inlineMap && inlineMap.has(e.name)) return cv(inlineMap.get(e.name), e.tk, want);
+        return cv(mangle(e.name), e.tk, want);
       case "index": {
         const arr = e.arraySym;
         if (!arr) return "0";
@@ -412,6 +426,30 @@ export function emit(chunk, symbols, file, opts = {}) {
     // user function — cross-bank calls go through a fixed-bank far-call stub
     if (e.userFn) {
       const fn = e.userFn;
+      // INLINER: a body that is exactly `return <expr>` (no user calls inside)
+      // substitutes at the call site — the cc65 calling convention measured
+      // ~1,200 cycles per invocation on a 4-line helper. Args paste in only
+      // when pure (safe to duplicate) or used at most once; otherwise the
+      // call stays. Kind conversion mirrors a real call (body at retKind,
+      // outer cv handles the rest).
+      {
+        const body = functions.get(callee.name)?.node?.body;
+        const st = body && body.stmts.length === 1 ? body.stmts[0] : null;
+        if (st && st.kind === "return" && st.value && !hasUserCall(st.value) &&
+            e.args.length === fn.params.length) {
+          const ok = fn.params.every((pname, i) =>
+            cheapPure(e.args[i]) || countUses(st.value, pname) <= 1);
+          if (ok) {
+            const rendered = new Map(fn.params.map((pname, i) =>
+              [pname, `(${expr(e.args[i], fn.paramKinds[i] ?? "int")})`]));
+            const saved = inlineMap;
+            inlineMap = rendered;
+            const out = expr(st.value, fn.retKind ?? "int");
+            inlineMap = saved;
+            return `(${out})`;
+          }
+        }
+      }
       const args = e.args.map((a, i) => expr(a, fn.paramKinds[i] ?? "int"));
       let target = mangle(callee.name);
       if (banked) {
