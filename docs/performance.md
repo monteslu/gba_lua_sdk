@@ -86,6 +86,31 @@ budget on tiles alone. Watch for:
 - **Cull off-screen work.** Only draw the visible window. driftmania walks just
   the visible chunk range, not the whole map.
 
+### Chunk atlases: pre-render repeated blocks, blit once each
+
+When a scrolling world is built from repeated multi-tile blocks (driftmania's
+track is 3×3-tile chunks), don't re-issue the tiles every frame — pre-render
+each distinct block into the 256×256 GRAM canvas **once at init** and draw one
+blit per block:
+
+```lua
+function atlas_init()
+  gt.bg_clear()                        -- canvas to color 0 (= transparent)
+  -- stamp each chunk kind's tiles at its atlas slot (8px grid)
+  gt.bg_tile(t, (a & 7) * 24, (a >> 3) * 24)   -- mask+shift slot math, no %
+end
+function draw_chunk(a, wx, wy)
+  gt.gspr((a & 7) * 24, (a >> 3) * 24, 24, 24, wx, wy)   -- ONE blit
+end
+```
+
+`gt.gspr` is camera-adjusted and colorkey-transparent like `spr()`, so empty
+tiles (canvas color 0) vanish exactly as skipped tiles did — layered
+ground/decor chunks keep working. driftmania went from ~200 tile blits to ~25
+chunk blits per frame: **10.1 → 7.1 vsyncs (6 → 8.4 fps)**, pixel-identical.
+This works where a static `bg_compose` background can't — the world (720×720)
+never fits the canvas, but its 53 distinct chunk kinds do.
+
 ### The budget is an overlap economy
 
 An important refinement, learned the hard way: **queued blits overlap your
@@ -259,9 +284,11 @@ feels productive and changes nothing players feel.
 | jelpi | 4.0 | 15 | fills + sprites |
 | combo-pool | 4.4 | 14 | sprites |
 | just-one-boss | 7.0 | 8.6 | sprites |
-| driftmania | 10.1 | 6 | full-screen tile blits |
+| driftmania | 7.1 (was 10.1) | 8.4 | chunk atlas landed; car physics next |
 | newleste | 9.0 (was 10.7) | 6.7 | draw (physics now 3× faster) |
 | celeste2 (gameplay) | 7.1 (was 14.6) | 8.5 | tilemap + snow + physics |
+| just-one-boss (gameplay) | ~2.2 | ~29 | effectively at 30 fps |
+| combo-pool (gameplay) | 5.0 | 12 | division-heavy ball physics (unprofiled) |
 
 (celeste2's row is *gameplay*; its title screen paces differently — see the
 profiling note above.) None yet hit locked 30 fps — the light carts sit at ~20.
