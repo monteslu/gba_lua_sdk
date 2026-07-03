@@ -221,7 +221,10 @@ to **one pass that collects every flag you need** (`solid = f & 1`, `oneway = f 
 then decide afterwards. Same trick, smaller scale: hoist `tile_at()`→`mget()`
 call chains out of inner loops — after the loop bounds are clamped, a direct
 `m[rowb]` array read with `rowb += 64` per row replaces two nested function
-calls per tile.
+calls per tile. celeste2's collision core went further: `tile_solid(mget(bget(
+idx)))` was THREE nested calls per tile; inlining the packed-map unpack and the
+flag test into the scan cut `p_check_solid` from 0.033 to 0.019 vsyncs per
+call — and it runs several times a frame, plus once per pixel moved.
 
 And guard rarely-true work with a cheap **broad-phase test**: fall-floors ran
 three precise player-overlap calls per floor per frame; one inline box test
@@ -301,7 +304,7 @@ feels productive and changes nothing players feel.
 | just-one-boss | 7.0 | 8.6 | sprites |
 | driftmania | 7.1 (was 10.1) | 8.4 | chunk atlas landed; car physics next |
 | newleste | 7.1 (was 10.7) | 8.5 | physics 3× + map on the canvas (4 blits) |
-| celeste2 (gameplay) | 7.1 (was 14.6) | 8.5 | tilemap + snow + physics |
+| celeste2 (gameplay) | 7.1 (was 14.6) | 8.5 | collision core inlined; 768px animated map won't fit the canvas |
 | just-one-boss (gameplay) | ~2.2 | ~29 | effectively at 30 fps |
 | combo-pool (gameplay) | 5.0 | 12 | division-heavy ball physics (unprofiled) |
 
