@@ -10,8 +10,8 @@
 -- last color sets off a bomb (victory outside endless mode). Keeping too
 -- many balls on the table drains your life bar. GT C toggles ball numbers.
 --
--- Build: node bin/gtlua.js build ports/combo-pool/main.lua \
---          --sheet carts/combo-pool-extract/gfx.bin
+-- Build: node ports/combo-pool/build.mjs  (banked 2 MB FLASH2M cart;
+--        the flat 32 KB CLI build overflows — see PORT_NOTES.md).
 
 -- ---------------------------------------------------------------------
 -- state (original keeps these as globals; ball objects become parallel

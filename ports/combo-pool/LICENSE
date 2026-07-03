@@ -1,0 +1,36 @@
+Combo Pool — GameTank port
+===========================
+
+Original game "Combo Pool" by NuSan, PICO-8 (p8jam2, 2019).
+  https://www.lexaloffle.com/bbs/?tid=3467
+
+The original cart is licensed by its author under
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+(CC BY-NC-SA 4.0).
+
+This GameTank adaptation (the hand-translated game logic in main.lua, the
+sprite-baking and build tooling in build.mjs, and the re-composed sprite
+sheet) is a derivative work and is released by the same authorship terms
+under the SAME license: CC BY-NC-SA 4.0.
+
+Credit: original game and art by NuSan. GameTank port for the gtlua SDK.
+
+You are free to:
+  * Share — copy and redistribute the material in any medium or format.
+  * Adapt — remix, transform, and build upon the material.
+
+Under the following terms:
+  * Attribution — You must give appropriate credit to NuSan (original) and
+    note this GameTank port, provide a link to the license, and indicate if
+    changes were made.
+  * NonCommercial — You may not use the material for commercial purposes.
+  * ShareAlike — If you remix, transform, or build upon the material, you
+    must distribute your contributions under the same license as the
+    original.
+
+Full license text:
+  https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
+Human-readable summary:
+  https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+This is not a substitute for, and does not replace, the full license text.
