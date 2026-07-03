@@ -3,7 +3,6 @@
 
 function g_pl(f, fc, gr, x, y)
   if f == 7 then
-    if gr == 1 then spr(225, x + 4, y, 1, 1) return end
     spr(4, x, y, 2, 2)
     return
   end
@@ -49,63 +48,9 @@ function g_pl(f, fc, gr, x, y)
       end
     end
   end
-  if gr == 1 then
-    if fc == 0 then
-      if f == 0 then spr(226, x + 4, y, 1, 1)
-      elseif f == 1 then spr(182, x, y, 2, 1)
-      elseif f == 2 then spr(186, x + 2, y, 2, 1)
-      elseif f == 3 then spr(230, x + 3, y, 1, 1)
-      elseif f == 4 then spr(226, x + 4, y, 1, 1)
-      elseif f == 5 then spr(226, x + 4, y, 1, 1)
-      elseif f == 6 then spr(226, x + 4, y, 1, 1)
-      end
-    end
-    if fc == 1 then
-      if f == 0 then spr(225, x + 4, y, 1, 1)
-      elseif f == 1 then spr(180, x, y, 2, 1)
-      elseif f == 2 then spr(184, x + 2, y, 2, 1)
-      elseif f == 3 then spr(229, x + 3, y, 1, 1)
-      elseif f == 4 then spr(225, x + 4, y, 1, 1)
-      elseif f == 5 then spr(225, x + 4, y, 1, 1)
-      elseif f == 6 then spr(225, x + 4, y, 1, 1)
-      end
-    end
-    if fc == 2 then
-      if f == 0 then spr(227, x + 2, y, 1, 1)
-      elseif f == 1 then spr(104, x + 2, y, 1, 2)
-      elseif f == 2 then spr(106, x + 2, y, 1, 2)
-      elseif f == 3 then spr(231, x + 2, y, 1, 1)
-      elseif f == 4 then spr(227, x + 2, y, 1, 1)
-      elseif f == 5 then spr(227, x + 2, y, 1, 1)
-      elseif f == 6 then spr(227, x + 2, y, 1, 1)
-      end
-    end
-    if fc == 3 then
-      if f == 0 then spr(228, x + 2, y + 3, 1, 1)
-      elseif f == 1 then spr(105, x + 2, y, 1, 2)
-      elseif f == 2 then spr(107, x + 2, y + 1, 1, 2)
-      elseif f == 3 then spr(232, x + 2, y + 3, 1, 1)
-      elseif f == 4 then spr(228, x + 2, y + 3, 1, 1)
-      elseif f == 5 then spr(228, x + 2, y + 3, 1, 1)
-      elseif f == 6 then spr(228, x + 2, y + 3, 1, 1)
-      end
-    end
-  end
 end
 
 function g_face(e, gr, x, y)
-  if gr == 1 then
-    if e == 1 then spr(46, x, y, 2, 2)
-    elseif e == 2 then spr(46, x, y, 2, 2)
-    elseif e == 3 then spr(46, x, y, 2, 2)
-    elseif e == 4 then spr(46, x, y, 2, 2)
-    elseif e == 5 then spr(46, x, y, 2, 2)
-    elseif e == 6 then spr(46, x, y, 2, 2)
-    elseif e == 7 then spr(46, x, y, 2, 2)
-    elseif e == 8 then spr(46, x, y, 2, 2)
-    end
-    return
-  end
   if e == 1 then spr(8, x, y, 2, 2)
   elseif e == 2 then spr(10, x, y, 2, 2)
   elseif e == 3 then spr(12, x, y, 2, 2)
@@ -135,26 +80,6 @@ function g_hand(p, right, gr, x, y)
       elseif p == 4 then spr(42, x, y + 1, 2, 2)
       elseif p == 5 then spr(109, x + 2, y, 1, 2)
       elseif p == 6 then spr(111, x + 1, y, 1, 2)
-      end
-    end
-  end
-  if gr == 1 then
-    if right == 0 then
-      if p == 1 then spr(192, x + 2, y + 4, 2, 1)
-      elseif p == 2 then spr(255, x + 2, y + 4, 1, 1)
-      elseif p == 3 then spr(64, x, y + 1, 2, 2)
-      elseif p == 4 then spr(64, x, y + 1, 2, 2)
-      elseif p == 5 then spr(64, x, y + 1, 2, 2)
-      elseif p == 6 then spr(64, x, y + 1, 2, 2)
-      end
-    end
-    if right == 1 then
-      if p == 1 then spr(194, x + 2, y + 4, 2, 1)
-      elseif p == 2 then spr(66, x, y + 1, 2, 2)
-      elseif p == 3 then spr(66, x, y + 1, 2, 2)
-      elseif p == 4 then spr(66, x, y + 1, 2, 2)
-      elseif p == 5 then spr(66, x, y + 1, 2, 2)
-      elseif p == 6 then spr(66, x, y + 1, 2, 2)
       end
     end
   end

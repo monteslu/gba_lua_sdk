@@ -1,0 +1,55 @@
+Just One Boss — GameTank / gtlua port
+=====================================
+
+This is a fan port/adaptation of the game "Just One Boss" by bridgs
+(ayla nonsense), originally released as a PICO-8 cartridge:
+
+    https://www.lexaloffle.com/bbs/?tid=30767
+
+The original "Just One Boss" is licensed by its author under the
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+License (CC BY-NC-SA 4.0).
+
+In keeping with that license, this GameTank port — including the
+re-expressed game logic, the transcribed sprite sheet, and the
+transcribed tracker/sound data derived from the original cart — is
+released under the SAME license:
+
+    Creative Commons Attribution-NonCommercial-ShareAlike 4.0
+    International (CC BY-NC-SA 4.0)
+
+    https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+You are free to:
+
+  * Share  — copy and redistribute the material in any medium or format.
+  * Adapt  — remix, transform, and build upon the material.
+
+Under the following terms:
+
+  * Attribution  — You must give appropriate credit to bridgs (ayla
+    nonsense) as the author of the original "Just One Boss"
+    (https://www.lexaloffle.com/bbs/?tid=30767), provide a link to the
+    license, and indicate if changes were made. This port makes
+    substantial changes — see PORT_NOTES.md for a full list of
+    divergences from the original cart.
+
+  * NonCommercial  — You may not use the material for commercial
+    purposes.
+
+  * ShareAlike  — If you remix, transform, or build upon the material,
+    you must distribute your contributions under the same license as
+    the original.
+
+No additional restrictions — You may not apply legal terms or
+technological measures that legally restrict others from doing anything
+the license permits.
+
+--------------------------------------------------------------------
+
+Original game:  "Just One Boss" by bridgs (ayla nonsense)
+                https://www.lexaloffle.com/bbs/?tid=30767
+Port:           GameTank / gtlua adaptation (see PORT_NOTES.md)
+
+This is an unofficial, non-commercial fan port. It is not affiliated
+with or endorsed by the original author.
