@@ -5,7 +5,20 @@
  * and tracker layers come with the sfx converter. */
 #include "gametank.h"
 #include "gt_api.h"
+
+/* FLASH2M builds (GT_BANKED, passed by bin/gtlua.js with GT_FW_BANK): the
+ * 4 KB firmware blob is the SDK's biggest RODATA and overflows the fixed
+ * bank, so it rides in a game bank instead — and gt_audio_init() must map
+ * that bank in BEFORE the upload loop reads it (mirrors the sheet loader's
+ * gt_bank(2)-then-read pattern; a linked-but-unmapped blob uploads garbage
+ * and plays silence, which a clean link does NOT catch). */
+#ifdef GT_BANKED
+#pragma rodata-name ("B2RODATA")
+#endif
 #include "gt_acp_fw.h"
+#ifdef GT_BANKED
+#pragma rodata-name ("RODATA")
+#endif
 
 #define PITCH_MSB 0x10
 #define PITCH_LSB 0x20
@@ -38,6 +51,9 @@ void gt_audio_init(void) {
     unsigned int i;
     unsigned char op;
     *audio_rate = 0x7F;
+#ifdef GT_BANKED
+    gt_bank(GT_FW_BANK);         /* map the firmware's bank in FIRST */
+#endif
     for (i = 0; i < 4096; ++i) aram[i] = gt_acp_fw[i];
     AUDIO_PARAMS[0] = 0;
     *audio_reset = 0;

@@ -334,6 +334,16 @@ function build(entry, outPath, sheetPath) {
   cc(B("sheet.c"), B("sheet.s"));
   as(B("sheet.s"), B("sheet.o"));
 
+  // The flat-attempt gt_audio.o placed the 4 KB ACP firmware blob in the
+  // fixed bank's RODATA — the single biggest reason banked games had to
+  // ship silent. Recompile it banked: the blob rides in bank 2 (with the
+  // sheet) and gt_audio_init() maps that bank in before the ARAM upload.
+  if (usesAudio) {
+    run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_FW_BANK=2",
+                  "-o", B("gt_audio.s"), path.join(SDK, "gt_audio.c")]);
+    as(B("gt_audio.s"), B("gt_audio.o"));
+  }
+
   let linked = null;
   for (let attempt = 0; attempt < 8; attempt++) {
     result = compileLua(entry, { banked: true, placement });

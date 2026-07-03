@@ -712,5 +712,11 @@ export function emit(chunk, symbols, file, opts = {}) {
     stubs = st.join("\n");
   }
 
+  // Banked builds: cc65 emits the string-literal pool at END-OF-UNIT under
+  // whatever rodata-name is active THEN — after every scoped pragma has
+  // popped — so print() literals would land in the near-full fixed bank.
+  // A tail pragma routes the pool into bank 1 with the draw-path code.
+  if (banked) out.push(`#pragma rodata-name ("B1RODATA")`, "");
+
   return { c: out.join("\n"), callGraph, stubs };
 }

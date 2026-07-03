@@ -38,6 +38,26 @@ through cc65's long runtime — the update-path killer that explains Cherry
 Bomb's 6K-cycles-per-enemy floor. The draw path's per-call costs match the
 port measurements. Both paths get attacked; neither alone is enough.
 
+## AFTER (same microbenches, stages 1-4 landed: 1a2d747/20d81ef/5fdeaab)
+
+| op                        | before | after | note |
+|---------------------------|-------:|------:|------|
+| `spr(n,x,y)` x64/frame    |    932 | **~free** | spr64 locks at 2.00 vsyncs/frame (asm spr_z) |
+| `btn(i)` x256/frame       |    233 | **~free** | btn256 locks at 2.00 (inline zp bit test) |
+| `rectfill(...)`           |  1,864 |   932 | argless fill_clipped_z, staging + asm push |
+| `pset(x,y,c)`             |    699 |   466 | zp ABI (C body remains) |
+| `circfill(x,y,4,c)`       | 13,050 | 9,283 | spans through fill_clipped_z |
+| `acc = acc + f * g`       |  8,485 | 2,795 | asm gt_fmul (remaining = cc65 long marshalling) |
+
+Stability: 18,000-frame soak clean; orbit + real-sheet sprite scenes render
+pixel-correct (transparency, edge clips, camera).
+
+Big lesson from the bring-up: the "queue crashes" that ate half the sprint
+were artifacts — benches were being rebuilt against a parallel agent's
+half-written gt_fmul while it worked in the same tree, and post-crash reads
+used zp addresses its scratch had shifted. Never debug against a moving
+tree; pin addresses per build from the .lbl.
+
 ## The plan (in order, each measured against a microbenchmark)
 
 ### 1. Microbench baseline
