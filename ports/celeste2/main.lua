@@ -6,12 +6,13 @@
 -- the same license: CC-BY-NC-SA 4.0. See LICENSE and PORT_NOTES.md for
 -- every divergence from the original cart.
 --
--- Controls: d-pad move, GT A (O) jump, GT B (X) grapple. Hold DOWN while
--- releasing GT B to set a carried object down gently.
+-- Controls (this slice): d-pad move, GT A (O) jump / wall-jump. The grapple
+-- (GT B) unlocks at room 4 in the original and is cut from this room-1 slice —
+-- see PORT_NOTES.md for the full divergence list.
 --
--- Build:
---   node ports/celeste2/gen/gen.mjs        (regenerates data + sheet.bin)
---   node bin/gtlua.js build ports/celeste2/main.lua --sheet ports/celeste2/sheet.bin
+-- Build (must use the port-local banked driver, NOT `gtlua build`):
+--   node ports/celeste2/gen/gen.mjs --levels 1   (regenerate data + sheet.bin)
+--   node ports/celeste2/build.mjs                (FLASH2M banked build)
 --
 -- The level maps are the cart's own px9-compressed data, re-encoded by
 -- gen/gen.mjs as an LZSS stream that decodes in place inside the map
