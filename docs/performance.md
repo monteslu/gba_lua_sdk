@@ -86,6 +86,27 @@ budget on tiles alone. Watch for:
 - **Cull off-screen work.** Only draw the visible window. driftmania walks just
   the visible chunk range, not the whole map.
 
+### The budget is an overlap economy
+
+An important refinement, learned the hard way: **queued blits overlap your
+update logic.** A draw call stages an entry and returns; the blitter drains the
+queue while the CPU runs the rest of the frame. So in a frame with CPU
+headroom, an extra 30 background blits can cost *approximately nothing* —
+just-one-boss's 30-blit static arena measured **neutral** when converted to a
+single composed-page blit, because those blits had been riding free in its
+idle time all along.
+
+The budget numbers above describe the **saturated** regime — a frame already
+using its CPU time, where each additional blit's staging cost is real
+wall-clock. That's when batching pays. Corollaries:
+
+- Profile before batching: if the cart isn't saturated, cutting blits buys
+  nothing *now* (it still buys headroom for heavier moments).
+- Synchronous operations break the overlap: `gt.bg_draw` and any CPU-mode
+  write (`pset`, `print`) drain the queue before proceeding. Group CPU-mode
+  draws together (e.g. all your particles at the end of `_draw`) so you pay
+  one transition, not several.
+
 ### Static backgrounds: compose once, blit once
 
 The big lever for tilemaps: pre-render the static background into a spare GRAM
