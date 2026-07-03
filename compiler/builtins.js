@@ -62,6 +62,8 @@ export const GT_MEMBERS = {
   rgb:    { kind: "fn", params: [["int", false]], ret: "int", special: "rgb" }, // raw palette byte -> color value
   ticks:  { kind: "fn", params: [], ret: "int", c: "(int)gt_ticks", isValue: true },
   border: { kind: "fn", params: [["color", false]], ret: "void", c: "gt_p8_border" },
+  note:    { kind: "fn", params: [["int", false], ["int", false], ["int", true]], ret: "void", c: "gt_note", audio: true },
+  noteoff: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_noteoff", audio: true },
 };
 
 // PICO-8 color indices 0-15 -> GameTank CAPTURE-palette bytes.

@@ -41,6 +41,11 @@ int gt_p8_print(const char *str, int x, int y, int c);
 int gt_p8_print_num(long v, int x, int y, int c);
 void gt_sheet_load(const unsigned char *packed);
 void gt_sheet_init(void);   /* generated per-build: loads the sheet or no-op */
+
+/* audio coprocessor (gt_audio.c) */
+void gt_audio_init(void);
+void gt_note(int ch, int note, int vol);
+void gt_noteoff(int ch);
 void gt_p8_spr(int n, int x, int y, int w, int h);
 
 #endif

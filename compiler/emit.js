@@ -216,6 +216,7 @@ export function emit(chunk, symbols, file) {
     if (name === "rnd") return "65536L";     // rnd() == rnd(1.0)
     if (name === "btn" || name === "btnp") return "0"; // player 0
     if (name === "pal") return "-1";          // pal() == reset
+    if (name === "note") return "127";        // default volume
     if (name === "spr") return "1";           // w,h default 1 cell
     return "-1";                              // optional color -> current
   }
@@ -489,6 +490,7 @@ export function emit(chunk, symbols, file) {
   out.push("{");
   out.push("    gt_init();");
   out.push("    gt_sheet_init();");
+  if (symbols.usesAudio) out.push("    gt_audio_init();");
   if (thirty) out.push("    gt_p8_fps30();");
   if (has("_init")) out.push(`    ${mangle("_init")}();`);
   out.push("    for (;;) {");

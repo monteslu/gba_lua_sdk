@@ -19,6 +19,13 @@ cherrybomb.p8 compiles and plays, the features below are done by definition.
   P8 pixels through the palette map into a GRAM-load C array + runtime
   `gt_sheet_load()` at boot (replaces per-pixel sset authoring; sset stays
   for procedural art).
+- [x] ACP audio driver produces sound — `gt.note`/`gt.noteoff` play real
+  tones (verified: recorded WAV, rms > 4000, arpeggio pitch steps confirmed
+  by FFT). Root cause of the old silence: the boot handshake polled the
+  BYTE at $3002 (WavePTR low, always $00 — the sine table is page-aligned)
+  so `gt_audio_init` spun forever; upstream reads the 16-bit word. Fixed by
+  polling $3003 (bounded), plus clean carrier-only amplitude handling
+  (modulator ops at 128 = pure sine; op 4 is the carrier).
 
 ## Language features the real source needs (in port order)
 

@@ -115,6 +115,7 @@ function build(entry, outPath, sheetPath) {
   cc(path.join(SDK, "gt_api.c"), path.join(buildDir, "gt_api.s"));
   cc(path.join(SDK, "gt_fixed.c"), path.join(buildDir, "gt_fixed.s"));
   cc(path.join(SDK, "gt_math.c"), path.join(buildDir, "gt_math.s"));
+  cc(path.join(SDK, "gt_audio.c"), path.join(buildDir, "gt_audio.s"));
   cc(sheetC, path.join(buildDir, "sheet.s"));
 
   // 3. assemble everything
@@ -128,6 +129,7 @@ function build(entry, outPath, sheetPath) {
   as(path.join(buildDir, "gt_api.s"), path.join(buildDir, "gt_api.o"));
   as(path.join(buildDir, "gt_fixed.s"), path.join(buildDir, "gt_fixed.o"));
   as(path.join(buildDir, "gt_math.s"), path.join(buildDir, "gt_math.o"));
+  as(path.join(buildDir, "gt_audio.s"), path.join(buildDir, "gt_audio.o"));
   as(path.join(buildDir, "sheet.s"), path.join(buildDir, "sheet.o"));
   as(path.join(buildDir, `${name}.s`), path.join(buildDir, `${name}.o`));
 

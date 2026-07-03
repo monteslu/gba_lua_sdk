@@ -16,6 +16,7 @@ const join = (a, b) => (a === "fixed" || b === "fixed") ? "fixed" : "int";
 export function check(chunk, file) {
   const diagnostics = [];
   const globals = new Map();   // name -> {kind, fixedInit, node}
+  const usesAudio = { flag: false };
   const functions = new Map(); // name -> {params:[names], paramKinds:[], ret, retKind, node}
   let reporting = true;        // pass 1 runs once: report; fixpoint passes: quiet
   let changed = false;         // fixpoint tracker
@@ -495,6 +496,7 @@ export function check(chunk, file) {
       if (callee.kind === "member" && callee.object.kind === "name" && callee.object.name === "gt") {
         const sig = GT_MEMBERS[callee.field];
         if (!sig) { err(call, `unknown gt function 'gt.${callee.field}'`); return "int"; }
+        if (sig.audio) usesAudio.flag = true;
         checkArgs(call, sig.params, `gt.${callee.field}`);
         call.sig = sig;
         return sig.ret;
@@ -734,5 +736,5 @@ export function check(chunk, file) {
     checkBlock(fn.node.body);
   }
 
-  return { diagnostics, symbols: { globals, functions } };
+  return { diagnostics, symbols: { globals, functions, usesAudio: usesAudio.flag } };
 }
