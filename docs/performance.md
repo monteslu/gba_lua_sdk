@@ -58,7 +58,8 @@ paoff[i] += paspd[i] / 32   -- /32 compiles to `>> 5`
   isn't a power of two and the input range is small (driftmania builds a `div3[]`
   table to turn `camx / 24` chunk math into a table read).
 
-*This one pattern took celeste2 from ~4 fps to ~7.6 fps with no visual change.*
+*This one pattern (plus a sine LUT, below) took celeste2's gameplay from ~4 fps
+to ~8.5 fps with no visual change.*
 
 ---
 
@@ -143,6 +144,14 @@ Bisect:
 The pacing harness reads `_gt_ticks` vs `_gt_time_acc` over a fixed vsync window;
 2.00 vsyncs/frame == locked 30 fps.
 
+**Profile the screen you actually play, not the title.** A cart that boots to a
+menu or title screen will pace *that* screen if your harness just loads and
+settles — and a title (a logo + a few particles) is nothing like gameplay (a
+tilemap + entities + physics). Drive into a real level first (press through the
+title, or temporarily auto-advance it), and confirm you're there (read the
+level/state variable) before you trust a number. Optimizing the title screen
+feels productive and changes nothing players feel.
+
 ---
 
 ## Measured example-cart baseline (2026-07-03)
@@ -157,8 +166,10 @@ The pacing harness reads `_gt_ticks` vs `_gt_time_acc` over a fixed vsync window
 | just-one-boss | 7.0 | 8.6 | sprites |
 | driftmania | 10.1 | 6 | full-screen tile blits |
 | newleste | 10.7 | 5.6 | half physics / half draw |
-| celeste2 | 7.9 (was 15.0) | 7.6 | snow `sin`, sprite volume |
+| celeste2 (gameplay) | 7.1 (was 14.6) | 8.5 | tilemap + snow + physics |
 
-None yet hit locked 30 fps — the light carts sit at ~20. The heavy ports are
-blit-volume bound (the fix is `gt.bg_compose` for their tilemaps) with the
-occasional fixed-point-math footgun on top (celeste2's snow, now fixed).
+(celeste2's row is *gameplay*; its title screen paces differently — see the
+profiling note above.) None yet hit locked 30 fps — the light carts sit at ~20.
+The heavy ports are blit-volume bound (the biggest lever left is `gt.bg_compose`
+for their tilemaps) with fixed-point-math footguns on top (celeste2's snow, now
+fixed: 14.6 → 7.1 gameplay vsyncs from integer `%` + a sine LUT).
