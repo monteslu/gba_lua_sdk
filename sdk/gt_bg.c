@@ -245,6 +245,7 @@ void gt_bg_draw(int sx, int sy) {
  * tile never straddles a quadrant), then blit any rect back per frame with
  * gt.gspr(). All one-time init cost. */
 
+#ifdef GT_BG_ATLAS
 /* Clear the whole 256x256 canvas to color 0 (all four quadrants). */
 void gt_bg_clear(void) {
     unsigned char q; unsigned int p;
@@ -300,6 +301,7 @@ void gt_bg_tile(int t, int px, int py) {
     gt_bank(saved_bank);
 }
 #endif
+#endif /* GT_BG_ATLAS */
 
 /* Queue-blit a w x h rect FROM the canvas at (gx,gy) to screen (x,y) — a
  * "sprite" cut from the composed 256x256 page. Camera-adjusted and colorkey-

@@ -185,7 +185,7 @@ function initialPlacement(callGraph) {
 const SEG_BIN = { B0CODE: "b0", B1CODE: "b1", B2CODE: "b2", CODE: "fixed", RODATA: "fixed", B0RODATA: "b0", B1RODATA: "b1", B2RODATA: "b2" };
 
 // rebalance after a link overflow: move functions out of the fat bins
-function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, usesAudio, usesMusic) {
+function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, usesAudio, usesMusic, usesAtlas) {
   const bins = { b0: [], b1: [], b2: [], fixed: [] };
   for (const [name, bin] of Object.entries(placement)) bins[bin].push(name);
   const estUsed = (bin) => bins[bin].reduce((a, n) => a + (sizes.get(n) ?? 0), 0);
@@ -199,7 +199,7 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
   // the ~2.7 KB sfx/music sequencer + its tables (usesMusic). Reserve for them
   // so the game-function packer doesn't overfill bank 2 and fail to converge.
   const B2_SDK_RESERVE =
-    (usesBg ? 1200 : 0) + (usesAudio ? 4096 : 0) + (usesMusic ? 2800 : 0);
+    (usesBg ? 700 : 0) + (usesAtlas ? 500 : 0) + (usesAudio ? 4096 : 0) + (usesMusic ? 2800 : 0);
   const capacity = {
     b0: BANK_SIZE - BANK_MARGIN,
     b1: BANK_SIZE - BANK_MARGIN,
@@ -285,8 +285,13 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
     // helper to the spill bank and update loops made ~300 stub calls per
     // frame. Big functions (wave spawners, one-shot setups) cover the
     // overflow in one or two moves and are called rarely.
+    // EXCEPT for RODATA overflows: string/table data isn't proportional to a
+    // function's code size (a tiny print helper can own a fat string pool),
+    // so the >=200 code-size filter would leave the actual rodata owners
+    // unmovable and the placement stuck. Let rodata overflows move anything.
+    const minSize = segment.includes("RODATA") ? 0 : 200;
     const movable = bins[bin]
-      .filter((n) => !CALLBACKS.has(n) && (sizes.get(n) ?? 0) >= 200)
+      .filter((n) => !CALLBACKS.has(n) && (sizes.get(n) ?? 0) >= minSize)
       .sort((a, b) => (sizes.get(b) ?? 0) - (sizes.get(a) ?? 0));
     for (const n of movable) {
       if (need <= 0) break;
@@ -320,7 +325,7 @@ function build(entry, outPath, sheetPath) {
                   "--static-locals", "-I", SDK];
   const AFLAGS = ["--cpu", "W65C02"];
   if (tc.asminc && existsSync(tc.asminc)) AFLAGS.push("-I", tc.asminc);
-  const cc = (src, dst) => run(tc.cc65, [...CFLAGS, "-o", dst, src]);
+  const cc = (src, dst, extra = []) => run(tc.cc65, [...CFLAGS, ...extra, "-o", dst, src]);
   const as = (src, obj) => run(tc.ca65, [...AFLAGS, "-o", obj, src]);
   const B = (f) => path.join(buildDir, f);
 
@@ -337,6 +342,9 @@ function build(entry, outPath, sheetPath) {
   const usesBg = result.c.includes("gt_bg_compose(") || result.c.includes("gt_bg_draw(") ||
     result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(") ||
     result.c.includes("gt_gspr(");
+  // atlas builders (bg_clear/bg_tile) carry a second bank-2 decode body —
+  // only compile + reserve for it when the game actually stamps tiles
+  const usesAtlas = result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(");
   writeFileSync(B(`${name}.c`), result.c);
   writeFileSync(B("sheet.c"), makeSheetC(sheetPath, false));
 
@@ -345,7 +353,7 @@ function build(entry, outPath, sheetPath) {
   cc(path.join(SDK, "gt_api.c"), B("gt_api.s"));
   cc(path.join(SDK, "gt_fixed.c"), B("gt_fixed.s"));
   cc(path.join(SDK, "gt_math.c"), B("gt_math.s"));
-  if (usesBg) cc(path.join(SDK, "gt_bg.c"), B("gt_bg.s"));
+  if (usesBg) cc(path.join(SDK, "gt_bg.c"), B("gt_bg.s"), usesAtlas ? ["-DGT_BG_ATLAS"] : []);
   if (usesAudio) cc(path.join(SDK, "gt_audio.c"), B("gt_audio.s"));
   if (usesMusic) cc(path.join(SDK, "gt_music.c"), B("gt_music.s"));
   cc(B("sheet.c"), B("sheet.s"));
@@ -417,6 +425,7 @@ function build(entry, outPath, sheetPath) {
   // (bank 2, with the sheet) and a fixed-bank stub maps bank 2 before calling it.
   if (usesBg) {
     run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_SHEET_BANK=2",
+                  ...(usesAtlas ? ["-DGT_BG_ATLAS"] : []),
                   "-o", B("gt_bg.s"), path.join(SDK, "gt_bg.c")]);
     as(B("gt_bg.s"), B("gt_bg.o"));
   }
@@ -478,7 +487,7 @@ function build(entry, outPath, sheetPath) {
     ]);
     if (link.ok) { linked = flashOut; break; }
     lastOverflows = link.overflows;
-    const moved = rebalance(workPlacement, sizes, link.overflows, sheetBytes, result.callGraph, usesBg, usesAudio, usesMusic);
+    const moved = rebalance(workPlacement, sizes, link.overflows, sheetBytes, result.callGraph, usesBg, usesAudio, usesMusic, usesAtlas);
     if (!moved && attempt >= 8) {
       fail("FLASH2M bank placement failed: " +
         link.overflows.map((o) => `${o.segment} over by ${o.bytes}`).join(", "));
