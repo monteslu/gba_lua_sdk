@@ -323,26 +323,18 @@ feels productive and changes nothing players feel.
 
 ---
 
-## Measured example-cart baseline (2026-07-03)
+## Measured example-cart numbers (2026-07-04, current compiler)
 
-| cart | vsyncs | fps | bound by |
+| cart | vsyncs | fps | state |
 |---|---|---|---|
-| ufo-swamp | 3.0 | 20 | sprites |
-| celeste-like | 3.0 | 20 | fills |
-| cherry-bomb (combat) | 4.7 (title 3.9) | 12.6 | entity volume: waves of 24 enemies + 3 pools, update floor 3.1 |
-| jelpi | 4.0 | 15 | fills + sprites |
-| combo-pool | 4.4 | 14 | sprites |
-| just-one-boss | 7.0 | 8.6 | sprites |
-| driftmania | 7.1 (was 10.1) | 8.4 | chunk atlas landed; car physics next |
-| newleste | 7.1 (was 10.7) | 8.5 | physics 3× + map on the canvas (4 blits) |
-| celeste2 (gameplay) | 6.8 (was 14.6) | 8.8 | compiler inlining reached its collision chain |
-| just-one-boss (gameplay) | ~2.2 | ~29 | effectively at 30 fps |
-| combo-pool (gameplay) | 5.0 | 12 | division-heavy ball physics (unprofiled) |
+| just-one-boss (gameplay) | 2.25 | ~29 | at PICO-8 speed |
+| ufo-swamp / celeste-like | 3.0 | 20 | light + lean |
+| cherry-bomb (combat) | 4.5 (was 4.8) | 13 | entity volume; compiler recovered ~0.3 |
+| combo-pool (gameplay) | 5.0 | 12 | physics floor 4.0 |
+| driftmania | 5.7 (was 10.1) | 10.5 | chunk atlas + inline |
+| celeste2 (gameplay) | 6.7 (was 14.6) | 9.0 | footgun fixes + compiler inlining |
+| newleste | 7.1 (was 11.1) | 8.5 | physics 3x + canvas map |
 
-(celeste2's row is *gameplay*; its title screen paces differently — see the
-profiling note above.) None yet hit locked 30 fps — the light carts sit at ~20.
-The heavy ports are blit-volume bound (the biggest lever left is `gt.bg_compose`
-for their tilemaps) with fixed-point-math footguns on top (celeste2's snow:
-14.6 → 7.1 gameplay vsyncs from integer `%` + a sine LUT; newleste's whole
-player engine: update floor 5.0 → 3.0 vsyncs via 8.8 ints + merged collision
-scans + the idle-leak fixes — its fps ceiling rose from ~12 to ~20).
+Gameplay numbers, measured in real play (never the title screen). The compiler
+work (inlining, narrowing, index folds, zp params) now recovers real frame
+time with zero game-source changes — and every future cart gets it for free.
