@@ -498,6 +498,17 @@ export function check(chunk, file) {
         const sig = GT_MEMBERS[callee.field];
         if (!sig) { err(call, `unknown gt function 'gt.${callee.field}'`); return "int"; }
         if (sig.audio) usesAudio.flag = true;
+        // gt.rgb has two forms: gt.rgb(byte) raw, or gt.rgb(r,g,b) resolved to
+        // the nearest palette byte at compile time (r,g,b must be constants).
+        if (callee.field === "rgb" && call.args.length === 3) {
+          for (const a of call.args) {
+            if (constEval(a) === null) {
+              err(a, "gt.rgb(r, g, b) needs constant 0-255 values (use gt.rgb(byte) for a runtime color)");
+            } else typeOf(a);
+          }
+          call.sig = sig;
+          return sig.ret;
+        }
         checkArgs(call, sig.params, `gt.${callee.field}`);
         call.sig = sig;
         return sig.ret;

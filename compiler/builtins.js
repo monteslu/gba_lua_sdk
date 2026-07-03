@@ -67,7 +67,10 @@ export const BUILTINS = {
 
 // gt.* extras (GameTank-specific)
 export const GT_MEMBERS = {
-  rgb:    { kind: "fn", params: [["int", false]], ret: "int", special: "rgb" }, // raw palette byte -> color value
+  // gt.rgb(byte) — raw GameTank palette byte 0-255 (the full ~200-color space,
+  // beyond the 16 PICO-8 indices). gt.rgb(r,g,b) — pick by RGB (0-255 each,
+  // constant); resolved to the nearest hardware color at compile time.
+  rgb:    { kind: "fn", params: [["int", false]], ret: "int", special: "rgb" },
   ticks:  { kind: "fn", params: [], ret: "int", c: "(int)gt_ticks", isValue: true },
   border: { kind: "fn", params: [["color", false]], ret: "void", c: "gt_p8_border" },
   note:    { kind: "fn", params: [["int", false], ["int", false], ["int", true]], ret: "void", c: "gt_note", audio: true },

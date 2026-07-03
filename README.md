@@ -76,8 +76,12 @@ button glyphs (`⬅️➡️⬆️⬇️🅾️❎`), and multiple assignment (`
 | gametank extras | `gt.rgb(b)` — raw palette byte (the GameTank has 256 colors; 0-15 are mapped to the PICO-8 palette), `gt.border(c)`, `gt.ticks()`, `gt.starfield_*`, `gt.bg_compose`/`gt.bg_draw` (see below) |
 
 Colors are PICO-8 indices (0 black, 7 white, 8 red, 12 blue, …), mapped to
-the closest GameTank palette entries; `pal(c0,c1)` remaps, `gt.rgb()`
-unlocks the full 256.
+the closest GameTank palette entries; `pal(c0,c1)` remaps. The GameTank screen
+is 8-bit — ~200 distinct colors, far more than PICO-8's 16 — and `gt.rgb()`
+reaches all of them: `gt.rgb(255,128,0)` picks the nearest hardware color to
+that RGB (resolved at compile time, zero runtime cost), or `gt.rgb(byte)`
+takes a raw palette byte 0–255. Use it anywhere a color is expected:
+`rectfill(x,y,w,h, gt.rgb(255,128,0))`.
 
 ### Fast backgrounds: `gt.bg_compose` / `gt.bg_draw`
 

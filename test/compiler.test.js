@@ -78,6 +78,23 @@ test("button glyphs lex as indices", () => {
   assert.match(c, /gt_rpt0 & 4096u/);
 });
 
+test("gt.rgb(r,g,b) resolves to a palette byte at compile time", () => {
+  const c = cOf("function _update60()\nend\nfunction _draw()\n  rectfill(0,0,9,9, gt.rgb(255,128,0))\nend\n");
+  // constant RGB -> a 0x1xx literal (0x100 | nearest byte), no runtime lookup
+  assert.match(c, /0x1[0-9a-f][0-9a-f]/);
+  assert.doesNotMatch(c, /nearestColorByte|gt_rgb/);
+});
+
+test("gt.rgb(byte) still passes a raw byte through", () => {
+  const c = cOf("function _update60()\nend\nfunction _draw()\n  rectfill(0,0,9,9, gt.rgb(0x2f))\nend\n");
+  assert.match(c, /0x100 \| \(47 & 0xFF\)/);
+});
+
+test("gt.rgb(r,g,b) with a non-constant is a loud error", () => {
+  const errs = errorsOf("local q = 5\nfunction _update60()\nend\nfunction _draw()\n  rectfill(0,0,9,9, gt.rgb(q,0,0))\nend\n");
+  assert.ok(errs.some((m) => /gt\.rgb\(r, g, b\) needs constant/.test(m)), errs.join("\n"));
+});
+
 test("multiple assignment evaluates RHS first (swap works)", () => {
   const c = cOf("local a, b = 1, 2\nfunction _update60()\n  a, b = b, a\nend\nfunction _draw()\nend\n");
   assert.match(c, /int L_t0 = gtl_b;/);

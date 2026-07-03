@@ -8,6 +8,27 @@
 // divisors fold to shifts/masks at compile time (exact for 16.16).
 
 import { BUILTINS, GT_MEMBERS, CALLBACKS } from "./builtins.js";
+import { nearestColorByte } from "./gt_palette.js";
+
+// constant-fold a numeric node (literals + neg/binops over literals). Used for
+// gt.rgb(r,g,b), whose args the checker already proved constant.
+function constFold(e) {
+  if (!e) return null;
+  if (e.kind === "number") return e.value;
+  if (e.kind === "neg") { const v = constFold(e.expr); return v === null ? null : -v; }
+  if (e.kind === "binop") {
+    const l = constFold(e.left), r = constFold(e.right);
+    if (l === null || r === null) return null;
+    switch (e.op) {
+      case "+": return l + r; case "-": return l - r; case "*": return l * r;
+      case "/": return r === 0 ? null : l / r;
+      case "\\": return r === 0 ? null : Math.floor(l / r);
+      case "%": return r === 0 ? null : l - Math.floor(l / r) * r;
+      default: return null;
+    }
+  }
+  return null;
+}
 
 // AST annotation keys that point OUT of the tree (symbols, fn infos, pool
 // records). The call-graph walker must not follow them (they contain cycles).
@@ -290,7 +311,17 @@ export function emit(chunk, symbols, file, opts = {}) {
     // gt.* extras
     if (callee.kind === "member" && callee.object.kind === "name" && callee.object.name === "gt") {
       const sig = GT_MEMBERS[callee.field];
-      if (sig.special === "rgb") return `(0x100 | (${argAt(e, 0, "int", "0")} & 0xFF))`;
+      if (sig.special === "rgb") {
+        // gt.rgb(r,g,b): resolve to the nearest palette byte at COMPILE time
+        // (zero runtime cost) — the checker proved the 3 args constant.
+        if (e.args.length === 3) {
+          const r = Math.round(constFold(e.args[0]) ?? 0);
+          const g = Math.round(constFold(e.args[1]) ?? 0);
+          const b = Math.round(constFold(e.args[2]) ?? 0);
+          return `0x${(0x100 | nearestColorByte(r, g, b)).toString(16)}`;
+        }
+        return `(0x100 | (${argAt(e, 0, "int", "0")} & 0xFF))`;
+      }
       if (sig.isValue) return sig.c;
       return `${sig.c}(${sig.params.map((p, i) => argAt(e, i, p[0], defaultFor(callee.field, i))).join(", ")})`;
     }
