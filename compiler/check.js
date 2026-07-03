@@ -576,7 +576,18 @@ export function check(chunk, file) {
       if (call.args.length < required || call.args.length > params.length) {
         err(call, `${name}() takes ${required === params.length ? required : `${required}-${params.length}`} argument(s), got ${call.args.length}`);
       }
-      call.args.forEach((a) => {
+      call.args.forEach((a, i) => {
+        // an "array" param wants a bare array-global name passed by pointer —
+        // arrays aren't values, so don't type-check it as a number.
+        if (params[i] && params[i][0] === "array") {
+          const sym = a.kind === "name" ? lookup(a.name) : null;
+          if (!sym || sym.kind !== "array") {
+            err(a, `${name}() argument ${i + 1} must be an array (declared with array(n))`);
+          } else {
+            a.sym = sym;   // annotate for the emitter
+          }
+          return;
+        }
         const t = typeOf(a);
         if (t === "bool") err(a, `cannot pass a boolean as a number argument to ${name}()`);
       });

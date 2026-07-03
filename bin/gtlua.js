@@ -185,7 +185,7 @@ function initialPlacement(callGraph) {
 const SEG_BIN = { B0CODE: "b0", B1CODE: "b1", B2CODE: "b2", CODE: "fixed", RODATA: "fixed", B0RODATA: "b0", B1RODATA: "b1", B2RODATA: "b2" };
 
 // rebalance after a link overflow: move functions out of the fat bins
-function rebalance(placement, sizes, overflows, sheetBytes, callGraph) {
+function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg) {
   const bins = { b0: [], b1: [], b2: [], fixed: [] };
   for (const [name, bin] of Object.entries(placement)) bins[bin].push(name);
   const estUsed = (bin) => bins[bin].reduce((a, n) => a + (sizes.get(n) ?? 0), 0);
@@ -194,10 +194,14 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph) {
   // ~12 KB runtime + stubs, so game functions get a small conservative slice
   // of it; ld65 re-checks every iteration and the ROM-overflow branch bails
   // us out if the estimate was optimistic.
+  // gt_bg_compose's decode body rides in bank 2 (B2CODE, ~625 B) alongside the
+  // sheet so it's mapped when it reads the sheet — reserve for it so the
+  // game-function packer doesn't overfill bank 2 and fail to converge.
+  const B2_SDK_RESERVE = usesBg ? 700 : 0;
   const capacity = {
     b0: BANK_SIZE - BANK_MARGIN,
     b1: BANK_SIZE - BANK_MARGIN,
-    b2: BANK_SIZE - BANK_MARGIN - sheetBytes,
+    b2: BANK_SIZE - BANK_MARGIN - sheetBytes - B2_SDK_RESERVE,
     fixed: estUsed("fixed") + 2500,
   };
 
@@ -278,6 +282,10 @@ function build(entry, outPath, sheetPath) {
   // 1. lua -> C (flat 32 KB attempt first)
   let result = compileLua(entry);
   const usesAudio = result.c.includes("gt_audio_init(");
+  // gt_bg (offscreen-GRAM background) is only linked when the game uses it —
+  // its compose body rides in bank 2 with the sheet, so linking it into a game
+  // that doesn't need it just steals bank-2 space from the game's own code.
+  const usesBg = result.c.includes("gt_bg_compose(") || result.c.includes("gt_bg_draw(");
   writeFileSync(B(`${name}.c`), result.c);
   writeFileSync(B("sheet.c"), makeSheetC(sheetPath, false));
 
@@ -286,6 +294,7 @@ function build(entry, outPath, sheetPath) {
   cc(path.join(SDK, "gt_api.c"), B("gt_api.s"));
   cc(path.join(SDK, "gt_fixed.c"), B("gt_fixed.s"));
   cc(path.join(SDK, "gt_math.c"), B("gt_math.s"));
+  if (usesBg) cc(path.join(SDK, "gt_bg.c"), B("gt_bg.s"));
   if (usesAudio) cc(path.join(SDK, "gt_audio.c"), B("gt_audio.s"));
   cc(B("sheet.c"), B("sheet.s"));
 
@@ -297,6 +306,7 @@ function build(entry, outPath, sheetPath) {
   as(B("gt_api.s"), B("gt_api.o"));
   as(B("gt_fixed.s"), B("gt_fixed.o"));
   as(B("gt_math.s"), B("gt_math.o"));
+  if (usesBg) as(B("gt_bg.s"), B("gt_bg.o"));
   if (usesAudio) as(B("gt_audio.s"), B("gt_audio.o"));
   as(B("sheet.s"), B("sheet.o"));
   as(B(`${name}.s`), B(`${name}.o`));
@@ -304,6 +314,7 @@ function build(entry, outPath, sheetPath) {
   const baseObjs = [
     B("crt0.o"), B("vectors.o"), B("interrupt.o"), B("gt_blitq.o"),
     B("gt_api.o"), B("gt_fixed.o"), B("gt_fixed_asm.o"), B("gt_math.o"),
+    ...(usesBg ? [B("gt_bg.o")] : []),
     ...(usesAudio ? [B("gt_audio.o")] : []),
     B("sheet.o"),
   ];
@@ -347,6 +358,15 @@ function build(entry, outPath, sheetPath) {
   as(B("gt_math.s"), B("gt_math.o"));
   as(path.join(SDK, "gt_math_stubs.s"), B("gt_math_stubs.o"));
 
+  // gt_bg_compose reads the sheet (which rides in bank 2 for FLASH2M) to paint
+  // the background page — recompile it banked: the decode body goes to B2CODE
+  // (bank 2, with the sheet) and a fixed-bank stub maps bank 2 before calling it.
+  if (usesBg) {
+    run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_SHEET_BANK=2",
+                  "-o", B("gt_bg.s"), path.join(SDK, "gt_bg.c")]);
+    as(B("gt_bg.s"), B("gt_bg.o"));
+  }
+
   // The flat-attempt gt_audio.o placed the 4 KB ACP firmware blob in the
   // fixed bank's RODATA — the single biggest reason banked games had to
   // ship silent. Recompile it banked: the blob rides in bank 2 (with the
@@ -377,7 +397,7 @@ function build(entry, outPath, sheetPath) {
       tc.lib,
     ]);
     if (link.ok) { linked = flashOut; break; }
-    const moved = rebalance(placement, sizes, link.overflows, sheetBytes, result.callGraph);
+    const moved = rebalance(placement, sizes, link.overflows, sheetBytes, result.callGraph, usesBg);
     if (!moved) {
       fail("FLASH2M bank placement failed: " +
         link.overflows.map((o) => `${o.segment} over by ${o.bytes}`).join(", "));

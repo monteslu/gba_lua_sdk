@@ -275,6 +275,9 @@ export function emit(chunk, symbols, file, opts = {}) {
       case "int": return expr(a, "int");
       case "num": return expr(a, "fixed");
       case "color": return expr(a, "int");
+      // pass an array global by pointer: the bare mangled name decays to
+      // int*/long* (the checker validated it's an array reference).
+      case "array": return a.kind === "name" ? mangle(a.name) : "0";
       default: return expr(a, "any");
     }
   }
@@ -362,6 +365,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   function defaultFor(name, i) {
     if (name === "cls") return "0";
     if (name === "camera") return "0";
+    if (name === "bg_draw") return "0";      // bg_draw() -> source offset 0,0
     if (name === "rnd") return "65536L";     // rnd() == rnd(1.0)
     if (name === "btn" || name === "btnp") return "0"; // player 0
     if (name === "pal") return "-1";          // pal() == reset

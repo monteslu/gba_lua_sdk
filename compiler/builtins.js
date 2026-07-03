@@ -69,6 +69,18 @@ export const GT_MEMBERS = {
   starfield_init: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_starfield_init" },
   starfield_move: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_starfield_move" },
   starfield_draw: { kind: "fn", params: [], ret: "void", c: "gt_starfield_draw" },
+  // Offscreen-GRAM background canvas. The GameTank has 512 KB of GRAM (32
+  // pages of 128x128); the SDK uses only page 0 (the sheet). A background
+  // drawn as ONE big blit from a spare page costs the same as one 8x8 blit
+  // (~free), vs a per-tile spr() loop (~1 blit per visible tile). Compose the
+  // level's tiles into the bg page ONCE (per level load), then blit it whole
+  // every frame.
+  //   gt.bg_compose(map, cols, cx, cy, cw, ch)  -- CPU-paint tiles -> bg page
+  //   gt.bg_draw([sx], [sy])                     -- blit bg window -> screen
+  bg_compose: { kind: "fn", params: [
+    ["array", false], ["int", false], ["int", false], ["int", false],
+    ["int", false], ["int", false]], ret: "void", c: "gt_bg_compose" },
+  bg_draw: { kind: "fn", params: [["coord", true], ["coord", true]], ret: "void", c: "gt_bg_draw" },
 };
 
 // PICO-8 color indices 0-15 -> GameTank CAPTURE-palette bytes.

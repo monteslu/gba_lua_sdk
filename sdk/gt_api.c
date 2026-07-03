@@ -17,10 +17,10 @@ char gt_frameflag;
 char gt_draw_busy;
 unsigned int gt_ticks;
 
-static char flags_mirror;   /* last value written to $2007 */
-static char banks_mirror;   /* last value written to $2005 */
-static char frameflip;      /* DMA_PAGE_OUT bit state      */
-static char bankflip;       /* BANK_SECOND_FRAMEBUFFER bit state */
+char flags_mirror;          /* last value written to $2007 (bg reads it) */
+char banks_mirror;          /* last value written to $2005 (bg reads it) */
+char frameflip;             /* DMA_PAGE_OUT bit state */
+char bankflip;              /* BANK_SECOND_FRAMEBUFFER bit state */
 static char fps30;          /* _update() mode: two vsyncs per logical frame */
 
 /* draw state (PICO-8 sticky globals; camera lives in zp — gt_blitq.s) */
@@ -40,6 +40,12 @@ static unsigned char resolve_color(int c) {
     if (c & 0x100) draw_color = (unsigned char)c;
     else draw_color = p8pal[c & 15];
     return draw_color;
+}
+
+/* p8 index (0-15) -> current hardware color byte (honors pal() remaps).
+ * Exposed for the background compositor (gt_bg.c decodes 4bpp sheet tiles). */
+unsigned char gt_p8pal(unsigned char idx) {
+    return p8pal[idx & 15];
 }
 
 /* ---- mode tracking: CPU->VRAM / GRAM writes vs queued blits ----
@@ -167,12 +173,20 @@ int gt_p8_print_num(long v, int x, int y, int c) {
     return gt_p8_print(p, x, y, c);
 }
 
+/* The packed sheet pointer, stashed by gt_sheet_load so the background
+ * compositor (gt_bg.c) can re-read tile pixels from it. In FLASH2M builds the
+ * sheet lives in bank 2, mapped in by gt_sheet_init before gt_sheet_load runs;
+ * gt_bg_compose re-maps that bank the same way before reading. NULL until a
+ * sheet is loaded (bg_compose is a no-op then). */
+const unsigned char *gt_sheet_ptr;
+
 /* Load a packed 4bpp PICO-8 sheet (8192 bytes, two pixels per byte, low
  * nibble first) into GRAM through the palette map. Called by the generated
  * gt_sheet_init() before _init() when the build links a --sheet. */
 void gt_sheet_load(const unsigned char *packed) {
     unsigned int i;
     unsigned char b;
+    gt_sheet_ptr = packed;
     enter_gram_mode();
     for (i = 0; i < 8192; ++i) {
         b = packed[i];

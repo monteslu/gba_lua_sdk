@@ -58,6 +58,46 @@ half-written gt_fmul while it worked in the same tree, and post-crash reads
 used zp addresses its scratch had shifted. Never debug against a moving
 tree; pin addresses per build from the .lbl.
 
+## Real-game breakdown: newleste level 1 (measured 2026-07-03)
+
+The microbenches told us primitive COST; a real port tells us where the frame
+actually GOES. Measured on newleste (a Celeste-classic port), fps30, delta
+protocol over 600 vsyncs, by stubbing pieces of the frame:
+
+| Configuration                                  | vsyncs/frame |
+|------------------------------------------------|:------------:|
+| Baseline (per-tile spr map loop)               |   **10.91**  |
+| bg blit (gt.bg_draw) + all entities            |    **9.75**  |
+| bg blit + player only                          |    **5.88**  |
+| bg blit only (update still running)            |    **4.98**  |
+
+- **Tilemap draw -> one big GRAM blit: ~1.15 vsyncs saved.** The new
+  gt.bg_compose/gt.bg_draw path works and helps — but the map was only ~11%
+  of the frame. It was never the bottleneck.
+- **Non-player entity draw (particles, clouds, collectibles, HUD): ~3.9
+  vsyncs — the single biggest chunk.** At ~1193 cycles of SETUP per blit
+  regardless of size, decorative particles are what blow the ~50-blit budget.
+- **_update physics: ~5 vsyncs floor** (fixed-point PICO-8 physics on 65C02).
+
+RANKED levers now: (1) cut/batch decorative sprites — needs source changes,
+so it's the #1 topic for the GameTank-idiomatic patterns guide (also:
+pre-compose static pickups into the bg page); (2) cheaper _update (leaf
+inlining + integer-where-PICO8-used-fixed); (3) native map() batching is now
+secondary — bg_compose already handles single-screen levels.
+
+### gt.bg_compose / gt.bg_draw (SHIPPED)
+
+The GameTank has 512 KB GRAM = 32 pages of 128x128; the stock SDK uses only
+page 0 (the sheet). gt.bg_compose(map, cols, cx, cy, cw, ch) CPU-paints a
+tilemap window into a spare GRAM page (group 1) ONCE per level load (clears to
+color 0, skips tile 0); gt.bg_draw([sx],[sy]) blits that whole page in one
+cheap blit per frame. FLASH2M: bin/gtlua.js recompiles gt_bg.c with -DGT_BANKED
+-DGT_SHEET_BANK=2 so compose maps the sheet's bank; it restores the caller's
+bank after (gt_cur_bank, C-visible via the _gt_cur_bank alias). See
+gt_bg.c for the blitter-state discipline (compose/draw both hand the blitter
+back in the same state a normal queued frame runs under, or all later blits
+render black — the bug that cost a debugging session).
+
 ## The plan (in order, each measured against a microbenchmark)
 
 ### 1. Microbench baseline

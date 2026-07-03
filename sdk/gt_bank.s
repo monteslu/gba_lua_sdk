@@ -12,14 +12,15 @@
 ; cross-bank call stubs. Must live in the FIXED bank (it runs while the
 ; window is mid-switch).
 ; ---------------------------------------------------------------------------
-.export _gt_bank, gt_bank_raw, gt_cur_bank
+.export _gt_bank, gt_bank_raw, gt_cur_bank, _gt_cur_bank
 .PC02
 
 VIA_ORA  = $2801
 VIA_DDRA = $2803
 
 .segment "BSS"
-gt_cur_bank: .res 1
+gt_cur_bank:
+_gt_cur_bank: .res 1              ; C-visible alias (extern unsigned char gt_cur_bank)
 
 .segment "CODE"
 

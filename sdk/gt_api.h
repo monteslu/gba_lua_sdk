@@ -77,6 +77,11 @@ void gt_p8_sset_z(void);       /* a0=x a1=y a2=c */
 void gt_starfield_init(int n);      /* seed n parallax stars (n<=128) */
 void gt_starfield_move(int mode);   /* scroll: 0=drift 1=1x 2=2x */
 void gt_starfield_draw(void);       /* plot the whole field (one CPU pass) */
+/* offscreen-GRAM background canvas (gt_bg.c) */
+void gt_bg_compose(int *map, int cols, int cx, int cy, int cw, int ch);
+void gt_bg_draw(int sx, int sy);
+unsigned char gt_p8pal(unsigned char idx);   /* p8 index -> hw color (pal-aware) */
+extern const unsigned char *gt_sheet_ptr;
 void gt_p8_rect(int x0, int y0, int x1, int y1, int c);
 void gt_p8_rectfill(int x0, int y0, int x1, int y1, int c);
 void gt_p8_circ(int cx, int cy, int r, int c);
