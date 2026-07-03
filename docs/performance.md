@@ -1,10 +1,14 @@
 # Writing fast GameTank Lua
 
-The GameTank runs a 6.5 MHz 6502. That is *fast* for the 8-bit era, but it is
-~1000× slower than the machine PICO-8 runs on. A PICO-8 cart that leans on
-`sin`, `%`, `/`, and hundreds of draw calls per frame will run — but at 4–8 fps,
-not 30. This guide is the set of patterns that keep a port at playable speed,
-learned by profiling the real example carts.
+The GameTank runs a 3.58 MHz 65C02 (measured: ~59.7k cycles per vsync — the
+NTSC colorburst clock, exactly 2× an NES). That is quick for the 8-bit era,
+but there is no PPU: **the CPU composes every frame itself.** An NES draws its
+whole screen in dedicated hardware and spends ~20 cycles of CPU per sprite (4
+OAM bytes); here a sprite is a blit the CPU must stage, queue, and wait out —
+hundreds of cycles each — and the background is yours to repaint. A PICO-8
+cart that leans on `sin`, `%`, `/`, and dozens of always-on entities will run —
+but at 4–12 fps, not 30. This guide is the set of patterns that close that
+gap, learned by profiling the real example carts.
 
 **The target:** a frame must finish in **2 vsyncs** to lock 30 fps. The pacing
 tool reports `vsyncs/frame` — 2.0 is the goal, 4.0 is 15 fps, 15.0 is a
