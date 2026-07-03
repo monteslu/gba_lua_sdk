@@ -115,6 +115,20 @@ static void enter_spr_mode(void) {
     draw_mode = MODE_SPR;
 }
 
+/* Load a packed 4bpp PICO-8 sheet (8192 bytes, two pixels per byte, low
+ * nibble first) into GRAM through the palette map. Called by the generated
+ * gt_sheet_init() before _init() when the build links a --sheet. */
+void gt_sheet_load(const unsigned char *packed) {
+    unsigned int i;
+    unsigned char b;
+    enter_gram_mode();
+    for (i = 0; i < 8192; ++i) {
+        b = packed[i];
+        vram[i << 1] = p8pal[b & 15];
+        vram[(i << 1) | 1] = p8pal[b >> 4];
+    }
+}
+
 /* PICO-8 sset: plot into the 128x128 sprite sheet (GRAM quadrant 0) */
 void gt_p8_sset(int x, int y, int c) {
     unsigned char col = resolve_color(c);

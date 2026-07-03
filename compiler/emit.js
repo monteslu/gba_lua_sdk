@@ -414,6 +414,7 @@ export function emit(chunk, symbols, file) {
   out.push("void main(void)");
   out.push("{");
   out.push("    gt_init();");
+  out.push("    gt_sheet_init();");
   if (thirty) out.push("    gt_p8_fps30();");
   if (has("_init")) out.push(`    ${mangle("_init")}();`);
   out.push("    for (;;) {");

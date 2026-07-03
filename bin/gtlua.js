@@ -80,7 +80,7 @@ function compileLua(entry) {
   return c;
 }
 
-function build(entry, outPath) {
+function build(entry, outPath, sheetPath) {
   if (!existsSync(entry)) fail(`no such file: ${entry}`);
   const tc = findToolchain();
   const projDir = path.dirname(path.resolve(entry));
@@ -93,6 +93,20 @@ function build(entry, outPath) {
   const cPath = path.join(buildDir, `${name}.c`);
   writeFileSync(cPath, compileLua(entry));
 
+  // 1b. sprite sheet: pack the 4bpp PICO-8 sheet into ROM + a loader call
+  const sheetC = path.join(buildDir, "sheet.c");
+  if (sheetPath) {
+    const raw = readFileSync(sheetPath);
+    if (raw.length !== 8192) fail(`--sheet expects an 8192-byte 4bpp gfx.bin (got ${raw.length})`);
+    const bytes = Array.from(raw).join(",");
+    writeFileSync(sheetC,
+      `#include "gt_api.h"\n` +
+      `static const unsigned char sheet_data[8192] = {${bytes}};\n` +
+      `void gt_sheet_init(void) { gt_sheet_load(sheet_data); }\n`);
+  } else {
+    writeFileSync(sheetC, `void gt_sheet_init(void) {}\n`);
+  }
+
   // 2. C -> asm (generated code + runtime), same flags as the C SDK
   const CFLAGS = ["-t", "none", "-Osr", "--cpu", "65c02", "--codesize", "500",
                   "--static-locals", "-I", SDK];
@@ -101,6 +115,7 @@ function build(entry, outPath) {
   cc(path.join(SDK, "gt_api.c"), path.join(buildDir, "gt_api.s"));
   cc(path.join(SDK, "gt_fixed.c"), path.join(buildDir, "gt_fixed.s"));
   cc(path.join(SDK, "gt_math.c"), path.join(buildDir, "gt_math.s"));
+  cc(sheetC, path.join(buildDir, "sheet.s"));
 
   // 3. assemble everything
   const AFLAGS = ["--cpu", "W65C02"];
@@ -113,6 +128,7 @@ function build(entry, outPath) {
   as(path.join(buildDir, "gt_api.s"), path.join(buildDir, "gt_api.o"));
   as(path.join(buildDir, "gt_fixed.s"), path.join(buildDir, "gt_fixed.o"));
   as(path.join(buildDir, "gt_math.s"), path.join(buildDir, "gt_math.o"));
+  as(path.join(buildDir, "sheet.s"), path.join(buildDir, "sheet.o"));
   as(path.join(buildDir, `${name}.s`), path.join(buildDir, `${name}.o`));
 
   // 4. link -> flat 32 KB .gtr
@@ -135,9 +151,13 @@ const [, , cmd, ...rest] = process.argv;
 if (cmd === "build") {
   const oIdx = rest.indexOf("-o");
   const outPath = oIdx !== -1 ? rest[oIdx + 1] : undefined;
-  const entry = rest.filter((a, i) => i !== oIdx && i !== (oIdx === -1 ? -2 : oIdx + 1))[0];
-  if (!entry) fail("usage: gtlua build <main.lua> [-o game.gtr]");
-  build(entry, outPath);
+  const sIdx = rest.indexOf("--sheet");
+  const sheetPath = sIdx !== -1 ? rest[sIdx + 1] : undefined;
+  const entry = rest.filter((a, i) =>
+    i !== oIdx && i !== (oIdx === -1 ? -2 : oIdx + 1) &&
+    i !== sIdx && i !== (sIdx === -1 ? -2 : sIdx + 1))[0];
+  if (!entry) fail("usage: gtlua build <main.lua> [--sheet gfx.bin] [-o game.gtr]");
+  build(entry, outPath, sheetPath);
 } else if (cmd === "c") {
   if (!rest[0]) fail("usage: gtlua c <main.lua>");
   process.stdout.write(compileLua(rest[0]));
