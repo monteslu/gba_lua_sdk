@@ -83,9 +83,16 @@ test("kind inference widens through assignment", () => {
   assert.match(c, /^long gtl_v = 65536L;/m);
 });
 
-test("/ always produces fixed; general / uses gt_fdiv", () => {
+test("/ always produces fixed; general / uses the fixed-divide runtime", () => {
   const c = cOf("local a = 3\nlocal b = 2\nlocal r = 0.0\nfunction _update60()\n  r = a / b\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_fdiv\(/);
+  // non-nested operands -> zp fastcall entry (fa/fb stores + argless call)
+  assert.match(c, /fa = .*, fb = .*, gt_fdiv_zp\(\)/);
+});
+
+test("nested fixed divide falls back to the cdecl gt_fdiv (zp slots would collide)", () => {
+  const c = cOf("local a = 3.5\nlocal b = 2.5\nlocal c2 = 5.5\nlocal r = 0.0\nfunction _update60()\n  r = a / (b / c2)\nend\nfunction _draw()\nend\n");
+  // outer op is cdecl (its rhs nests a divide); inner op is the zp fastcall
+  assert.match(c, /gt_fdiv\(gtl_a, \(fa = gtl_b, fb = gtl_c2, gt_fdiv_zp\(\)\)\)/);
 });
 
 test("/ by power-of-two constant becomes a shift", () => {
@@ -94,9 +101,22 @@ test("/ by power-of-two constant becomes a shift", () => {
   assert.doesNotMatch(c, /gt_fdiv/);
 });
 
-test("fixed multiply goes through gt_fmul; int multiply stays native", () => {
+test("a fixed multiply whose operand transitively touches fa/fb stays cdecl", () => {
+  // sqrt/atan2/rnd and %/\\ all reach gt_fmul/gt_fdiv internally, which write
+  // fa/fb — so the zp fastcall's staged fa would be clobbered before the call.
+  // These MUST emit the cdecl gt_fmul (args marshalled at call time), never zp.
+  const c = cOf("local a = 0.5\nlocal b = 2.5\nlocal c2 = 0.75\nlocal r = 0.0\n" +
+    "function _update60()\n  r = a * sqrt(b)\n  r = a * (b % c2)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gt_fmul\(gtl_a, gt_fsqrt\(gtl_b\)\)/);      // NOT (fa=.., gt_fmul_zp())
+  assert.match(c, /gt_fmul\(gtl_a, gt_ffmod\(gtl_b, gtl_c2\)\)/);
+  // and the staged form must NOT wrap either of those runtime calls
+  assert.doesNotMatch(c, /fa = gtl_a, fb = gt_f(sqrt|fmod)/);
+});
+
+test("fixed multiply goes through the zp fastcall; int multiply stays native", () => {
   const c = cOf("local f = 1.5\nlocal i = 3\nlocal r = 0.0\nlocal s = 0\nfunction _update60()\n  r = f * f\n  s = i * i\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_fmul\(gtl_f, gtl_f\)/);
+  // fixed*fixed, non-nested -> fa/fb stores + argless gt_fmul_zp()
+  assert.match(c, /fa = gtl_f, fb = gtl_f, gt_fmul_zp\(\)/);
   assert.match(c, /\(gtl_i \* gtl_i\)/);
 });
 

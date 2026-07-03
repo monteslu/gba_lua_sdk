@@ -4,3 +4,4 @@ examples/**/build/
 *.gtr
 node_modules/
 !roms/*.gtr
+ports/**/build-debug/

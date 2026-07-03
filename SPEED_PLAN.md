@@ -83,9 +83,46 @@ gt_fmul (4 partial products through cc65 long math) and gt_fdiv become
 tuned 65C02 asm with the same zp ABI. Exact P8 semantics preserved
 (mathcheck's RAM-verified cases are the gate).
 
-### 5. zp temporaries in the emitter
-Compiler temps + hot loop counters move from BSS to a zero-page pool:
-faster and smaller code on every 32-bit op (smaller also helps banking).
+### 5. zp fastcall ABI for the fixed hot ops + a table multiply
+
+CORRECTED FINDING (measured 2026-07-03, fmul64/fmul_only benches at 6000
+vsyncs): the ~1000-cycle "cc65 cdecl marshalling" this plan blamed for the
+2,795-cycle multiply-add **does not exist** at this granularity. A forced-
+cdecl build and a zp-fastcall build measure IDENTICALLY (4.9988 vs 4.9988
+vsyncs/frame). The entire 2,795 cycles is the 32-iteration shift-add loop in
+gt_fmul itself. `acc = f*g` (no accumulate) costs the same as `acc = acc + f*g`
+— the accumulate and the marshalling are both noise next to the multiply core.
+
+So stage 5 splits:
+ (a) zp fastcall ABI for gt_fmul/gt_fdiv — DONE. The emitter stores operands
+     into zp longs fa/fb and calls argless gt_fmul_zp/gt_fdiv_zp; nested/mixed
+     sites (an operand that itself emits a fixed mul/div, ~rare) fall back to
+     cdecl gt_fmul/gt_fdiv so fa/fb can't collide. Buys ~0 on fmul (proven)
+     but it's the plumbing the fast multiply reads, and it de-marshals fdiv.
+     Verified bit-exact (mathcheck RAM values + closed-form test, 45/45).
+ (b) Quarter-square TABLE multiply (a*b = f(a+b)-f(a-b), f(x)=x²/4). Three
+     tiers by operand magnitude: A (both |v|<1.0, 4 partials) 3.0x, B (both
+     |v|<256, 9 partials) 1.5x, C (full 32x32) parity. 1 KB RODATA (two 512B
+     tables sqlo/sqhi). Bit-exact: ~113M-vector JS-model-vs-reference (0 fail)
+     + mathcheck RAM values + a 130-vector 3-tier checksum on hardware. The
+     +1 KB overflowed the FULL FLASH2M fixed bank, so cold gt_math.c (sin/cos/
+     atan2/rnd + its 1 KB sine table) was relocated to bank 1 via fixed-bank
+     far-call stubs (net +1920 B reclaimed); all 6 ports link + render.
+     MEASURED on fmul benches: A 4.9988->2.9993, B ->3.9990 vsyncs/frame.
+
+SECOND CORRECTED FINDING — the multiply is NOT the real-port bottleneck.
+After shipping (b), newleste (13 fmul, the most physics-heavy port) measured
+11.76 vsyncs/frame in gameplay vs 11.5 before — UNCHANGED (noise). A game does
+a HANDFUL of multiplies amid hundreds of other ops per frame; the 64-mul/frame
+microbench massively over-represented it. newleste's ~700K-cycle frame is
+dominated by cc65-compiled UPDATE LOGIC (pool scans, 16-bit coordinate math,
+collision, the draw queue), not fixed multiplies. So the table multiply + zp
+ABI are a genuine, verified 1.5-3x on multiply-DENSE code and cost nothing
+(Tier C = parity, empty bench still 2.00) — worth keeping for future physics-
+heavy games — but they do NOT move these ports' pacing. The REAL remaining
+lever is cc65 codegen of the game's own update logic: zp temporaries + hot
+loop counters in the emitter (the original stage-5 idea), pool-iteration
+codegen, and 16-bit-coordinate paths. That is the true next sprint.
 
 ### 6. Banked audio done right (P1) + string pool (P2)
 gt_audio_init switches to the firmware's bank before the ARAM upload

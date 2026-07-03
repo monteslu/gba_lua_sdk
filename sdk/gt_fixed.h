@@ -6,6 +6,19 @@
 
 long gt_fmul(long a, long b);
 long gt_fdiv(long a, long b);
+
+/* zero-page fastcall ABI for the two hot 16.16 ops (gt_fixed_asm.s). The
+ * emitter, at a multiply/divide whose operands don't themselves contain a
+ * fixed mul/div, stores the operands straight into the zp longs fa/fb and
+ * calls the argless entry — dropping cc65's per-call C-stack marshalling
+ * (the `jsr pusheax` that spills the first arg). Nested/mixed sites still use
+ * the cdecl gt_fmul/gt_fdiv above (the zp slots would collide). */
+extern long fa, fb;
+#pragma zpsym ("fa")
+#pragma zpsym ("fb")
+long gt_fmul_zp(void);          /* returns fa*fb  (16.16), sign of fa^fb */
+long gt_fdiv_zp(void);          /* returns fa/fb  (16.16), /0 saturates  */
+
 long gt_fsqrt(long x);
 long gt_ffmod(long a, long b);      /* floored modulo, sign of divisor */
 int  gt_ifdiv(int a, int b);        /* flr(a/b) for ints */

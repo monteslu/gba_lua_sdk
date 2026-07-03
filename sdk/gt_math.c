@@ -1,6 +1,39 @@
 /* gt_math.c — PICO-8 math library on 16.16 fixed point:
  * turns-based trig (256-step ROM table, screen-space-inverted sin),
- * xorshift rnd/srand, and t()/time() as an exact 1/60s accumulator. */
+ * xorshift rnd/srand, and t()/time() as an exact 1/60s accumulator.
+ *
+ * Banked build (-DGT_BANKED): this whole cold-path unit is exiled from the
+ * always-mapped FIXED bank ($C000-$FFFF) into game bank 1 ($8000-$BFFF) to
+ * reclaim ~2.2 KB of fixed-bank space (code + the 1 KB sine table) after the
+ * quarter-square multiply tables filled it. Callers reach these functions
+ * through fixed-bank far-call stubs in sdk/gt_math_stubs.s that own the plain
+ * public names (gt_fsin ...) and jump here; the impls are renamed with an
+ * _impl suffix so the stub name and the impl name don't collide. Only CODE and
+ * RODATA (incl. the sine table) move — DATA/BSS (gt_time_acc, gt_rng,
+ * gt_time_rem) live in RAM, which is reachable from any bank, so they keep
+ * their names.
+ *
+ * The rodata-name pragma is set BEFORE including gt_sintab.h so the 1 KB table
+ * lands in B1RODATA too, not just the function code. gt_fmul/gt_fdiv (called by
+ * gt_fatan2/gt_p8_rnd) stay in the FIXED bank, so an impl in bank 1 calls them
+ * with a plain jsr — the fixed window is always mapped. gt_math functions never
+ * call each other, so there are no bank1->bank1 intra-unit calls to bridge. */
+#ifdef GT_BANKED
+#pragma code-name ("B1CODE")
+#pragma rodata-name ("B1RODATA")
+#define GT_M(name) name##_impl
+#else
+#define GT_M(name) name
+#endif
+
+#define gt_fsin     GT_M(gt_fsin)
+#define gt_fcos     GT_M(gt_fcos)
+#define gt_fatan2   GT_M(gt_fatan2)
+#define gt_p8_rnd   GT_M(gt_p8_rnd)
+#define gt_p8_srand GT_M(gt_p8_srand)
+#define gt_p8_time  GT_M(gt_p8_time)
+#define gt_time_tick GT_M(gt_time_tick)
+
 #include "gt_fixed.h"
 #include "gt_sintab.h"
 

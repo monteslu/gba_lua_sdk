@@ -334,6 +334,19 @@ function build(entry, outPath, sheetPath) {
   cc(B("sheet.c"), B("sheet.s"));
   as(B("sheet.s"), B("sheet.o"));
 
+  // The flat build placed the whole cold gt_math unit (gt_fsin/gt_fcos/
+  // gt_fatan2/rnd/srand/time + the 1 KB sine table) in the always-mapped
+  // FIXED bank. The quarter-square multiply tables now fill that bank, so
+  // recompile gt_math banked: -DGT_BANKED routes its CODE/RODATA into bank 1
+  // (B1CODE/B1RODATA) and renames the impls with an _impl suffix. Its DATA/BSS
+  // stay in RAM. The fixed-bank far-call stubs in gt_math_stubs.o own the plain
+  // public names and bridge every caller (game code + fixed-bank SDK code) to
+  // the bank-1 impls. Reclaims ~2.2 KB of fixed-bank space.
+  run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-o", B("gt_math.s"),
+                path.join(SDK, "gt_math.c")]);
+  as(B("gt_math.s"), B("gt_math.o"));
+  as(path.join(SDK, "gt_math_stubs.s"), B("gt_math_stubs.o"));
+
   // The flat-attempt gt_audio.o placed the 4 KB ACP firmware blob in the
   // fixed bank's RODATA — the single biggest reason banked games had to
   // ship silent. Recompile it banked: the blob rides in bank 2 (with the
@@ -359,7 +372,8 @@ function build(entry, outPath, sheetPath) {
       "-o", flashOut,
       "-m", B(`${name}.map`),
       "-Ln", B(`${name}.lbl`),
-      ...baseObjs, B("gt_bank.o"), B("stubs.o"), B(`${name}.o`),
+      ...baseObjs, B("gt_bank.o"), B("gt_math_stubs.o"), B("stubs.o"),
+      B(`${name}.o`),
       tc.lib,
     ]);
     if (link.ok) { linked = flashOut; break; }

@@ -67,6 +67,36 @@ function hasUserCall(node) {
   return false;
 }
 
+// Can this expression subtree touch the shared zp slots fa/fb at runtime?
+// The zp-fastcall multiply/divide stages operands into fa/fb and then calls
+// the argless entry, so an operand that ITSELF reaches the fixed runtime would
+// clobber fa/fb between the stage and the call and corrupt the result. This is
+// deliberately conservative: not just literal fixed `*`/`/`, but `%`/`\`
+// (which lower to gt_ffmod/gt_fdiv), AND any fixed-typed call (sqrt/atan2/rnd
+// transitively call gt_fmul/gt_fdiv; the cdecl wrappers write fa/fb too). Such
+// sites fall back to the cdecl gt_fmul/gt_fdiv, which is always correct — the
+// fallback is rare, so the conservatism is nearly free. (If a genuinely pure
+// fixed builtin is ever added, it can be whitelisted here.)
+function touchesFixedRuntime(node) {
+  if (!node || typeof node !== "object") return false;
+  if (Array.isArray(node)) return node.some(touchesFixedRuntime);
+  if (node.kind === "binop") {
+    if (node.op === "*" && node.tk === "fixed"
+        && node.left.tk !== "int" && node.right.tk !== "int") return true;
+    if ((node.op === "/" || node.op === "\\" || node.op === "%") && !node.divConst) {
+      // fixed operands -> gt_fdiv/gt_ffmod; int `\`/`%` stay native (no fa/fb)
+      if (node.op === "/" || node.tk === "fixed" || node.operandKind === "fixed") return true;
+    }
+  }
+  // any call producing a fixed value may reach gt_fmul/gt_fdiv internally
+  if (node.kind === "call" && node.tk === "fixed") return true;
+  for (const [k, v] of Object.entries(node)) {
+    if (WALK_SKIP.has(k)) continue;
+    if (touchesFixedRuntime(v)) return true;
+  }
+  return false;
+}
+
 export function emit(chunk, symbols, file, opts = {}) {
   const banked = opts.banked === true;
   const placement = opts.placement ?? {};
@@ -175,7 +205,7 @@ export function emit(chunk, symbols, file, opts = {}) {
           }
           return cv(`(${expr(fixSide, "fixed")} * ${expr(intSide, "int")})`, "fixed", want);
         }
-        return cv(`gt_fmul(${expr(e.left, "fixed")}, ${expr(e.right, "fixed")})`, "fixed", want);
+        return cv(fixedCall("gt_fmul", e.left, e.right), "fixed", want);
       }
       case "/": {
         if (e.divConst) {
@@ -184,7 +214,7 @@ export function emit(chunk, symbols, file, opts = {}) {
           }
           return cv(`(${expr(e.left, "fixed")} >> ${lg})`, "fixed", want);
         }
-        return cv(`gt_fdiv(${expr(e.left, "fixed")}, ${expr(e.right, "fixed")})`, "fixed", want);
+        return cv(fixedCall("gt_fdiv", e.left, e.right), "fixed", want);
       }
       case "\\": {
         const ok = e.operandKind ?? "int";
@@ -193,7 +223,7 @@ export function emit(chunk, symbols, file, opts = {}) {
           return cv(`(int)(${expr(e.left, "fixed")} >> ${16 + lg})`, "int", want);
         }
         if (ok === "int") return cv(`gt_ifdiv(${expr(e.left, "int")}, ${expr(e.right, "int")})`, "int", want);
-        return cv(`(int)(gt_fdiv(${expr(e.left, "fixed")}, ${expr(e.right, "fixed")}) >> 16)`, "int", want);
+        return cv(`(int)(${fixedCall("gt_fdiv", e.left, e.right)} >> 16)`, "int", want);
       }
       case "%": {
         if (e.divConst) {
@@ -218,6 +248,21 @@ export function emit(chunk, symbols, file, opts = {}) {
       default:
         return "0";
     }
+  }
+
+  // Lower a fixed multiply/divide. Fast path: when neither operand can touch
+  // the fixed runtime (which owns the zp slots fa/fb), store both operands into
+  // fa/fb and call the argless zp entry — no cc65 stack marshalling. Otherwise
+  // an operand's own fixed-runtime call would clobber fa/fb between the stage
+  // and the call, so fall back to the cdecl form. `fn` is "gt_fmul"|"gt_fdiv";
+  // the zp entry is `<fn>_zp`.
+  function fixedCall(fn, left, right) {
+    const L = expr(left, "fixed");
+    const R = expr(right, "fixed");
+    if (!touchesFixedRuntime(left) && !touchesFixedRuntime(right)) {
+      return `(fa = ${L}, fb = ${R}, ${fn}_zp())`;
+    }
+    return `${fn}(${L}, ${R})`;
   }
 
   // ---- calls -----------------------------------------------------------------
