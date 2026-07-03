@@ -189,6 +189,16 @@ it. Fixed-point add/subtract are cheap, but fixed `*`/`/`/`%` are not (see §1).
 - Sub-pixel motion needs fixed point, but the *drawing* position is always a
   pixel — `flr()` at the draw boundary and do any wrap/compare in int space.
 
+### The compiler's own optimizations (so you don't hand-tune them)
+
+The emitter narrows counting-loop variables to bytes when bounds are provably
+0-254, collapses `arr[x + 1]` to `arr[x]` at compile time, and folds the
+1-based `-1` into the symbol address for byte-counter indexes. Measured on the
+entity-update probe: the full stack (narrowed counters + `array8` + index
+folds) runs **3.0× faster than the same Lua compiled naively** (561 → 186
+cycles per update). You get all of it by writing plain counting loops over
+`array8` fields — the idiomatic entity-pool shape.
+
 ### Byte arrays: `array8` for entity pools
 
 `array(n)` elements are 16-bit; `array8(n)` stores bytes (0-255) — **half the
