@@ -88,20 +88,30 @@ export function check(chunk, file) {
           });
           return;
         }
-        // fixed-capacity array: local pool = array(N [, initValue])
-        if (init && init.kind === "call" && init.callee.kind === "name" && init.callee.name === "array") {
+        // fixed-capacity array: local pool = array(N [, initValue]).
+        // array8(N [, init]) is the byte variant: elements are 0-255 stored in
+        // ONE byte each — half the RAM and roughly half the cycles per access
+        // on the 65C02 (single-register load, no high-byte traffic). Values
+        // read back as ordinary ints; stores must be integers (flr() first).
+        if (init && init.kind === "call" && init.callee.kind === "name" &&
+            (init.callee.name === "array" || init.callee.name === "array8")) {
+          const bytes = init.callee.name === "array8";
           const size = constEval(init.args[0]);
           const iv = init.args[1] ? constEval(init.args[1]) : 0;
           if (size === null || !Number.isInteger(size) || size < 1 || size > 4096) {
-            err(s, "array(n) needs a constant capacity between 1 and 4096");
+            err(s, `${init.callee.name}(n) needs a constant capacity between 1 and 4096`);
           }
           if (init.args[1] && iv === null) {
-            err(s, "array(n, v) initial value must be a constant");
+            err(s, `${init.callee.name}(n, v) initial value must be a constant`);
           }
           const ivv = iv ?? 0;
+          if (bytes && (!Number.isInteger(ivv) || ivv < 0 || ivv > 255)) {
+            err(s, "array8(n, v) initial value must be an integer 0-255");
+          }
           globals.set(name, {
             kind: "array",
-            elemKind: Number.isInteger(ivv) ? "int" : "fixed",
+            elemKind: bytes ? "int" : (Number.isInteger(ivv) ? "int" : "fixed"),
+            elemBytes: bytes,
             size: size ?? 1,
             initVal: ivv,
             node: s,
@@ -261,6 +271,11 @@ export function check(chunk, file) {
             let rk = vt;
             if (s.op === "/=") rk = "fixed";
             if (s.op !== "=" && s.op !== "\\=") rk = join(rk, arr.elemKind);
+            if (rk === "fixed" && arr.elemBytes) {
+              err(s.value, "array8 elements are bytes 0-255 — flr() the value " +
+                           "or use array() for fractional elements");
+              break;
+            }
             if (rk === "fixed" && arr.elemKind !== "fixed") { arr.elemKind = "fixed"; changed = true; }
             s.targetKind = arr.elemKind;
             s.valueKind = vt;
@@ -596,6 +611,9 @@ export function check(chunk, file) {
           const sym = a.kind === "name" ? lookup(a.name) : null;
           if (!sym || sym.kind !== "array") {
             err(a, `${name}() argument ${i + 1} must be an array (declared with array(n))`);
+          } else if (sym.elemBytes) {
+            err(a, `${name}() argument ${i + 1} must be a 16-bit array(n) — array8 ` +
+                   `elements are single bytes and the runtime reads int pairs`);
           } else {
             a.sym = sym;   // annotate for the emitter
           }

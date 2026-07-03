@@ -761,7 +761,7 @@ export function emit(chunk, symbols, file, opts = {}) {
       continue;
     }
     if (g.kind === "array") {
-      const ct = g.elemKind === "fixed" ? "long" : "int";
+      const ct = g.elemKind === "fixed" ? "long" : (g.elemBytes ? "unsigned char" : "int");
       if (g.initVal === 0) {
         out.push(`${ct} ${mangle(name)}[${g.size}];`);
       } else {

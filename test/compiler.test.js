@@ -78,6 +78,22 @@ test("button glyphs lex as indices", () => {
   assert.match(c, /gt_rpt0 & 4096u/);
 });
 
+test("array8 declares byte elements and reads back as ints", () => {
+  const c = cOf("local a = array8(16)\nlocal r = 0\nfunction _update60()\n  a[1] = 200\n  r = a[1] + 100\nend\nfunction _draw()\nend\n");
+  assert.match(c, /unsigned char gtl_a\[16\];/);
+  assert.match(c, /gtl_r = \(gtl_a\[1 - 1\] \+ 100\)/);
+});
+
+test("array8 rejects fixed stores loudly", () => {
+  const errs = errorsOf("local a = array8(4)\nfunction _update60()\n  a[1] += 0.5\nend\nfunction _draw()\nend\n");
+  assert.ok(errs.some((m) => /array8 elements are bytes/.test(m)), errs.join("\n"));
+});
+
+test("array8 cannot be passed where the runtime wants int pairs", () => {
+  const errs = errorsOf("local a = array8(4)\nfunction _init()\n  gt.bg_compose(a, 2, 0, 0, 2, 2)\nend\nfunction _update60()\nend\nfunction _draw()\nend\n");
+  assert.ok(errs.some((m) => /must be a 16-bit array/.test(m)), errs.join("\n"));
+});
+
 test("gt.rgb(r,g,b) resolves to a palette byte at compile time", () => {
   const c = cOf("function _update60()\nend\nfunction _draw()\n  rectfill(0,0,9,9, gt.rgb(255,128,0))\nend\n");
   // constant RGB -> a 0x1xx literal (0x100 | nearest byte), no runtime lookup

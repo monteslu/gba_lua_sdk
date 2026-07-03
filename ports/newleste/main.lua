@@ -24,8 +24,12 @@
 -- 64 cols x 16 rows; mget(x,y) = m[y*64+x+1]. Level 1 = cols 0-15,
 -- level 2 = cols 16-63. fl[t+1] = PICO-8 fget byte for tile t:
 --   bit0 (1) solid  bit1 (2) terrain/spikes  bit2 (4) bg  bit3 (8) one-way
-local m = array(1024)
-local fl = array(64)
+-- PERF: the map + flag tables hold bytes (tile ids 0-255, flag masks 0-15),
+-- so array8 stores them one byte per cell — HALF the RAM (2KB -> 1KB for m)
+-- and roughly half the cycles per read in the collision scans and the level
+-- composer, the hottest array reads in the game. See docs/performance.md.
+local m = array8(1024)
+local fl = array8(64)
 
 -- ---------------------------------------------------------------------
 -- globals
