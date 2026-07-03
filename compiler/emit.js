@@ -253,7 +253,10 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (b.special === "del") {
       const pl = e.poolSym;
       const sv = e.args[1].sym?.forall?.slotVar ?? e.bindingSym?.forall?.slotVar;
-      return `(${pl.cname}_used[${sv}] = 0, --${pl.cname}_n, (void)0)`;
+      // snap the high-water mark back to 0 the moment the pool empties, so a
+      // one-shot burst (an explosion's particles) doesn't leave every later
+      // frame scanning the whole capacity.
+      return `(${pl.cname}_used[${sv}] = 0, (--${pl.cname}_n == 0 ? (${pl.cname}_hi = 0) : 0), (void)0)`;
     }
     if (b.special) return specialCall(e, b, name);
 
@@ -437,7 +440,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         const pl = s.poolSym;
         line(`{ unsigned char ${sv};`);
         indent++;
-        line(`for (${sv} = 0; ${sv} < ${pl.size}; ++${sv}) {`);
+        line(`for (${sv} = 0; ${sv} < ${pl.cname}_hi; ++${sv}) {`);
         indent++;
         line(`if (!${pl.cname}_used[${sv}]) continue;`);
         block(s.body);
@@ -465,9 +468,12 @@ export function emit(chunk, symbols, file, opts = {}) {
       const fl = pl.fields.get(f.name);
       return `${pl.cname}_${f.name}[${sv}] = ${expr(f.expr, fl.kind)};`;
     }).join(" ");
-    // statement-expression shape via a helper block emitted inline by callstmt
-    return `{ unsigned char ${sv}; for (${sv} = 0; ${sv} < ${pl.size}; ++${sv}) if (!${pl.cname}_used[${sv}]) break; ` +
-           `if (${sv} < ${pl.size}) { ${pl.cname}_used[${sv}] = 1; ++${pl.cname}_n; ${sets} } }`;
+    // statement-expression shape via a helper block emitted inline by callstmt.
+    // The free slot is the first hole in [0.._hi); if that scan reaches _hi the
+    // slot at _hi is free (still within capacity) and _hi grows by one.
+    return `{ unsigned char ${sv}; for (${sv} = 0; ${sv} < ${pl.cname}_hi; ++${sv}) if (!${pl.cname}_used[${sv}]) break; ` +
+           `if (${sv} < ${pl.size}) { ${pl.cname}_used[${sv}] = 1; ++${pl.cname}_n; ` +
+           `if (${sv} >= ${pl.cname}_hi) ${pl.cname}_hi = ${sv} + 1; ${sets} } }`;
   }
 
   // ---- module layout -----------------------------------------------------------
@@ -521,6 +527,13 @@ export function emit(chunk, symbols, file, opts = {}) {
       }
       out.push(`unsigned char ${g.cname}_used[${g.size}];`);
       out.push(`int ${g.cname}_n;`);
+      // high-water mark: 1 + the highest ever-occupied slot since the pool
+      // last emptied. Loops scan [0.._hi) instead of the full capacity, so a
+      // pool that spends most of the frame near-empty (particles between
+      // explosions, bullets when not firing) costs a short scan, not a full
+      // one. add() grows it; del() snaps it back to 0 when the pool empties
+      // (all used indices stay < _hi, so no live slot is ever skipped).
+      out.push(`unsigned char ${g.cname}_hi;`);
       continue;
     }
     if (g.kind === "array") {

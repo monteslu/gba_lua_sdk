@@ -116,6 +116,37 @@ test("flr of fixed floors via shift; ceil adds the fraction", () => {
   assert.match(c, /0xFFFFL\) >> 16\)/);
 });
 
+// ---- pools -------------------------------------------------------------------------
+
+const POOL = "local ps = pool(8)\nlocal total = 0\n" +
+  "function _update60()\n add(ps,{x=1,y=2})\n for p in all(ps) do\n  total+=p.x\n  del(ps,p)\n end\nend\n" +
+  "function _draw()\nend\n";
+
+test("pool declares a high-water mark alongside used/n", () => {
+  const c = cOf(POOL);
+  assert.match(c, /unsigned char gtl_ps_hi;/);
+});
+
+test("pool iteration scans [0.._hi), not the full capacity", () => {
+  const c = cOf(POOL);
+  // the forall loop bounds on _hi (the watermark), never the literal size 8
+  assert.match(c, /for \(L_p\d+ = 0; L_p\d+ < gtl_ps_hi; \+\+L_p\d+\)/);
+  assert.doesNotMatch(c, /for \(L_p\d+ = 0; L_p\d+ < 8;/);
+});
+
+test("add() grows the high-water mark when it appends a new top slot", () => {
+  const c = cOf(POOL);
+  assert.match(c, /for \(L_s\d+ = 0; L_s\d+ < gtl_ps_hi; \+\+L_s\d+\)/);
+  assert.match(c, /if \(L_s\d+ >= gtl_ps_hi\) gtl_ps_hi = L_s\d+ \+ 1;/);
+  // capacity is still the hard ceiling on placement
+  assert.match(c, /if \(L_s\d+ < 8\)/);
+});
+
+test("del() snaps the high-water mark to 0 the moment the pool empties", () => {
+  const c = cOf(POOL);
+  assert.match(c, /--gtl_ps_n == 0 \? \(gtl_ps_hi = 0\) : 0/);
+});
+
 // ---- callbacks & harness -----------------------------------------------------------
 
 test("_update() selects 30fps mode in the harness", () => {
