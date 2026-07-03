@@ -10,6 +10,25 @@
 import { BUILTINS, GT_MEMBERS, CALLBACKS } from "./builtins.js";
 import { nearestColorByte } from "./gt_palette.js";
 
+// Split an index expression into (base, constant offset): `x + 3` -> [x, 3],
+// `x - 2` -> [x, -2], `5` -> [null, 5], anything else -> [expr, 0]. Lets the
+// 1-based array fold collapse the ubiquitous arr[x + 1] to a plain arr[x]
+// instead of runtime arithmetic (cc65 folds symbol+const at link time).
+function peelIndex(e) {
+  if (e.kind === "number" && Number.isInteger(e.value)) return [null, Math.trunc(e.value)];
+  if (e.kind === "binop" && (e.op === "+" || e.op === "-") &&
+      e.right.kind === "number" && Number.isInteger(e.right.value) &&
+      e.right.tk !== "fixed") {
+    return [e.left, e.op === "+" ? Math.trunc(e.right.value) : -Math.trunc(e.right.value)];
+  }
+  if (e.kind === "binop" && e.op === "+" &&
+      e.left.kind === "number" && Number.isInteger(e.left.value) &&
+      e.left.tk !== "fixed") {
+    return [e.right, Math.trunc(e.left.value)];
+  }
+  return [e, 0];
+}
+
 // constant-fold a numeric node (literals + neg/binops over literals). Used for
 // gt.rgb(r,g,b), whose args the checker already proved constant.
 function constFold(e) {
@@ -140,6 +159,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   let indent = 1;
   let tempCounter = 0;
   let currentFnName = null; // for cross-bank call rewriting
+  const narrowedVars = new Set(); // u8 fornum counters currently in scope
   const stubbed = new Set(); // callee names reached through a far-call stub
   const line = (s) => out.push("    ".repeat(s === "" ? 0 : indent) + s);
   const mangle = (name) => `gtl_${name}`;
@@ -181,7 +201,7 @@ export function emit(chunk, symbols, file, opts = {}) {
       case "index": {
         const arr = e.arraySym;
         if (!arr) return "0";
-        return cv(`${mangle(e.object.name)}[${expr(e.index, "int")} - 1]`, arr.elemKind, want);
+        return cv(indexRef(mangle(e.object.name), e.index), arr.elemKind, want);
       }
       case "len": {
         if (e.poolSym) return cv(`${mangle(e.expr.name)}_n`, "int", want);
@@ -298,6 +318,26 @@ export function emit(chunk, symbols, file, opts = {}) {
       return `(fa = ${L}, fb = ${R}, ${fn}_zp())`;
     }
     return `${fn}(${L}, ${R})`;
+  }
+
+  // 1-based array access with the -1 folded to link time. arr[x + 1] (the
+  // ubiquitous 0-based-math pattern) collapses to arr[x]; arr[7] folds
+  // numerically; the general arr[i] becomes (arr - 1)[i] — the -1 rides the
+  // symbol's address, not a runtime subtract.
+  function indexRef(sym, idxNode) {
+    const [base, c] = peelIndex(idxNode);
+    const off = c - 1;
+    if (base === null) return `${sym}[${off}]`;
+    const b = expr(base, "int");
+    if (off === 0) return `${sym}[${b}]`;
+    // the pointer-fold form only pays off when the index is a narrowed (u8)
+    // loop counter — measured: it WINS ~30% there but LOSES on celeste2's
+    // 16-bit while-counter indexes, where cc65's pointer path is worse than
+    // the plain subtract. Peeled constants above are always a win.
+    if (base.kind === "name" && narrowedVars.has(base.name)) {
+      return `(${sym} ${off > 0 ? "+" : "-"} ${Math.abs(off)})[${b}]`;
+    }
+    return `${sym}[${b} ${off > 0 ? "+" : "-"} ${Math.abs(off)}]`;
   }
 
   // Safe to evaluate more than once AND cheap: a literal, a plain variable, or
@@ -540,7 +580,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         const t = isField
           ? `${s.target.poolField.pool.cname}_${s.target.poolField.field}[${s.target.poolField.forall.slotVar}]`
           : isElem
-            ? `${mangle(s.target.object.name)}[${expr(s.target.index, "int")} - 1]`
+            ? indexRef(mangle(s.target.object.name), s.target.index)
             : mangle(s.target.name);
         const tk = s.targetKind ?? "int";
         if (s.op === "=") {
@@ -641,7 +681,12 @@ export function emit(chunk, symbols, file, opts = {}) {
         line(`{ ${cty} ${v} = ${expr(s.from, kind)}; ${cty} ${lim} = ${expr(s.to, kind)};`);
         indent++;
         line(`for (; ${v} ${cmp} ${lim}; ${inc}) {`);
-        indent++; block(s.body); indent--;
+        indent++;
+        const wasNarrow = narrowedVars.has(s.name);
+        if (cty === "unsigned char") narrowedVars.add(s.name);
+        block(s.body);
+        if (cty === "unsigned char" && !wasNarrow) narrowedVars.delete(s.name);
+        indent--;
         line("}");
         indent--;
         line("}");

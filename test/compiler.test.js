@@ -81,7 +81,7 @@ test("button glyphs lex as indices", () => {
 test("array8 declares byte elements and reads back as ints", () => {
   const c = cOf("local a = array8(16)\nlocal r = 0\nfunction _update60()\n  a[1] = 200\n  r = a[1] + 100\nend\nfunction _draw()\nend\n");
   assert.match(c, /unsigned char gtl_a\[16\];/);
-  assert.match(c, /gtl_r = \(gtl_a\[1 - 1\] \+ 100\)/);
+  assert.match(c, /gtl_r = \(gtl_a\[0\] \+ 100\)/);   // a[1] folds to [0] at compile time
 });
 
 test("array8 rejects fixed stores loudly", () => {
