@@ -77,4 +77,91 @@ for (let y = 0; y < 128; y++) {
 }
 writeFileSync(path.join(outdir, "gfx.pgm"), pgm.join("\n"));
 writeFileSync(path.join(outdir, "code.bin"), cart.subarray(0x4300, 0x8000));
-console.log("wrote cart.bin, gfx.bin, gfx.pgm, code.bin (code is pxa-compressed)");
+
+// ---- code section -> source.p8.lua ----------------------------------------
+// pxa format (PICO-8 0.2.0+), implemented from the published spec
+// (shrinko8's MIT reference): '\0pxa' + unc_size u16le + com_size u16le,
+// then an LSB-first bitstream of move-to-front literals and LZ copies.
+function decompressCode(sec) {
+  if (sec[0] === 0 && sec[1] === 0x70 && sec[2] === 0x78 && sec[3] === 0x61) {
+    const uncSize = sec.readUInt16LE(4);
+    let bitPos = 8 * 8; // stream starts after the 8-byte header
+    const bit = () => {
+      const b = (sec[bitPos >> 3] >> (bitPos & 7)) & 1;
+      bitPos++;
+      return b;
+    };
+    const bits = (n) => {
+      let v = 0;
+      for (let i = 0; i < n; i++) v |= bit() << i;
+      return v;
+    };
+    const mtf = Array.from({ length: 256 }, (_, i) => i);
+    const out = [];
+    while (out.length < uncSize) {
+      if (bit()) {
+        let extra = 0;
+        while (bit()) extra++;
+        const idx = bits(4 + extra) + (((1 << extra) - 1) << 4);
+        const ch = mtf[idx];
+        out.push(ch);
+        for (let i = idx; i > 0; i--) mtf[i] = mtf[i - 1];
+        mtf[0] = ch;
+      } else {
+        const offlen = bit() ? (bit() ? 5 : 10) : 15;
+        const offset = bits(offlen) + 1;
+        if (offset === 1 && offlen !== 5) {
+          for (;;) {
+            const ch = bits(8);
+            if (ch === 0) break;
+            out.push(ch);
+          }
+        } else {
+          let count = 3;
+          for (;;) {
+            const part = bits(3);
+            count += part;
+            if (part !== 7) break;
+          }
+          for (let i = 0; i < count; i++) out.push(out[out.length - offset]);
+        }
+      }
+    }
+    return Buffer.from(out);
+  }
+  if (sec[0] === 0x3A && sec[1] === 0x63 && sec[2] === 0x3A && sec[3] === 0x00) {
+    // old ':c:' format (pre-0.2.0 carts): byte stream against a char table
+    const table = Buffer.from("#\n 0123456789abcdefghijklmnopqrstuvwxyz!#%(){}[]<>+=/*:;.,~_", "ascii");
+    let pos = 8; // header + unc_size u16 + zero u16
+    const uncSize = sec.readUInt16LE(4);
+    const out = [];
+    while (out.length < uncSize && pos < sec.length) {
+      const ch = sec[pos++];
+      if (ch === 0x00) {
+        const ch2 = sec[pos++];
+        if (ch2 === 0x00) break;
+        out.push(ch2);
+      } else if (ch <= 0x3B) {
+        out.push(table[ch]);
+      } else {
+        const ch2 = sec[pos++];
+        const count = (ch2 >> 4) + 2;
+        const offset = ((ch - 0x3C) << 4) + (ch2 & 0xF);
+        for (let i = 0; i < count; i++) out.push(out[out.length - offset]);
+      }
+    }
+    return Buffer.from(out);
+  }
+  // uncompressed: plain source up to the first NUL
+  const end = sec.indexOf(0);
+  return sec.subarray(0, end === -1 ? sec.length : end);
+}
+
+const src = decompressCode(cart.subarray(0x4300, 0x8000));
+if (src) {
+  writeFileSync(path.join(outdir, "source.p8.lua"), src);
+  console.log(`wrote source.p8.lua (${src.length} bytes)`);
+} else {
+  console.log("code section: old ':c:' format — not handled yet");
+}
+console.log("wrote cart.bin, gfx.bin, gfx.pgm, code.bin");
