@@ -474,9 +474,9 @@ function build(entry, outPath, sheetPath) {
     if (attempt === 8 && midInline) {
       midInline = false;
       workPlacement = initialPlacement(result.callGraph);
-      console.error("bank placement tight: retrying with min/max/mid inlining off");
+      console.error("bank placement tight: retrying with inlining off");
     }
-    result = compileLua(entry, { banked: true, placement: workPlacement, midInline });
+    result = compileLua(entry, { banked: true, placement: workPlacement, midInline, inliner: midInline });
     writeFileSync(B(`${name}.c`), result.c);
     cc(B(`${name}.c`), B(`${name}.s`));
     as(B(`${name}.s`), B(`${name}.o`));

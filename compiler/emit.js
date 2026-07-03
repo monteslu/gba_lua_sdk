@@ -118,6 +118,32 @@ function countUses(node, name) {
   return c;
 }
 
+// A function body made of `if <cond> then return <e> end` steps and a bare
+// trailing `return <e>` converts to nested ternaries at the call site
+// (sign0, tile_solid, mget-class helpers). Returns [{cond, value}...,
+// {value}] or null. Conditions/values evaluate lazily in the ternary, so the
+// caller must only paste args that are safe to evaluate zero-or-more times.
+function returnChain(body) {
+  const steps = [];
+  for (let i = 0; i < body.stmts.length; i++) {
+    const st = body.stmts[i];
+    if (st.kind === "return" && st.value) {
+      if (i !== body.stmts.length - 1) return null;   // dead code after
+      steps.push({ value: st.value });
+      return steps;
+    }
+    if (st.kind === "if" && st.clauses.length === 1 && !st.elseBody &&
+        st.clauses[0].body.stmts.length === 1 &&
+        st.clauses[0].body.stmts[0].kind === "return" &&
+        st.clauses[0].body.stmts[0].value) {
+      steps.push({ cond: st.clauses[0].cond, value: st.clauses[0].body.stmts[0].value });
+      continue;
+    }
+    return null;
+  }
+  return null;                                        // no trailing return
+}
+
 // Does this statement tree assign to the named variable? (loop-var narrowing
 // must not fire if the body mutates the induction variable.)
 function assignsTo(node, name) {
@@ -173,6 +199,10 @@ export function emit(chunk, symbols, file, opts = {}) {
   const narrowedVars = new Set(); // u8 fornum counters currently in scope
   let inlineMap = null;           // inlined callee: param name -> rendered arg
   const inlineStack = new Set();  // fns currently being inlined (recursion guard)
+  // opts.inliner === false disables function inlining: like the min/max/mid
+  // ternaries it trades size for speed, and a cart at the bank-capacity cliff
+  // needs the compact call form to link (the build driver retries with it off)
+  const inliner = opts.inliner !== false;
   const stubbed = new Set(); // callee names reached through a far-call stub
   const line = (s) => out.push("    ".repeat(s === "" ? 0 : indent) + s);
   const mangle = (name) => `gtl_${name}`;
@@ -182,6 +212,22 @@ export function emit(chunk, symbols, file, opts = {}) {
   const callGraph = new Map();
   for (const [name, fn] of functions) {
     callGraph.set(name, collectCallees(fn.node.body, functions));
+  }
+
+  // ---- dead-function elimination -------------------------------------------
+  // Functions unreachable from the lifecycle callbacks are never emitted:
+  // ports carry sliced-out helpers (celeste2's draw_clouds, print2) that
+  // otherwise burn fixed-bank CODE/RODATA. gtlua has no function pointers, so
+  // the AST call graph is the complete truth.
+  const liveFns = new Set();
+  {
+    const stack = ["_init", "_update", "_update60", "_draw"].filter((n) => functions.has(n));
+    while (stack.length) {
+      const n = stack.pop();
+      if (liveFns.has(n)) continue;
+      liveFns.add(n);
+      for (const c of callGraph.get(n) ?? []) stack.push(c);
+    }
   }
 
   const ctype = (kind) => (kind === "fixed" ? "long" : "int");
@@ -434,7 +480,26 @@ export function emit(chunk, symbols, file, opts = {}) {
       // call stays. Kind conversion mirrors a real call (body at retKind,
       // outer cv handles the rest).
       {
-        const body = functions.get(callee.name)?.node?.body;
+        const body = inliner ? functions.get(callee.name)?.node?.body : null;
+        if (body && !inlineStack.has(callee.name) &&
+            e.args.length === fn.params.length && body.stmts.length > 1) {
+          const chain = returnChain(body);
+          if (chain && fn.params.every((_, i) => cheapPure(e.args[i]))) {
+            const rendered = new Map(fn.params.map((pname, i) =>
+              [pname, `(${expr(e.args[i], fn.paramKinds[i] ?? "int")})`]));
+            const saved = inlineMap;
+            inlineMap = rendered;
+            inlineStack.add(callee.name);
+            const rk = fn.retKind ?? "int";
+            let out = expr(chain[chain.length - 1].value, rk);
+            for (let i = chain.length - 2; i >= 0; i--) {
+              out = `(${expr(chain[i].cond, "bool")} ? ${expr(chain[i].value, rk)} : ${out})`;
+            }
+            inlineStack.delete(callee.name);
+            inlineMap = saved;
+            return `(${out})`;
+          }
+        }
         const st = body && body.stmts.length === 1 ? body.stmts[0] : null;
         if (st && st.kind === "return" && st.value &&
             !inlineStack.has(callee.name) &&
@@ -817,8 +882,9 @@ export function emit(chunk, symbols, file, opts = {}) {
     return { params, ret };
   };
 
-  // prototypes
+  // prototypes (dead functions are eliminated entirely)
   for (const [name, fn] of functions) {
+    if (!liveFns.has(name)) continue;
     const { params, ret } = signatureOf(name, fn);
     out.push(`${linkage}${ret} ${mangle(name)}(${params});`);
   }
@@ -894,7 +960,7 @@ export function emit(chunk, symbols, file, opts = {}) {
     currentFnName = null;
   };
 
-  const fnStmts = chunk.stmts.filter((s) => s.kind === "function");
+  const fnStmts = chunk.stmts.filter((s) => s.kind === "function" && liveFns.has(s.name));
   for (const s of fnStmts) {
     if (bankOf(s.name) === "fixed") emitFunction(s);
   }
