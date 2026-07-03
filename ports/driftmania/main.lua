@@ -15,24 +15,20 @@ local msilver = 1216
 local mbronze = 1440
 local ncp = 3
 local cgrid = array(900)
-local ckd = array(54, 16)
-local ckt = array(54)
-local ctiles = array(477)
+local ckdt = array(54)
+local ctiles = array(239)
 local wallbit = array(540)
 local tmi = array(128)
-local tcls = array(12, 2)
+local tcls = array(12)
 local tmask = array(96)
-local woff = array(264, -3)
-local bbx = array(256, -3)
-local bby = array(256, -1)
-local carfr = array(32, 128)
-local cpx = array(3, 300)
-local cpy = array(3, 229)
-local cpdx = array(3, 1)
-local cpdy = array(3, 1)
-local cpl = array(3, 72)
+local wpk = array(128)
+local bpk = array(256)
+local cpx = array(3)
+local cpy = array(3)
+local cpdx = array(3)
+local cpdy = array(3)
+local cpl = array(3)
 local div3 = array(96)
-local mod3 = array(96)
 
 function gd_1()
  cgrid[138]=1024
@@ -220,249 +216,199 @@ function gd_1()
  cgrid[726]=10240
  for i=727,737 do cgrid[i]=2048 end
  cgrid[738]=6144
- ckd[2]=17
- ckd[3]=18
- ckd[4]=19
- ckd[5]=5
- ckd[6]=20
- ckd[7]=21
- ckd[8]=22
- ckd[9]=23
- ckd[10]=24
- ckd[11]=25
- ckd[12]=26
- ckd[13]=27
- ckd[14]=28
- ckd[15]=29
- ckd[16]=30
+ ckdt[1]=16
+ ckdt[2]=17
+ ckdt[3]=18
+ ckdt[4]=19
+ ckdt[5]=261
+ ckdt[6]=20
+ ckdt[7]=21
+ ckdt[8]=22
+ ckdt[9]=23
+ ckdt[10]=24
+ ckdt[11]=25
+ ckdt[12]=26
+ ckdt[13]=27
+ ckdt[14]=28
+ ckdt[15]=29
 end
 
 function gd_2()
- ckd[17]=31
- ckd[18]=32
- ckd[19]=33
- ckd[20]=34
- ckd[21]=35
- ckd[22]=36
- ckd[23]=37
- ckd[24]=38
- ckd[25]=39
- ckd[26]=40
- ckd[27]=41
- ckd[28]=42
- ckd[29]=43
- ckd[30]=44
- ckd[31]=45
- ckd[32]=46
- ckd[33]=47
- ckd[34]=48
- ckd[35]=49
- ckd[36]=50
- ckd[37]=51
- ckd[38]=52
- ckd[39]=53
- ckd[40]=54
- ckd[41]=55
- ckd[42]=56
- ckd[43]=57
- ckd[44]=58
- ckd[45]=59
- ckd[46]=60
- ckd[47]=61
- ckd[48]=62
- ckd[49]=63
- ckd[50]=64
- ckd[51]=65
- ckd[52]=66
- ckd[53]=67
- ckd[54]=68
- ckt[5]=1
- ctiles[1]=8
- ctiles[2]=2
- ctiles[3]=2
- ctiles[4]=4
- ctiles[5]=1
- ctiles[6]=1
- ctiles[7]=4
- ctiles[8]=1
- ctiles[9]=1
- ctiles[10]=2
- ctiles[11]=2
- ctiles[12]=2
- for i=13,18 do ctiles[i]=1 end
- ctiles[19]=2
- ctiles[20]=2
- ctiles[21]=7
- ctiles[22]=1
- ctiles[23]=1
- ctiles[24]=5
- ctiles[25]=1
- ctiles[26]=1
- ctiles[27]=5
- ctiles[28]=4
- ctiles[29]=1
- ctiles[30]=1
- ctiles[31]=4
- ctiles[32]=1
- ctiles[33]=1
- ctiles[34]=4
- for i=35,43 do ctiles[i]=1 end
- ctiles[44]=3
- ctiles[45]=1
- ctiles[46]=1
- ctiles[47]=1
- ctiles[48]=5
- ctiles[49]=1
- ctiles[50]=1
- ctiles[51]=5
- ctiles[52]=1
- ctiles[53]=1
- ctiles[54]=5
- for i=55,59 do ctiles[i]=1 end
- ctiles[60]=5
- ctiles[61]=1
- ctiles[62]=1
- ctiles[63]=5
- ctiles[64]=9
- ctiles[66]=6
- ctiles[73]=1
- ctiles[74]=1
- ctiles[75]=1
- ctiles[76]=4
+ ckdt[16]=30
+ ckdt[17]=31
+ ckdt[18]=32
+ ckdt[19]=33
+ ckdt[20]=34
+ ckdt[21]=35
+ ckdt[22]=36
+ ckdt[23]=37
+ ckdt[24]=38
+ ckdt[25]=39
+ ckdt[26]=40
+ ckdt[27]=41
+ ckdt[28]=42
+ ckdt[29]=43
+ ckdt[30]=44
+ ckdt[31]=45
+ ckdt[32]=46
+ ckdt[33]=47
+ ckdt[34]=48
+ ckdt[35]=49
+ ckdt[36]=50
+ ckdt[37]=51
+ ckdt[38]=52
+ ckdt[39]=53
+ ckdt[40]=54
+ ckdt[41]=55
+ ckdt[42]=56
+ ckdt[43]=57
+ ckdt[44]=58
+ ckdt[45]=59
+ ckdt[46]=60
+ ckdt[47]=61
+ ckdt[48]=62
+ ckdt[49]=63
+ ckdt[50]=64
+ ckdt[51]=65
+ ckdt[52]=66
+ ckdt[53]=67
+ ckdt[54]=68
+ ctiles[1]=520
+ ctiles[2]=1026
+ ctiles[3]=257
+ ctiles[4]=260
+ ctiles[5]=513
+ ctiles[6]=514
+ ctiles[7]=257
+ ctiles[8]=257
+ ctiles[9]=257
+ ctiles[10]=514
+ ctiles[11]=263
+ ctiles[12]=1281
+ ctiles[13]=257
+ ctiles[14]=1029
+ ctiles[15]=257
+ ctiles[16]=260
+ ctiles[17]=1025
+ for i=18,21 do ctiles[i]=257 end
+ ctiles[22]=769
+ ctiles[23]=257
+ ctiles[24]=1281
+ ctiles[25]=257
+ ctiles[26]=261
+ ctiles[27]=1281
+ ctiles[28]=257
+ ctiles[29]=257
+ ctiles[30]=1281
+ ctiles[31]=257
+ ctiles[32]=2309
+ ctiles[33]=1536
+ ctiles[37]=257
+ ctiles[38]=1025
+ ctiles[39]=257
+ ctiles[40]=260
+ ctiles[41]=1
+ ctiles[45]=2048
+ ctiles[46]=260
+ ctiles[47]=1025
+ ctiles[48]=257
+ ctiles[49]=257
+ ctiles[50]=513
+ ctiles[51]=258
+ for i=52,57 do ctiles[i]=257 end
+ ctiles[58]=769
+ ctiles[59]=259
+ ctiles[60]=257
+ ctiles[61]=257
+ ctiles[62]=769
+ ctiles[63]=771
+ ctiles[64]=257
+ ctiles[65]=261
+ ctiles[66]=1281
+ ctiles[67]=771
+ ctiles[68]=2313
+ ctiles[73]=257
+ ctiles[74]=261
+ ctiles[75]=1281
+ ctiles[76]=257
  ctiles[77]=1
- ctiles[78]=1
- ctiles[79]=4
- ctiles[80]=1
- ctiles[81]=1
- ctiles[90]=8
- ctiles[91]=4
- ctiles[92]=1
- ctiles[93]=1
- ctiles[94]=4
- for i=95,99 do ctiles[i]=1 end
- ctiles[100]=2
- ctiles[101]=2
- for i=102,115 do ctiles[i]=1 end
- ctiles[116]=3
- ctiles[117]=3
- for i=118,123 do ctiles[i]=1 end
- ctiles[124]=3
- ctiles[125]=3
- ctiles[126]=3
- ctiles[127]=1
- ctiles[128]=1
- ctiles[129]=5
- ctiles[130]=1
- ctiles[131]=1
- ctiles[132]=5
- ctiles[133]=3
- ctiles[134]=3
- ctiles[135]=9
- ctiles[136]=9
- ctiles[145]=1
- ctiles[146]=1
- ctiles[147]=5
- ctiles[148]=1
- ctiles[149]=1
- ctiles[150]=5
- ctiles[151]=1
- ctiles[152]=1
- ctiles[153]=1
- ctiles[160]=7
- ctiles[163]=1
- ctiles[164]=2
- ctiles[165]=2
- for i=166,171 do ctiles[i]=1 end
- ctiles[172]=4
- ctiles[173]=1
- ctiles[174]=1
- ctiles[175]=4
- ctiles[176]=1
- ctiles[177]=1
- ctiles[178]=6
- ctiles[179]=3
- ctiles[180]=3
- for i=181,186 do ctiles[i]=1 end
- ctiles[187]=3
- ctiles[188]=3
- ctiles[189]=1
- ctiles[192]=6
- ctiles[206]=115
- ctiles[208]=114
- ctiles[211]=114
- ctiles[214]=114
- ctiles[222]=117
- ctiles[225]=117
- ctiles[226]=99
- ctiles[228]=98
- ctiles[238]=114
- ctiles[241]=114
- ctiles[252]=99
- ctiles[253]=114
- ctiles[256]=114
- ctiles[263]=10
- ctiles[266]=10
- ctiles[269]=10
- ctiles[271]=116
- ctiles[272]=116
- ctiles[287]=115
- ctiles[288]=115
- ctiles[295]=115
- ctiles[296]=115
- ctiles[297]=115
- ctiles[298]=99
- ctiles[307]=116
- ctiles[308]=116
- ctiles[309]=116
- ctiles[316]=15
- ctiles[320]=15
- ctiles[324]=15
- ctiles[325]=15
- ctiles[329]=15
- ctiles[336]=117
- ctiles[339]=117
- ctiles[349]=98
- ctiles[353]=116
- ctiles[354]=116
- ctiles[367]=115
- ctiles[368]=115
- ctiles[372]=117
- ctiles[375]=117
- ctiles[378]=117
- ctiles[381]=98
- ctiles[393]=45
- ctiles[395]=45
- ctiles[396]=61
- ctiles[400]=60
- ctiles[401]=60
- ctiles[402]=60
- ctiles[409]=43
- ctiles[412]=59
-end
-
-function gd_3()
- ctiles[413]=43
- ctiles[416]=44
- ctiles[419]=44
- ctiles[422]=44
- ctiles[428]=44
- ctiles[431]=44
- ctiles[433]=45
- ctiles[434]=61
- ctiles[436]=61
- ctiles[446]=45
- ctiles[447]=60
- ctiles[449]=44
- ctiles[452]=44
- ctiles[455]=59
- ctiles[456]=60
- ctiles[461]=44
- ctiles[464]=46
- ctiles[465]=60
- ctiles[467]=44
- ctiles[470]=59
- ctiles[471]=43
- ctiles[474]=59
+ ctiles[80]=1792
+ ctiles[82]=513
+ ctiles[83]=258
+ ctiles[84]=257
+ ctiles[85]=257
+ ctiles[86]=1025
+ ctiles[87]=257
+ ctiles[88]=260
+ ctiles[89]=1537
+ ctiles[90]=771
+ ctiles[91]=257
+ ctiles[92]=257
+ ctiles[93]=257
+ ctiles[94]=771
+ ctiles[95]=1
+ ctiles[96]=1536
+ ctiles[103]=29440
+ ctiles[104]=29184
+ ctiles[106]=114
+ ctiles[107]=29184
+ ctiles[111]=29952
+ ctiles[113]=25461
+ ctiles[114]=25088
+ ctiles[119]=29184
+ ctiles[121]=114
+ ctiles[126]=25344
+ ctiles[127]=114
+ ctiles[128]=29184
+ ctiles[132]=10
+ ctiles[133]=2560
+ ctiles[135]=10
+ ctiles[136]=29812
+ ctiles[144]=29555
+ ctiles[148]=29555
+ ctiles[149]=25459
+ ctiles[154]=29812
+ ctiles[155]=116
+ ctiles[158]=3840
+ ctiles[160]=3840
+ ctiles[162]=3840
+ ctiles[163]=15
+ ctiles[165]=15
+ ctiles[168]=29952
+ ctiles[170]=117
+ ctiles[175]=98
+ ctiles[177]=29812
+ ctiles[184]=29555
+ ctiles[186]=29952
+ ctiles[188]=117
+ ctiles[189]=29952
+ ctiles[191]=98
+ ctiles[197]=45
+ ctiles[198]=15661
+ ctiles[200]=15360
+ ctiles[201]=15420
+ ctiles[205]=43
+ ctiles[206]=15104
+ ctiles[207]=43
+ ctiles[208]=11264
+ ctiles[210]=44
+ ctiles[211]=11264
+ ctiles[214]=11264
+ ctiles[216]=44
+ ctiles[217]=15661
+ ctiles[218]=15616
+ ctiles[223]=11520
+ ctiles[224]=60
+ ctiles[225]=44
+ ctiles[226]=11264
+ ctiles[228]=15419
+ ctiles[231]=44
+ ctiles[232]=11776
+ ctiles[233]=60
+ ctiles[234]=44
+ ctiles[235]=15104
+ ctiles[236]=43
+ ctiles[237]=15104
  wallbit[82]=-32
  wallbit[83]=63
  wallbit[88]=48
@@ -488,6 +434,9 @@ function gd_3()
  wallbit[148]=8208
  wallbit[149]=64
  wallbit[154]=8208
+end
+
+function gd_3()
  wallbit[155]=64
  wallbit[160]=8208
  wallbit[161]=64
@@ -621,6 +570,7 @@ function gd_3()
  tmi[61]=11
  tmi[62]=12
  for i=1,5 do tcls[i]=1 end
+ for i=6,12 do tcls[i]=2 end
  for i=1,8 do tmask[i]=255 end
  tmask[10]=1
  tmask[11]=3
@@ -641,9 +591,6 @@ function gd_3()
  tmask[27]=31
  tmask[28]=15
  tmask[29]=7
-end
-
-function gd_4()
  tmask[30]=3
  tmask[31]=1
  tmask[34]=128
@@ -682,722 +629,410 @@ function gd_4()
  tmask[92]=6
  tmask[93]=3
  tmask[94]=1
- woff[1]=-4
- woff[3]=3
- woff[4]=2
- woff[5]=-4
- woff[6]=2
- woff[7]=3
- woff[9]=-5
- woff[10]=-2
- woff[11]=3
- woff[12]=2
- woff[13]=-4
- woff[14]=3
- woff[15]=2
- woff[17]=-5
- woff[18]=-1
- woff[19]=3
- woff[20]=1
- woff[22]=4
- woff[23]=1
- woff[25]=-5
- woff[26]=0
- woff[27]=4
- woff[28]=0
- woff[29]=-2
- woff[30]=4
- woff[31]=1
- woff[32]=-4
- woff[33]=-5
- woff[34]=1
- woff[35]=3
- woff[36]=0
- woff[37]=-1
- woff[38]=5
- woff[39]=0
- woff[41]=-4
- woff[42]=2
- woff[43]=4
- woff[44]=-1
- woff[45]=0
- woff[46]=5
- woff[47]=-1
- woff[49]=-4
- woff[50]=3
- woff[51]=3
- woff[52]=-2
- woff[53]=1
- woff[54]=5
- woff[55]=-1
- woff[58]=4
- woff[59]=3
- woff[60]=-2
- woff[61]=2
- woff[62]=5
- woff[63]=-2
- woff[66]=4
- woff[67]=2
- woff[69]=2
- woff[70]=4
- woff[73]=-2
- woff[74]=5
- woff[75]=2
- woff[77]=3
- woff[78]=4
- woff[80]=-2
- woff[81]=-1
- woff[82]=5
- woff[83]=1
- woff[85]=4
- woff[86]=3
- woff[88]=-2
- woff[89]=0
- woff[90]=5
- woff[91]=0
- woff[92]=-4
- woff[93]=4
- woff[94]=2
- woff[95]=-4
- woff[96]=-1
- woff[97]=1
- woff[98]=5
- woff[99]=0
- woff[101]=5
- woff[102]=1
- woff[104]=0
- woff[105]=2
- woff[106]=4
- woff[107]=-1
- woff[108]=-4
- woff[109]=5
- woff[110]=0
- woff[111]=-4
- woff[112]=0
- woff[113]=3
- woff[114]=4
- woff[115]=-1
- woff[117]=5
- woff[118]=-1
- woff[120]=2
- woff[121]=4
- woff[122]=3
- woff[123]=-2
- woff[125]=5
- woff[126]=-2
- woff[128]=2
- woff[129]=4
- woff[130]=3
- woff[132]=-2
- woff[133]=4
- woff[134]=-2
- woff[136]=3
- woff[137]=5
- woff[138]=2
- woff[140]=-2
- woff[141]=4
- woff[143]=-2
- woff[144]=3
- woff[145]=5
- woff[146]=1
- woff[148]=-1
- woff[149]=3
- woff[150]=-4
- woff[151]=-1
- woff[152]=3
- woff[153]=5
- woff[154]=0
- woff[155]=-4
- woff[156]=0
- woff[157]=2
- woff[158]=-4
- woff[159]=-1
- woff[160]=4
- woff[161]=5
- woff[162]=-1
- woff[164]=0
- woff[165]=1
- woff[166]=-5
- woff[167]=0
- woff[168]=3
- woff[169]=4
- woff[170]=-2
- woff[171]=-4
- woff[172]=1
- woff[173]=0
- woff[174]=-5
- woff[175]=0
- woff[176]=4
- woff[177]=4
- woff[180]=2
- woff[181]=-1
- woff[182]=-5
- woff[183]=1
- woff[184]=3
- woff[185]=3
- woff[186]=-4
- woff[188]=2
- woff[189]=-2
- woff[190]=-5
- woff[191]=2
- woff[192]=3
- woff[193]=3
- woff[194]=-4
- woff[195]=-2
+ wpk[1]=1284
+ wpk[2]=2571
+ wpk[3]=2564
+ wpk[4]=1291
+ wpk[5]=1539
+ wpk[6]=2571
+ wpk[7]=2820
+ wpk[8]=1290
+end
+
+function gd_4()
+ wpk[9]=1795
+ wpk[10]=2315
+ wpk[11]=3077
+ wpk[12]=1289
+ wpk[13]=2051
+ wpk[14]=2060
+ wpk[15]=3078
+ wpk[16]=1033
+ wpk[17]=2307
+ wpk[18]=2059
+ wpk[19]=3335
+ wpk[20]=1288
+ wpk[21]=2564
+ wpk[22]=1804
+ wpk[23]=3336
+ wpk[24]=1287
+ wpk[25]=2820
+ wpk[26]=1547
+ wpk[27]=3337
+ wpk[28]=1287
+ wpk[29]=3077
+ wpk[30]=1547
+ wpk[31]=3338
+ wpk[32]=1286
+ wpk[33]=3077
+ wpk[34]=1290
+ wpk[35]=3082
+ wpk[36]=1285
+ wpk[37]=3334
+ wpk[38]=1290
+ wpk[39]=3083
+ wpk[40]=1541
+ wpk[41]=3335
+ wpk[42]=1289
+ wpk[43]=2828
+ wpk[44]=1541
+ wpk[45]=3336
+ wpk[46]=1032
+ wpk[47]=2572
+ wpk[48]=1796
+ wpk[49]=3337
+ wpk[50]=1288
+ wpk[51]=2317
+ wpk[52]=2053
+ wpk[53]=3082
+ wpk[54]=1031
+ wpk[55]=2061
+ wpk[56]=2052
+ wpk[57]=3083
+ wpk[58]=1287
+ wpk[59]=1805
+ wpk[60]=2565
+ wpk[61]=2828
+ wpk[62]=1286
+ wpk[63]=1549
+ wpk[64]=2565
+ wpk[65]=2828
+ wpk[66]=1541
+ wpk[67]=1548
+ wpk[68]=2821
+ wpk[69]=2573
+ wpk[70]=1541
+ wpk[71]=1292
+ wpk[72]=2822
+ wpk[73]=2317
+ wpk[74]=1797
+ wpk[75]=1035
+ wpk[76]=2823
+ wpk[77]=2061
+ wpk[78]=2052
+ wpk[79]=1034
+ wpk[80]=3079
+ wpk[81]=1805
+ wpk[82]=2053
+ wpk[83]=777
+ wpk[84]=2824
+ wpk[85]=1548
+ wpk[86]=2308
+ wpk[87]=776
+ wpk[88]=3080
+ wpk[89]=1292
+ wpk[90]=2565
+ wpk[91]=775
+ wpk[92]=2825
+ wpk[93]=1035
+ wpk[94]=2565
+ wpk[95]=774
+ wpk[96]=2826
+ wpk[97]=1035
+ wpk[98]=2822
+ wpk[99]=1030
+ wpk[100]=2827
+ wpk[101]=778
+ wpk[102]=2822
+ wpk[103]=1029
+ wpk[104]=2571
+ wpk[105]=777
+ wpk[106]=2823
+ wpk[107]=1284
+ wpk[108]=2571
+ wpk[109]=776
+ wpk[110]=3080
+ wpk[111]=1540
+ wpk[112]=2316
+ wpk[113]=775
+ wpk[114]=2824
+ wpk[115]=1795
+ wpk[116]=2059
+ wpk[117]=1030
+ wpk[118]=3081
+ wpk[119]=2051
+ wpk[120]=2060
+ wpk[121]=1029
+ wpk[122]=2826
+ wpk[123]=2307
+ wpk[124]=1803
+ wpk[125]=1284
+ wpk[126]=2826
+ wpk[127]=2563
+ wpk[128]=1547
+ bpk[1]=3850
+ bpk[2]=3339
+ bpk[3]=3343
+ bpk[4]=3346
+ bpk[5]=4116
+ bpk[6]=4626
+ bpk[7]=4622
+ bpk[8]=4619
+ bpk[9]=3850
+ bpk[10]=3596
+ bpk[11]=3343
+ bpk[12]=3090
+ bpk[13]=4116
+ bpk[14]=4625
+ bpk[15]=4622
+ bpk[16]=4875
+ bpk[17]=3849
+ bpk[18]=3596
+ bpk[19]=3344
+ bpk[20]=3091
+ bpk[21]=4116
+ bpk[22]=4625
+ bpk[23]=4877
+ bpk[24]=4875
+ bpk[25]=3851
+ bpk[26]=3598
+ bpk[27]=2833
+ bpk[28]=3348
+ bpk[29]=4115
+ bpk[30]=4624
+ bpk[31]=5133
+ bpk[32]=4875
+ bpk[33]=3852
+ bpk[34]=3342
+ bpk[35]=2834
+ bpk[36]=3348
+ bpk[37]=4370
+ bpk[38]=5135
+ bpk[39]=5133
+ bpk[40]=4619
+ bpk[41]=3853
+ bpk[42]=3087
+ bpk[43]=2834
+ bpk[44]=3604
+ bpk[45]=4369
+ bpk[46]=5136
+ bpk[47]=5133
+ bpk[48]=4874
+ bpk[49]=3853
+ bpk[50]=3086
+ bpk[51]=3090
+ bpk[52]=3603
+ bpk[53]=4625
+ bpk[54]=5392
+ bpk[55]=5133
+ bpk[56]=4875
+ bpk[57]=3853
+ bpk[58]=3086
+ bpk[59]=2833
+ bpk[60]=3602
+ bpk[61]=4625
+ bpk[62]=5393
+ bpk[63]=5390
+ bpk[64]=4876
+ bpk[65]=3853
+ bpk[66]=3085
+ bpk[67]=2833
+ bpk[68]=3602
+ bpk[69]=4626
+ bpk[70]=5394
+ bpk[71]=5390
+ bpk[72]=4877
+ bpk[73]=3853
+ bpk[74]=2829
+ bpk[75]=2832
+ bpk[76]=3602
+ bpk[77]=4627
+ bpk[78]=5394
+ bpk[79]=5391
+ bpk[80]=4878
 end
 
 function gd_5()
- woff[196]=3
- woff[197]=-2
- woff[198]=-4
- woff[199]=3
- woff[200]=3
- woff[201]=2
- woff[202]=-5
- woff[203]=-2
- woff[204]=3
- woff[206]=-4
- woff[207]=3
- woff[208]=2
- woff[209]=1
- woff[210]=-5
- woff[211]=-1
- woff[212]=3
- woff[213]=-4
- woff[215]=3
- woff[216]=2
- woff[217]=0
- woff[218]=-5
- woff[219]=0
- woff[220]=4
- woff[221]=-4
- woff[222]=-2
- woff[223]=4
- woff[224]=1
- woff[225]=-1
- woff[226]=-5
- woff[227]=0
- woff[228]=3
- woff[229]=-5
- woff[230]=-1
- woff[231]=3
- woff[232]=0
- woff[233]=-2
- woff[234]=-4
- woff[235]=1
- woff[236]=4
- woff[237]=-5
- woff[238]=0
- woff[239]=4
- woff[240]=0
- woff[242]=-4
- woff[243]=2
- woff[244]=3
- woff[245]=-5
- woff[246]=1
- woff[247]=3
- woff[248]=-1
- woff[249]=-4
- woff[251]=2
- woff[252]=3
- woff[253]=-5
- woff[254]=2
- woff[255]=3
- woff[256]=-2
- woff[257]=-4
- woff[259]=3
- woff[260]=2
- woff[261]=-4
- woff[262]=2
- woff[263]=3
- bbx[1]=-6
- bbx[2]=-5
- bbx[3]=-1
- bbx[4]=2
- bbx[5]=4
- bbx[6]=2
- bbx[7]=-2
- bbx[8]=-5
- bbx[9]=-6
- bbx[10]=-4
- bbx[11]=-1
- bbx[12]=2
- bbx[13]=4
- bbx[14]=1
- bbx[15]=-2
- bbx[16]=-5
- bbx[17]=-7
- bbx[18]=-4
- bbx[19]=0
- bbx[20]=3
- bbx[21]=4
- bbx[22]=1
- bbx[24]=-5
- bbx[25]=-5
- bbx[26]=-2
- bbx[27]=1
- bbx[28]=4
- bbx[29]=3
- bbx[30]=0
- bbx[32]=-5
- bbx[33]=-4
- bbx[34]=-2
- bbx[35]=2
- bbx[36]=4
- bbx[37]=2
- bbx[38]=-1
- bbx[40]=-5
- bbx[42]=-1
- bbx[43]=2
- bbx[44]=4
- bbx[45]=1
- bbx[46]=0
- bbx[48]=-6
- bbx[50]=-2
- bbx[51]=2
- bbx[52]=3
- bbx[53]=1
- bbx[54]=0
- bbx[56]=-5
- bbx[58]=-2
- bbx[59]=1
- bbx[60]=2
- bbx[61]=1
- bbx[62]=1
- bbx[63]=-2
- bbx[64]=-4
- bbx[67]=1
- bbx[68]=2
- bbx[69]=2
- bbx[70]=2
- bbx[71]=-2
- bbx[75]=0
- bbx[76]=2
- bbx[77]=3
- bbx[78]=2
- bbx[79]=-1
- bbx[80]=-2
- bbx[82]=-4
- bbx[83]=0
- bbx[84]=2
- bbx[85]=3
- bbx[86]=3
- bbx[87]=-1
- bbx[88]=-2
- bbx[89]=-4
- bbx[91]=0
- bbx[92]=1
- bbx[93]=4
- bbx[94]=4
- bbx[95]=1
- bbx[96]=-1
- bbx[97]=-5
- bbx[98]=-4
- bbx[99]=0
- bbx[100]=2
- bbx[101]=4
- bbx[102]=4
- bbx[103]=1
- bbx[104]=-1
- bbx[105]=-5
- bbx[107]=0
- bbx[108]=3
- bbx[109]=5
- bbx[110]=3
- bbx[111]=1
- bbx[112]=-2
- bbx[113]=-5
- bbx[114]=-4
- bbx[115]=0
- bbx[116]=3
- bbx[117]=5
- bbx[118]=4
- bbx[119]=1
- bbx[120]=-2
- bbx[121]=-5
- bbx[123]=0
- bbx[124]=3
- bbx[125]=5
- bbx[126]=4
- bbx[127]=1
- bbx[128]=-2
- bbx[129]=-5
- bbx[131]=1
- bbx[132]=4
- bbx[133]=5
- bbx[134]=4
- bbx[135]=0
- bbx[137]=-5
- bbx[138]=-2
- bbx[139]=1
- bbx[140]=4
- bbx[141]=5
- bbx[142]=3
- bbx[143]=0
- bbx[144]=-2
- bbx[145]=-5
- bbx[146]=-2
- bbx[147]=2
- bbx[148]=4
- bbx[149]=4
- bbx[150]=3
- bbx[151]=-1
- bbx[152]=-4
- bbx[153]=-5
- bbx[154]=-2
- bbx[155]=1
- bbx[156]=3
-end
-
-function gd_6()
- bbx[157]=5
- bbx[158]=4
- bbx[159]=0
- bbx[161]=-4
- bbx[162]=-2
- bbx[163]=1
- bbx[164]=3
- bbx[165]=4
- bbx[166]=3
- bbx[167]=-1
- bbx[170]=-1
- bbx[171]=1
- bbx[172]=4
- bbx[173]=4
- bbx[174]=1
- bbx[175]=0
- bbx[178]=-2
- bbx[179]=0
- bbx[180]=3
- bbx[181]=3
- bbx[182]=2
- bbx[183]=-1
- bbx[184]=-4
- bbx[186]=-2
- bbx[187]=-1
- bbx[188]=2
- bbx[189]=3
- bbx[190]=2
- bbx[191]=0
- bbx[195]=-1
- bbx[196]=2
- bbx[197]=2
- bbx[198]=2
- bbx[199]=0
- bbx[202]=-4
- bbx[203]=-2
- bbx[204]=1
- bbx[205]=2
- bbx[206]=2
- bbx[207]=1
- bbx[208]=-2
- bbx[210]=-5
- bbx[211]=-2
- bbx[212]=0
- bbx[213]=2
- bbx[214]=3
- bbx[215]=1
- bbx[216]=-2
- bbx[217]=-4
- bbx[218]=-6
- bbx[220]=0
- bbx[221]=1
- bbx[222]=4
- bbx[223]=2
- bbx[224]=-1
- bbx[225]=-5
- bbx[226]=-6
- bbx[228]=-1
- bbx[229]=2
- bbx[230]=3
- bbx[231]=2
- bbx[232]=-1
- bbx[233]=-6
- bbx[234]=-5
- bbx[236]=0
- bbx[237]=3
- bbx[238]=4
- bbx[239]=1
- bbx[240]=-2
- bbx[241]=-6
- bbx[242]=-5
- bbx[243]=-2
- bbx[244]=1
- bbx[245]=4
- bbx[246]=3
- bbx[247]=-1
- bbx[248]=-4
- bbx[249]=-6
- bbx[250]=-5
- bbx[251]=-2
- bbx[252]=1
- bbx[253]=4
- bbx[254]=2
- bbx[255]=-1
- bbx[256]=-4
- bby[2]=-3
- bby[3]=-3
- bby[4]=-3
- bby[5]=0
- bby[6]=2
- bby[7]=2
- bby[8]=2
- bby[10]=-2
- bby[11]=-3
- bby[12]=-4
- bby[13]=0
- bby[14]=2
- bby[15]=2
- bby[16]=3
- bby[18]=-2
- bby[19]=-3
- bby[20]=-4
- bby[21]=0
- bby[22]=2
- bby[23]=3
- bby[24]=3
- bby[26]=-2
- bby[27]=-5
- bby[28]=-3
- bby[29]=0
- bby[30]=2
- bby[31]=4
- bby[32]=3
- bby[34]=-3
- bby[35]=-5
- bby[36]=-3
- bby[37]=1
- bby[38]=4
- bby[39]=4
- bby[40]=2
- bby[42]=-4
- bby[43]=-5
- bby[44]=-2
- bby[45]=1
- bby[46]=4
- bby[47]=4
- bby[48]=3
- bby[50]=-4
- bby[51]=-4
- bby[52]=-2
- bby[53]=2
- bby[54]=5
- bby[55]=4
- bby[56]=3
- bby[58]=-4
- bby[59]=-5
- bby[60]=-2
- bby[61]=2
- bby[62]=5
- bby[63]=5
- bby[64]=3
- bby[66]=-4
- bby[67]=-5
- bby[68]=-2
- bby[69]=2
- bby[70]=5
- bby[71]=5
- bby[72]=3
- bby[74]=-5
- bby[75]=-5
- bby[76]=-2
- bby[77]=2
- bby[78]=5
- bby[79]=5
- bby[80]=3
- bby[82]=-4
- bby[83]=-5
- bby[84]=-2
- bby[85]=2
- bby[86]=4
- bby[87]=6
- bby[88]=3
- bby[90]=-4
- bby[91]=-5
- bby[92]=-2
- bby[93]=1
- bby[94]=3
- bby[95]=5
- bby[96]=3
- bby[98]=-3
- bby[99]=-4
- bby[100]=-2
- bby[101]=1
- bby[102]=3
- bby[103]=4
- bby[104]=2
- bby[105]=-2
- bby[106]=-4
- bby[107]=-3
- bby[109]=1
- bby[110]=4
- bby[111]=4
- bby[112]=1
- bby[114]=-4
- bby[115]=-3
- bby[116]=-2
- bby[117]=0
- bby[118]=3
- bby[119]=3
- bby[120]=2
- bby[122]=-4
- bby[123]=-3
- bby[124]=-2
- bby[125]=0
- bby[126]=3
- bby[127]=2
- bby[128]=2
- bby[130]=-3
- bby[131]=-3
- bby[132]=-3
-end
-
-function gd_7()
- bby[133]=0
- bby[134]=2
- bby[135]=2
- bby[136]=2
- bby[138]=-3
- bby[139]=-3
- bby[140]=-4
- bby[141]=0
- bby[142]=1
- bby[143]=2
- bby[144]=2
- bby[146]=-3
- bby[147]=-4
- bby[148]=-4
- bby[149]=0
- bby[150]=1
- bby[151]=2
- bby[152]=3
- bby[154]=-2
- bby[155]=-5
- bby[156]=-5
- bby[157]=-2
- bby[158]=0
- bby[159]=2
- bby[160]=3
- bby[162]=-3
- bby[163]=-5
- bby[164]=-5
- bby[165]=-2
- bby[166]=0
- bby[167]=4
- bby[168]=3
- bby[170]=-4
- bby[171]=-6
- bby[172]=-4
- bby[173]=-2
- bby[174]=1
- bby[175]=3
- bby[176]=3
- bby[178]=-4
- bby[179]=-6
- bby[180]=-5
- bby[181]=-2
- bby[182]=1
- bby[183]=4
- bby[184]=3
- bby[186]=-4
- bby[187]=-6
- bby[188]=-6
- bby[189]=-3
- bby[190]=1
- bby[191]=4
- bby[192]=4
- bby[194]=-4
- bby[195]=-6
- bby[196]=-6
- bby[197]=-2
- bby[198]=1
- bby[199]=4
- bby[200]=3
- bby[202]=-4
- bby[203]=-6
- bby[204]=-6
- bby[205]=-2
- bby[206]=1
- bby[207]=4
- bby[208]=3
- bby[210]=-4
- bby[211]=-6
- bby[212]=-6
- bby[213]=-2
- bby[214]=1
- bby[215]=4
- bby[216]=3
- bby[218]=-4
- bby[219]=-5
- bby[220]=-4
- bby[221]=-2
- bby[222]=1
- bby[223]=4
- bby[224]=3
- bby[226]=-3
- bby[227]=-5
- bby[228]=-5
- bby[229]=-2
- bby[230]=0
- bby[231]=4
- bby[232]=2
- bby[234]=-4
- bby[235]=-5
- bby[236]=-3
- bby[238]=2
- bby[239]=4
- bby[240]=1
- bby[242]=-4
- bby[243]=-4
- bby[244]=-3
- bby[245]=0
- bby[246]=3
- bby[247]=2
- bby[248]=1
- bby[250]=-4
- bby[251]=-3
- bby[252]=-3
- bby[253]=0
- bby[254]=3
- bby[255]=2
- bby[256]=1
- carfr[2]=130
- carfr[3]=132
- carfr[4]=134
- carfr[5]=136
- carfr[6]=138
- carfr[7]=140
- carfr[8]=142
- carfr[9]=160
- carfr[10]=162
- carfr[11]=164
- carfr[12]=166
- carfr[13]=168
- carfr[14]=170
- carfr[15]=172
- carfr[16]=174
- carfr[17]=192
- carfr[18]=194
- carfr[19]=196
- carfr[20]=198
- carfr[21]=200
- carfr[22]=202
- carfr[23]=204
- carfr[24]=206
- carfr[25]=224
- carfr[26]=226
- carfr[27]=228
- carfr[28]=230
- carfr[29]=232
- carfr[30]=234
- carfr[31]=236
- carfr[32]=238
+ bpk[81]=3853
+ bpk[82]=3084
+ bpk[83]=2832
+ bpk[84]=3602
+ bpk[85]=4627
+ bpk[86]=5139
+ bpk[87]=5647
+ bpk[88]=4878
+ bpk[89]=3852
+ bpk[90]=3085
+ bpk[91]=2832
+ bpk[92]=3601
+ bpk[93]=4372
+ bpk[94]=4884
+ bpk[95]=5393
+ bpk[96]=4879
+ bpk[97]=3851
+ bpk[98]=3340
+ bpk[99]=3088
+ bpk[100]=3602
+ bpk[101]=4372
+ bpk[102]=4884
+ bpk[103]=5137
+ bpk[104]=4623
+ bpk[105]=3595
+ bpk[106]=3085
+ bpk[107]=3344
+ bpk[108]=3859
+ bpk[109]=4373
+ bpk[110]=5139
+ bpk[111]=5137
+ bpk[112]=4366
+ bpk[113]=3851
+ bpk[114]=3084
+ bpk[115]=3344
+ bpk[116]=3603
+ bpk[117]=4117
+ bpk[118]=4884
+ bpk[119]=4881
+ bpk[120]=4622
+ bpk[121]=3851
+ bpk[122]=3085
+ bpk[123]=3344
+ bpk[124]=3603
+ bpk[125]=4117
+ bpk[126]=4884
+ bpk[127]=4625
+ bpk[128]=4622
+ bpk[129]=3851
+ bpk[130]=3341
+ bpk[131]=3345
+ bpk[132]=3348
+ bpk[133]=4117
+ bpk[134]=4628
+ bpk[135]=4624
+ bpk[136]=4621
+ bpk[137]=3851
+ bpk[138]=3342
+ bpk[139]=3345
+ bpk[140]=3092
+ bpk[141]=4117
+ bpk[142]=4371
+ bpk[143]=4624
+ bpk[144]=4622
+ bpk[145]=3851
+ bpk[146]=3342
+ bpk[147]=3090
+ bpk[148]=3092
+ bpk[149]=4116
+ bpk[150]=4371
+ bpk[151]=4623
+ bpk[152]=4876
+ bpk[153]=3851
+ bpk[154]=3598
+ bpk[155]=2833
+ bpk[156]=2835
+ bpk[157]=3605
+ bpk[158]=4116
+ bpk[159]=4624
+ bpk[160]=4877
+ bpk[161]=3852
+ bpk[162]=3342
+ bpk[163]=2833
+ bpk[164]=2835
+ bpk[165]=3604
+ bpk[166]=4115
+ bpk[167]=5135
+ bpk[168]=4877
+ bpk[169]=3853
+ bpk[170]=3087
+ bpk[171]=2577
+ bpk[172]=3092
+ bpk[173]=3604
+ bpk[174]=4369
+ bpk[175]=4880
+ bpk[176]=4877
+ bpk[177]=3853
+ bpk[178]=3086
+ bpk[179]=2576
+ bpk[180]=2835
+ bpk[181]=3603
+ bpk[182]=4370
+ bpk[183]=5135
+ bpk[184]=4876
+ bpk[185]=3853
+ bpk[186]=3086
+ bpk[187]=2575
+ bpk[188]=2578
+ bpk[189]=3347
+ bpk[190]=4370
+ bpk[191]=5136
+ bpk[192]=5133
+ bpk[193]=3853
+ bpk[194]=3085
+ bpk[195]=2575
+ bpk[196]=2578
+ bpk[197]=3602
+ bpk[198]=4370
+ bpk[199]=5136
+ bpk[200]=4877
+ bpk[201]=3853
+ bpk[202]=3084
+ bpk[203]=2574
+ bpk[204]=2577
+ bpk[205]=3602
+ bpk[206]=4370
+ bpk[207]=5137
+ bpk[208]=4878
+ bpk[209]=3853
+ bpk[210]=3083
+ bpk[211]=2574
+ bpk[212]=2576
+ bpk[213]=3602
+ bpk[214]=4371
+ bpk[215]=5137
+ bpk[216]=4878
+ bpk[217]=3852
+ bpk[218]=3082
+ bpk[219]=2829
+ bpk[220]=3088
+ bpk[221]=3601
+ bpk[222]=4372
+ bpk[223]=5138
+ bpk[224]=4879
+ bpk[225]=3851
+ bpk[226]=3338
+ bpk[227]=2829
+ bpk[228]=2831
+ bpk[229]=3602
+ bpk[230]=4115
+ bpk[231]=5138
+ bpk[232]=4623
+ bpk[233]=3850
+ bpk[234]=3083
+ bpk[235]=2829
+ bpk[236]=3344
+ bpk[237]=3859
+ bpk[238]=4628
+ bpk[239]=5137
+ bpk[240]=4366
+ bpk[241]=3850
+ bpk[242]=3083
+ bpk[243]=3086
+ bpk[244]=3345
+ bpk[245]=4116
+ bpk[246]=4883
+ bpk[247]=4623
+ bpk[248]=4364
+ bpk[249]=3850
+ bpk[250]=3083
+ bpk[251]=3342
+ bpk[252]=3345
+ bpk[253]=4116
+ bpk[254]=4882
+ bpk[255]=4623
+ bpk[256]=4364
+ cpx[1]=300
  cpx[2]=486
  cpx[3]=342
+ cpy[1]=229
  cpy[2]=294
  cpy[3]=510
- cpdx[1]=0
+ cpdx[2]=1
+ cpdx[3]=1
+ cpdy[1]=1
+ cpdy[2]=1
+ cpdy[3]=1
  cpl[1]=71
+ cpl[2]=72
+ cpl[3]=72
 end
 
 function gd_init()
@@ -1406,27 +1041,24 @@ function gd_init()
  gd_3()
  gd_4()
  gd_5()
- gd_6()
- gd_7()
  for i = 0, 95 do
   div3[i + 1] = i \ 3
-  mod3[i + 1] = i % 3
  end
 end
 -- ==== GENERATED DATA END ====
 
 -- driftmania — gametank port (playable slice: track a1)
--- Adapted from "Driftmania" by Max Bize (maxbize)
+-- Adapted from "Driftmania" by Max Bize (maxbize / Frenchie14)
 -- https://github.com/maxbize/PICO-8 — licensed CC-BY-NC-SA 4.0.
 -- This hand-port to gtlua (real physics, real track data, real car art)
--- is released under the same license: CC-BY-NC-SA 4.0.
+-- is released under the same license: CC-BY-NC-SA 4.0. See LICENSE.
 -- See PORT_NOTES.md for every divergence from the original cart.
 --
 -- controls: ⬆️/🅾️ (GT A) accelerate, ⬇️ brake/reverse, ⬅️➡️ steer,
 --           ❎ (GT B) drift handbrake, START restart race
 --
--- build: node bin/gtlua.js build ports/driftmania/main.lua \
---          --sheet ports/driftmania/gfx.bin
+-- build: node ports/driftmania/build.mjs   (2 MB FLASH2M banked cart;
+--   the flat 32 KB CLI build overflows RAM+flash — see PORT_NOTES.md)
 --
 -- The original runs its physics in _update60; this port runs _update()
 -- (30 fps) with the cart's constants rescaled: per-frame velocity deltas
@@ -1501,24 +1133,54 @@ function sgn0(v)
   return 0
 end
 
+-- ---- packed-data unpackers -------------------------------------------------
+-- The generated tables pack two small values per gtlua int to fit the
+-- GameTank's ~7 KB RAM (see PORT_NOTES.md). All unpackers are pure and cheap.
+--   ckdt[i] = draw-kind (low byte) | uniform-tile (high byte)
+--   ctiles  = flat tile-def ids, two per int (low = even flat index)
+--   wpk     = per-angle/wheel offset, (x+8) | (y+8)<<8
+--   bpk     = per-angle bbox probe,  (dx+16) | (dy+16)<<8
+
+function ckd(i)
+  return ckdt[i] & 255
+end
+
+function ckt(i)
+  return ckdt[i] >> 8
+end
+
+-- flat 0-based tile-def index -> tile id (0-127)
+function ctile(idx)
+  local w = ctiles[(idx >> 1) + 1]
+  if (idx & 1) == 0 then
+    return w & 255
+  end
+  return w >> 8
+end
+
+-- tile-coord mod 3 (no runtime divide; div3 is precomputed)
+function m3(tc)
+  return tc - div3[tc + 1] * 3
+end
+
 -- ---- map lookups ----------------------------------------------------------
 
 function road_tile(tx, ty)
   local cg = cgrid[div3[ty + 1] * 30 + div3[tx + 1] + 1]
   local r = cg & 31
   if (r == 0) return 0
-  local k = ckd[r]
-  if (k < 16) return ckt[r]
-  return ctiles[(k - 16) * 9 + mod3[ty + 1] * 3 + mod3[tx + 1] + 1]
+  local k = ckd(r)
+  if (k < 16) return ckt(r)
+  return ctile((k - 16) * 9 + m3(ty) * 3 + m3(tx))
 end
 
 function prop_tile(tx, ty)
   local cg = cgrid[div3[ty + 1] * 30 + div3[tx + 1] + 1]
   local p = cg >> 10
   if (p == 0) return 0
-  local k = ckd[p + propb]
-  if (k < 16) return ckt[p + propb]
-  return ctiles[(k - 16) * 9 + mod3[ty + 1] * 3 + mod3[tx + 1] + 1]
+  local k = ckd(p + propb)
+  if (k < 16) return ckt(p + propb)
+  return ctile((k - 16) * 9 + m3(ty) * 3 + m3(tx))
 end
 
 function grass_at(px, py)
@@ -1543,8 +1205,9 @@ end
 function collides_at(x, y)
   local b = ai * 8
   for j = 1, 8 do
-    local px = x + bbx[b + j]
-    local py = y + bby[b + j]
+    local w = bpk[b + j]
+    local px = x + (w & 255) - 16
+    local py = y + (w >> 8) - 16
     if (px < 2 or px > 717 or py < 2 or py > 717) return 1
     local tx = px >> 3
     local ty = py >> 3
@@ -1597,11 +1260,19 @@ end
 
 -- per-pixel-step events: checkpoint lines (all 4 wheels, exact-pixel
 -- crossings like the cart) + drift trail from alternating rear wheels
+function wheelx(wb, j)
+  return (wpk[wb + j + 1] & 255) - 8
+end
+
+function wheely(wb, j)
+  return (wpk[wb + j + 1] >> 8) - 8
+end
+
 function step_events()
-  local b = ai * 8
+  local wb = ai * 4
   for j = 0, 3 do
-    local wx = carx + woff[b + j * 2 + 1]
-    local wy = cary + woff[b + j * 2 + 2]
+    local wx = carx + wheelx(wb, j)
+    local wy = cary + wheely(wb, j)
     for c = 1, ncp do
       local d1 = wx - cpx[c]
       local d2 = wy - cpy[c]
@@ -1616,8 +1287,9 @@ function step_events()
   end
   if drift != 0 then
     tstep = 1 - tstep
-    local wj = tstep * 4
-    add_trail(carx + woff[b + wj + 1], cary + woff[b + wj + 2], 0)
+    -- alternate the two rear wheels (offset-table wheels 0 and 2)
+    local wj = tstep * 2
+    add_trail(carx + wheelx(wb, wj), cary + wheely(wb, wj), 0)
   end
 end
 
@@ -1772,9 +1444,9 @@ function _update()
 
   -- wheel surface modifiers
   gwheels = 0
-  local wb = ai * 8
+  local wb = ai * 4
   for j = 0, 3 do
-    if (grass_at(carx + woff[wb + j * 2 + 1], cary + woff[wb + j * 2 + 2]) != 0) gwheels += 1
+    if (grass_at(carx + wheelx(wb, j), cary + wheely(wb, j)) != 0) gwheels += 1
   end
   local modturn = 1
   local modcorr = 1
@@ -1909,7 +1581,7 @@ function _update()
 
   -- dirt kicked up by a front wheel on grass (once per frame)
   if gwheels > 0 and spd > 1 then
-    add_trail(carx + woff[wb + 3], cary + woff[wb + 4], 4)
+    add_trail(carx + wheelx(wb, 1), cary + wheely(wb, 1), 4)
   end
 
   -- camera: lead toward travel direction, hard-clamped to the world
@@ -1967,8 +1639,8 @@ function draw_tiles(k, wx, wy)
   for ty2 = 0, 2 do
     local wyy = wy + ty2 * 8
     for tx2 = 0, 2 do
+      local t = ctile(bidx)
       bidx += 1
-      local t = ctiles[bidx]
       if (t != 0) spr(t, wx + tx2 * 8, wyy)
     end
   end
@@ -2072,7 +1744,7 @@ function _draw()
         local wx = cx * 24
         local r = cg & 31
         if r != 0 then
-          local k = ckd[r]
+          local k = ckd(r)
           if k >= 16 then
             draw_tiles(k, wx, wy)
           else
@@ -2081,7 +1753,7 @@ function _draw()
         end
         local d = (cg >> 5) & 31
         if d != 0 then
-          local k2 = ckd[d + decb]
+          local k2 = ckd(d + decb)
           if k2 >= 16 then
             draw_tiles(k2, wx, wy)
           else
@@ -2093,7 +1765,7 @@ function _draw()
           pcount += 1
           plx[pcount] = wx
           ply[pcount] = wy
-          plk[pcount] = ckd[p + propb]
+          plk[pcount] = ckd(p + propb)
         end
       end
     end
@@ -2111,8 +1783,9 @@ function _draw()
          cpy[c] + cpdy[c] * (cpl[c] - 1), 7)
   end
 
-  -- the car (pre-rotated 16x16 frames baked into sheet cells 128-255)
-  spr(carfr[ai + 1], carx - 8, cary - 10, 2, 2)
+  -- the car (pre-rotated 16x16 frames baked into sheet cells 128-255;
+  -- cell = 128 + (ai>>3)*32 + (ai&7)*2, per gen.js's carCell layout)
+  spr(128 + (ai >> 3) * 32 + (ai & 7) * 2, carx - 8, cary - 10, 2, 2)
 
   -- props above the car (trees, fences)
   for i = 1, pcount do
