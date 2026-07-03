@@ -298,7 +298,7 @@ feels productive and changes nothing players feel.
 |---|---|---|---|
 | ufo-swamp | 3.0 | 20 | sprites |
 | celeste-like | 3.0 | 20 | fills |
-| cherry-bomb | 3.9 | 15 | sprites |
+| cherry-bomb (combat) | 4.7 (title 3.9) | 12.6 | entity volume: waves of 24 enemies + 3 pools, update floor 3.1 |
 | jelpi | 4.0 | 15 | fills + sprites |
 | combo-pool | 4.4 | 14 | sprites |
 | just-one-boss | 7.0 | 8.6 | sprites |
