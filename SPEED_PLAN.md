@@ -177,6 +177,20 @@ profile showing global loads are actually hot. The measured levers that DO move
 the frame are entity-draw batching (~3.9 vsyncs of per-sprite blits) and a
 cheaper fixed-point call path — NOT addressing-mode micro-opts.
 
+### ACP music-sequencer offload: PREMISE DISPROVEN (2026-07-03)
+
+The audit's highest-ceiling perf idea — move the per-frame music sequencer off
+the main 6502 onto the idle audio coprocessor — rests on the premise that music
+sequencing is a meaningful main-CPU cost. It isn't. A busy update loop paces
+**4.00 vsyncs/frame with music ON and 4.00 with music OFF — identical.**
+`gt_music_tick` (envelope advance + song step) is invisible against blit
+dispatch and fixed-point call overhead. Writing a custom self-sequencing ACP
+firmware — high risk, could regress the just-shipped FM audio — to offload a
+free tick buys nothing. NOT attempted. This is the THIRD audit-predicted lever
+(multiply, zp-globals, ACP-offload) that measured to exactly zero; the frame is
+blit-dispatch + fixed-point-CALL bound, full stop. Any future perf work must
+start from a profile of THOSE two, not from CPU-side micro-optimizations.
+
 ### 6. Banked audio done right (P1) + string pool (P2)
 gt_audio_init switches to the firmware's bank before the ARAM upload
 (mirroring the sheet loader), bank chosen by the CLI via -DGT_FW_BANK.
