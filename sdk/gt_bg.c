@@ -40,8 +40,9 @@ extern char bankflip;               /* BANK_SECOND_FRAMEBUFFER bit (bg-write pag
 extern const unsigned char *gt_sheet_ptr;   /* packed 4bpp sheet, or NULL */
 #ifdef GT_BANKED
 extern unsigned char gt_cur_bank;           /* current $8000 bank (gt_bank.s) */
-/* the decode body, exiled to bank 2 (B2CODE) with the sheet; see below */
+/* the decode bodies, exiled to bank 2 (B2CODE) with the sheet; see below */
 void gt_bg_compose_impl(int *map, int cols, int cx, int cy, int cw, int ch);
+void gt_bg_tile_impl(int t, int px, int py);
 #endif
 
 #define MODE_NONE 0
@@ -234,4 +235,90 @@ void gt_bg_draw(int sx, int sy) {
     vram[START] = 1;
     bg_drain();
     bg_restore_draw_state();          /* hand the blitter back in normal state */
+}
+
+/* ---- atlas-building primitives -------------------------------------------
+ * gt.bg_clear() + gt.bg_tile(t, px, py) let a game paint the 256x256 canvas
+ * freeform — an ATLAS of pre-rendered multi-tile chunks, a big boss sprite,
+ * anything — without materializing a full tile map in scarce RAM (a 30x18
+ * atlas map alone would be >1 KB). Stamp tiles anywhere (8px-aligned so a
+ * tile never straddles a quadrant), then blit any rect back per frame with
+ * gt.gspr(). All one-time init cost. */
+
+/* Clear the whole 256x256 canvas to color 0 (all four quadrants). */
+void gt_bg_clear(void) {
+    unsigned char q; unsigned int p;
+    unsigned char c0 = gt_p8pal(0);
+    for (q = 0; q < 4; ++q) {
+        bg_enter_write_q(q);
+        for (p = 0; p < 16384u; ++p) vram[p] = c0;
+    }
+    bg_restore_draw_state();
+}
+
+/* Stamp sheet tile t (0-255) at canvas pixel (px,py); multiples of 8 only.
+ * Same 4bpp sheet decode as compose, one 8x8 cell. */
+#ifdef GT_BANKED
+#pragma code-name ("B2CODE")
+#define GT_BG_TILE gt_bg_tile_impl
+#else
+#define GT_BG_TILE gt_bg_tile
+#endif
+void GT_BG_TILE(int t, int px, int py) {
+    unsigned char py2, b, k, quad, lx, sy0;
+    unsigned char lut[16];
+    const unsigned char *sheet = gt_sheet_ptr;
+    if (!sheet) return;
+    if (t <= 0 || t > 255) return;
+    for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
+    quad = (unsigned char)((((py >> 7) & 1) << 1) | ((px >> 7) & 1));
+    bg_enter_write_q(quad);
+    lx  = (unsigned char)(px & 0x7F);
+    sy0 = (unsigned char)(((t >> 4) & 15) << 3);
+    for (py2 = 0; py2 < 8; ++py2) {
+        const unsigned char *sp =
+            sheet + (((unsigned int)(sy0 + py2) << 6) | (unsigned int)((t & 15) << 2));
+        unsigned char *dp =
+            vram + (((unsigned int)((py + py2) & 0x7F) << 7) | lx);
+        for (k = 0; k < 4; ++k) {
+            b = *sp++;
+            *dp++ = lut[b & 15];
+            *dp++ = lut[b >> 4];
+        }
+    }
+    bg_restore_draw_state();
+}
+
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+/* fixed-bank stub, same pattern as gt_bg_compose */
+void gt_bg_tile(int t, int px, int py) {
+    unsigned char saved_bank = gt_cur_bank;
+    if (!gt_sheet_ptr) return;
+    gt_bank(GT_SHEET_BANK);
+    gt_bg_tile_impl(t, px, py);
+    gt_bank(saved_bank);
+}
+#endif
+
+/* Queue-blit a w x h rect FROM the canvas at (gx,gy) to screen (x,y) — a
+ * "sprite" cut from the composed 256x256 page. Camera-adjusted and colorkey-
+ * transparent like spr(); rides the normal blit queue (the per-entry bank
+ * byte in the color slot selects the bg GRAM group), so it interleaves freely
+ * with sheet sprites and fills. This is what makes a chunk ATLAS pay: a
+ * pre-rendered 24x24 block is ONE blit instead of nine 8x8 tile blits. */
+void gt_gspr(int gx, int gy, int w, int h, int x, int y) {
+    x -= gt_cam_x;
+    y -= gt_cam_y;
+    if (x <= -w || x > 127 || y <= -h || y > 127) return;
+    gt_ent[0] = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY;   /* colorkey copy */
+    gt_ent[1] = (unsigned char)x;
+    gt_ent[2] = (unsigned char)y;
+    gt_ent[3] = (unsigned char)gx;
+    gt_ent[4] = (unsigned char)gy;
+    gt_ent[5] = (unsigned char)w;
+    gt_ent[6] = (unsigned char)h;
+    gt_ent[7] = (unsigned char)(gt_qbank | BG_GROUP);   /* per-entry bank */
+    gt_draw_mode = MODE_NONE;
+    gt_q_push();
 }

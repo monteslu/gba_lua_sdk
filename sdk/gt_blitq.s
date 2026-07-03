@@ -94,8 +94,16 @@ _gt_q_kick:
         BEQ @empty
         LDA _gt_q+0,x           ; per-blit dma flags
         STA DMA_Flags
-        LDA _gt_qbank
-        STA Bank_Reg
+        ; bank: colorfill entries use the frame's write bank; COPY entries
+        ; carry their own bank byte in the (otherwise unused) color slot, so
+        ; one queue can mix sheet sprites with blits from other GRAM groups
+        ; (gt.gspr's composed-canvas sprites).
+        AND #$08                ; DMA_COLORFILL_ENABLE?
+        BNE @fill
+        LDA _gt_q+7,x           ; copy: bank rides in the color slot
+        BRA @bank
+@fill:  LDA _gt_qbank
+@bank:  STA Bank_Reg
         LDA _gt_q+1,x
         STA VDMA_Base
         LDA _gt_q+2,x
@@ -274,7 +282,8 @@ _gt_p8_spr_z:
         AND #$F0
         LSR A
         STA _gt_ent+4           ; GY = cell row * 8 (top edge)
-        STZ _gt_ent+7           ; COLOR unused for sprite copies
+        LDA _gt_qbank           ; copy blits carry their bank in the color slot
+        STA _gt_ent+7           ; (sheet sprites: the frame's write bank)
         ; ---- hardware flip (gt_a5: bit0 = flip X, bit1 = flip Y) ----
         ; The blitter mirrors when WIDTH/HEIGHT bit7 is set: it one's-complements
         ; the source counter, and picks the GRAM quadrant from the INVERTED bit7.

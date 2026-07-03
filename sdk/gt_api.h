@@ -80,6 +80,9 @@ void gt_starfield_draw(void);       /* plot the whole field (one CPU pass) */
 /* offscreen-GRAM background canvas (gt_bg.c) */
 void gt_bg_compose(int *map, int cols, int cx, int cy, int cw, int ch);
 void gt_bg_draw(int sx, int sy);
+void gt_bg_clear(void);                      /* clear the 256x256 canvas */
+void gt_bg_tile(int t, int px, int py);      /* stamp one sheet tile (8px grid) */
+void gt_gspr(int gx, int gy, int w, int h, int x, int y);  /* blit FROM canvas */
 unsigned char gt_p8pal(unsigned char idx);   /* p8 index -> hw color (pal-aware) */
 extern const unsigned char *gt_sheet_ptr;
 void gt_p8_rect(int x0, int y0, int x1, int y1, int c);

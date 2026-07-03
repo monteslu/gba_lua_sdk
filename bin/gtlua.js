@@ -199,7 +199,7 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
   // the ~2.7 KB sfx/music sequencer + its tables (usesMusic). Reserve for them
   // so the game-function packer doesn't overfill bank 2 and fail to converge.
   const B2_SDK_RESERVE =
-    (usesBg ? 700 : 0) + (usesAudio ? 4096 : 0) + (usesMusic ? 2800 : 0);
+    (usesBg ? 1200 : 0) + (usesAudio ? 4096 : 0) + (usesMusic ? 2800 : 0);
   const capacity = {
     b0: BANK_SIZE - BANK_MARGIN,
     b1: BANK_SIZE - BANK_MARGIN,
@@ -334,7 +334,9 @@ function build(entry, outPath, sheetPath) {
   // gt_bg (offscreen-GRAM background) is only linked when the game uses it —
   // its compose body rides in bank 2 with the sheet, so linking it into a game
   // that doesn't need it just steals bank-2 space from the game's own code.
-  const usesBg = result.c.includes("gt_bg_compose(") || result.c.includes("gt_bg_draw(");
+  const usesBg = result.c.includes("gt_bg_compose(") || result.c.includes("gt_bg_draw(") ||
+    result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(") ||
+    result.c.includes("gt_gspr(");
   writeFileSync(B(`${name}.c`), result.c);
   writeFileSync(B("sheet.c"), makeSheetC(sheetPath, false));
 

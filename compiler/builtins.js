@@ -92,6 +92,17 @@ export const GT_MEMBERS = {
   bg_compose: { kind: "fn", params: [
     ["array", false], ["int", false], ["int", false], ["int", false],
     ["int", false], ["int", false]], ret: "void", c: "gt_bg_compose" },
+  // Freeform canvas building (atlases of pre-rendered chunks, big composed
+  // sprites): clear the 256x256 canvas, stamp individual sheet tiles anywhere
+  // (multiples of 8), then gt.gspr(gx,gy,w,h,x,y) queue-blits any rect of the
+  // canvas to the screen — camera-adjusted + colorkey like spr(), ONE blit no
+  // matter how many tiles it covers.
+  bg_clear: { kind: "fn", params: [], ret: "void", c: "gt_bg_clear" },
+  bg_tile: { kind: "fn", params: [["int", false], ["int", false], ["int", false]],
+    ret: "void", c: "gt_bg_tile" },
+  gspr: { kind: "fn", params: [
+    ["int", false], ["int", false], ["int", false], ["int", false],
+    ["coord", false], ["coord", false]], ret: "void", c: "gt_gspr" },
   bg_draw: { kind: "fn", params: [["coord", true], ["coord", true]], ret: "void", c: "gt_bg_draw" },
 };
 
