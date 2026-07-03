@@ -55,3 +55,16 @@ cherrybomb.p8 compiles and plays, the features below are done by definition.
 The five sketch games in ports/ get renamed to examples/ status or replaced
 outright by the real ports as they land — nothing labeled "port" until it is
 the real game.
+
+## sfx converter (landed 2026-07-02)
+
+- [x] `scripts/p8sfx.mjs` — PICO-8 `__sfx__` → paste-able gtlua block
+  (note-event arrays + a one-channel `sfx_play/sfx_tick` player on
+  channel 3). Reads text `.p8` AND `.p8.png` extracts (`cart.bin`,
+  0x3200 region; layouts round-trip verified). Pitch: gt = p8 + 24
+  (`gt.note` sounds MIDI+12 on this stack — FFT-verified; see
+  docs/sfx.md for the octave analysis, effect approximations, and the
+  gametank-libretro `irqCounter` starvation bug found on the way).
+  Verified end-to-end: newleste 9/18/20 + a cherrybomb jingle play the
+  right contour on the emulator (Goertzel beats 20/20 shuffled controls).
+  Feature 3's remaining half is `__music__` (patterns → the 4 channels).
