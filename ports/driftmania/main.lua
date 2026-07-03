@@ -1377,6 +1377,7 @@ end
 
 function _init()
   gd_init()
+  atlas_init()
   reset()
 end
 
@@ -1634,15 +1635,32 @@ end
 
 -- ---- draw -------------------------------------------------------------------
 
+-- PERF: chunk kinds are pre-rendered into a GRAM atlas at init (atlas_init),
+-- so a 3x3-tile chunk is ONE gt.gspr blit instead of nine spr() blits — the
+-- track was ~200 tile blits per frame, far past the saturated-frame budget.
+-- Atlas slot for kind k: ((k-16) & 7, (k-16) >> 3) on a 24px grid (mask+shift,
+-- no modulo). Empty tiles stay canvas color 0 = colorkey-transparent, exactly
+-- like the spr() path skipped them. See docs/performance.md.
 function draw_tiles(k, wx, wy)
-  local bidx = (k - 16) * 9
-  for ty2 = 0, 2 do
-    local wyy = wy + ty2 * 8
-    for tx2 = 0, 2 do
-      local t = ctile(bidx)
-      bidx += 1
-      if (t != 0) spr(t, wx + tx2 * 8, wyy)
+  local a = k - 16
+  gt.gspr((a & 7) * 24, (a >> 3) * 24, 24, 24, wx, wy)
+end
+
+function atlas_init()
+  gt.bg_clear()
+  local a = 0
+  while a <= 52 do
+    local bidx = a * 9
+    local bx = (a & 7) * 24
+    local by = (a >> 3) * 24
+    for ty2 = 0, 2 do
+      for tx2 = 0, 2 do
+        local t = ctile(bidx)
+        bidx += 1
+        if (t != 0) gt.bg_tile(t, bx + tx2 * 8, by + ty2 * 8)
+      end
     end
+    a += 1
   end
 end
 
