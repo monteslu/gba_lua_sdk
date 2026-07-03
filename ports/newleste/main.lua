@@ -196,11 +196,6 @@ local platy = array(16)
 local plats = array(16)
 local platn = 0
 
--- sfx (SILENT: linking gt.note pulls the 4.3KB ACP firmware into the
--- FLASH2M fixed bank's RODATA, which overflows it — see PORT_NOTES.md.
--- The cart's sfx ids still flow through sfx_play so audio can be
--- reinstated the moment the SDK banks the firmware blob.)
-local sfx_last = 0
 
 -- ---------------------------------------------------------------------
 -- generated map data (node ports/newleste/tools/genassets.mjs)
@@ -296,10 +291,17 @@ function tile_at(x, y)
 end
 
 -- ---------------------------------------------------------------------
--- sfx (silent — see the note at sfx_last and PORT_NOTES.md)
+-- sfx (SILENT — the ACP audio firmware does not fit; see PORT_NOTES.md).
+-- The cart's __sfx__ 9-22 were converted to a gtlua note-event player
+-- (scripts/p8sfx.mjs) and wired through here, but linking gt.note pulls
+-- the 4312-byte ACP firmware RODATA into the FLASH2M FIXED bank, whose
+-- 16 KB already holds 13.9 KB of runtime CODE + ~1.5 KB RODATA — adding
+-- the firmware overflows the fixed bank's RODATA by 3758 bytes. The SDK
+-- can't bank that RODATA, so sfx ids just flow through sfx_play (a no-op)
+-- and audio can be reinstated the moment the SDK banks the firmware blob.
 -- ---------------------------------------------------------------------
 function sfx_play(n)
-  sfx_last = n
+  -- silent: the ACP firmware overflows the fixed bank for a game this size
 end
 
 function psfx(n)
