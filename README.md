@@ -159,6 +159,15 @@ cc65 startup/linker files) · `bin/gtlua.js` CLI · `examples/` ·
 `test/` (`npm test`) · [SPEC.md](SPEC.md) language reference ·
 [PICO8.md](PICO8.md) design doc · [PROVENANCE.md](PROVENANCE.md).
 
+## Making it fast
+
+The GameTank is ~1000× slower than the machine PICO-8 runs on, so a naive port
+can drop to single-digit fps. **[docs/performance.md](docs/performance.md)** is
+the field guide: the two things that dominate a frame (blit count and
+fixed-point math), the ~19,000-cycle fixed-point `%` / `/` footgun and how to
+dodge it, per-primitive blit budgets, and how to profile a slow cart by
+bisection. Read it before optimizing — measure, don't guess.
+
 ## License
 
 MIT. `sdk/` hardware files adapted from
