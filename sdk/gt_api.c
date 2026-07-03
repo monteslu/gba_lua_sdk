@@ -223,6 +223,10 @@ void gt_p8_spr(int n, int x, int y, int w, int h, int flip) {
     gt_p8_spr_z();
 }
 
+/* current fill color for the argless draw-core hot path (staging out, no
+ * cc65 arg-push). Set by callers before box_raw/hspan_raw/fill_clipped_z. */
+static unsigned char fc_col;
+
 /* raw fill; caller guarantees 0<=x,y<=127, 1<=w,h<=127 (after clipping) */
 static void box_raw(unsigned char x, unsigned char y,
                     unsigned char w, unsigned char h, unsigned char color) {
@@ -237,12 +241,56 @@ static void box_raw(unsigned char x, unsigned char y,
     Q_COMMIT();
 }
 
+/* Lean single-scanline horizontal span at height 1, x0..x1 inclusive, in
+ * fc_col. This is the hot inner primitive for circfill/circ/line: those
+ * callers guarantee x0<=x1 and a span never 128 wide (r<=63), so it skips
+ * fill_clipped_z's int-swap, both-axes-full, and 128-split logic — the exact
+ * per-scanline overhead that made circfill blow the blit budget. Off-screen
+ * rows are rejected whole; partial rows clip to [0,127]. Coords are int so a
+ * negative x0/large x1 clamps correctly before narrowing to the 7-bit blit. */
+static void hspan_raw(int x0, int x1, int y) {
+    if (y < 0 || y > 127 || x1 < 0 || x0 > 127) return;
+    if (x0 < 0) x0 = 0;
+    if (x1 > 127) x1 = 127;
+    gt_ent[0] = QF_RECT;
+    gt_ent[1] = (unsigned char)x0;
+    gt_ent[2] = (unsigned char)y;
+    gt_ent[3] = 0;
+    gt_ent[4] = 0;
+    gt_ent[5] = (unsigned char)(x1 - x0 + 1);
+    gt_ent[6] = 1;
+    gt_ent[7] = (unsigned char)~fc_col;
+    Q_COMMIT();
+}
+
 /* clipped fill in screen coords: corners in gt_a0..gt_a3 (inclusive, camera
  * already applied), color in fc_col. Argless — the draw core's hot path has
  * no cc65 arg-push anywhere: zp in, staging out. Clobbers gt_a0..a3. */
-static unsigned char fc_col;
 static void fill_clipped_z(void) {
     int t;
+    /* Hot fast path: all four corners already on-screen and ordered, and
+     * neither span the full 128 (the common case for game rects — camera-
+     * adjusted sprites/HUD boxes that aren't clipping a screen edge or filling
+     * the whole axis). Skips the four int range-clamps and both 128-span
+     * splits below, staging in one shot. `(unsigned)v <= 127` folds the >=0
+     * and <=127 tests into one branch. A full-128 span (width/height == 128,
+     * which the 7-bit counter can't encode) fails `gt_a2 - gt_a0 < 127` and
+     * falls through to the slow path that splits it. */
+    if ((unsigned)gt_a0 <= 127 && (unsigned)gt_a1 <= 127 &&
+        (unsigned)gt_a2 <= 127 && (unsigned)gt_a3 <= 127 &&
+        gt_a0 <= gt_a2 && gt_a1 <= gt_a3 &&
+        gt_a2 - gt_a0 < 127 && gt_a3 - gt_a1 < 127) {
+        gt_ent[0] = QF_RECT;
+        gt_ent[1] = (unsigned char)gt_a0;
+        gt_ent[2] = (unsigned char)gt_a1;
+        gt_ent[3] = 0;
+        gt_ent[4] = 0;
+        gt_ent[5] = (unsigned char)(gt_a2 - gt_a0 + 1);
+        gt_ent[6] = (unsigned char)(gt_a3 - gt_a1 + 1);
+        gt_ent[7] = (unsigned char)~fc_col;
+        Q_COMMIT();
+        return;
+    }
     if (gt_a0 > gt_a2) { t = gt_a0; gt_a0 = gt_a2; gt_a2 = t; }
     if (gt_a1 > gt_a3) { t = gt_a1; gt_a1 = gt_a3; gt_a3 = t; }
     if (gt_a2 < 0 || gt_a3 < 0 || gt_a0 > 127 || gt_a1 > 127) return;
@@ -482,17 +530,19 @@ void gt_p8_circfill_z(void) {
     if (r < 0) return;
     if (r == 0) { pset_raw(cx, cy, col); return; }
     fc_col = col;
-    /* midpoint circle -> two horizontal spans per step pair */
+    /* midpoint circle -> two horizontal spans per step pair. Each scanline
+     * goes through the lean hspan_raw (spans are pre-ordered and <128 wide),
+     * not the full fill_clipped_z — this is what keeps circfill in budget. */
     x = r; y = 0; d = 1 - r;
     while (y <= x) {
-        gt_a0 = cx - x; gt_a1 = cy + y; gt_a2 = cx + x; gt_a3 = cy + y; fill_clipped_z();
-        if (y != 0) { gt_a0 = cx - x; gt_a1 = cy - y; gt_a2 = cx + x; gt_a3 = cy - y; fill_clipped_z(); }
+        hspan_raw(cx - x, cx + x, cy + y);
+        if (y != 0) hspan_raw(cx - x, cx + x, cy - y);
         if (d < 0) {
             d += (y << 1) + 3;
         } else {
             if (x != y) {
-                gt_a0 = cx - y; gt_a1 = cy + x; gt_a2 = cx + y; gt_a3 = cy + x; fill_clipped_z();
-                gt_a0 = cx - y; gt_a1 = cy - x; gt_a2 = cx + y; gt_a3 = cy - x; fill_clipped_z();
+                hspan_raw(cx - y, cx + y, cy + x);
+                hspan_raw(cx - y, cx + y, cy - x);
             }
             d += ((y - x) << 1) + 5;
             --x;
