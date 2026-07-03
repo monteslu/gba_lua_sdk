@@ -266,6 +266,51 @@ rodata-name pragma so print() literals stop overflowing the fixed bank.
 No per-game changes allowed — that's the whole point. Cherry Bomb combat
 is the acceptance benchmark.
 
+## NEXT SPRINT: the codegen program — make the transpiler emit tighter 6502
+
+THE CASE (measured 2026-07-04): update floors cluster at ~3.0 vsyncs across
+four carts = ~60k cycles/frame of compiled game logic each; the asm sprite
+path budgets 1.8x the compiled fill path for comparable work. The cc65 tax is
+NOT addressing modes (zp-globals measured zero) — it is:
+  (a) 16-bit-everything arithmetic where values fit in a byte,
+  (b) the cdecl software-stack call convention on per-frame functions,
+  (c) expression traffic through the A/X primary register + runtime compares.
+Ranked tracks, measure-first on the update floors:
+
+### C1. 8-bit narrowing pass (biggest, hardest)
+Range analysis in the checker: loop bounds, `& mask` results, constants,
+array sizes, and 8.8-style scaled values prove many locals/globals/pool
+fields fit signed/unsigned char. Emit char types; cc65 char ops are roughly
+half the cost of int. MUST respect PICO-8 16-bit wrap semantics — narrow only
+on proven ranges, never on inference vibes. Prototype on loop counters (the
+`for i` induction var with constant bounds is trivially provable) and
+measure before widening scope.
+
+### C2. Peephole pass over the generated .s (safest, incremental)
+gtlua already post-reads cc65 output for sizes; add a pattern-rewriter for
+the classic cc65 misses (redundant lda after sta, 16-bit ops on known-zero
+high bytes, jsr/rts -> jmp tails, push/pop pairs). Every game benefits with
+zero source or emitter semantics changes. Validate: byte-identical
+framebuffer on the example carts + the movement traces.
+
+### C3. zp-fastcall for hot user functions (proven pattern, small-medium)
+The draw builtins' gt_a0..a5 zp ABI already dodges cdecl (that's why spr is
+cheap). The emitter controls both definition and every call site of user
+functions — pass the first 2-3 int args of NON-RECURSIVE hot functions in zp
+slots. p_check_solid/appr-class callees are called 5-10x/frame everywhere.
+
+### C0 FIRST — the ceiling probe
+Before building any of it: hand-asm ONE hot compiled function (celeste2
+box_solid or newleste p_is_flag), measure the per-call delta with the
+amplifier. That number bounds what perfect codegen buys and calibrates how
+much of each floor is cc65 tax vs inherent work. If the probe says 2x,
+the program is worth weeks; if 1.2x, stop at C2.
+
+HONEST EXPECTATION: floors 3.0 -> ~2.4-2.6 (logic ~2x) puts several carts
+near 20-25fps and future designed-for-GameTank games comfortably at 30-60.
+It does NOT make 24-enemy PICO-8 ports hit 30 by itself — entity volume and
+blit count still rule (see the cart ceilings above).
+
 ## Explicitly out of scope (for now)
 - Emitting 6502 directly from our compiler (own code generator). The
   biggest possible win but weeks of work; stages 2-5 recover most of the
