@@ -299,6 +299,19 @@ cheap). The emitter controls both definition and every call site of user
 functions — pass the first 2-3 int args of NON-RECURSIVE hot functions in zp
 slots. p_check_solid/appr-class callees are called 5-10x/frame everywhere.
 
+### POOL-FIELD NARROWING: attempted, reverted (2026-07-04, session 4)
+
+Design: pool fields whose every store is a plain `=` of a constant 0-255
+(state ids, sprite numbers) declare as unsigned char — 12 fields narrowed in
+cherry-bomb and celeste2 each. REVERTED for two reasons: (1) celeste2 gameplay
+regressed 7.10 -> 7.55 (the third instance of cc65 shape-sensitivity — u8
+element + 16-bit mixed arithmetic reads are not automatically cheaper); (2) a
+CORRECTNESS hole — the store-evidence hook only watched the single-assign
+path, so a field written via multi-assignment could stay "byte-eligible"
+while silently truncating. A future attempt needs: evidence collection on
+EVERY store path (multi-assign included), a verification pass that asserts
+each narrowed field's store sites, and per-shape gating like the index fold.
+
 ### RESULTS SO FAR (2026-07-04, first codegen session)
 
 C2 peephole: BUILT + SHIPPED (compiler/peephole.js, runs on every cc65 .s).
