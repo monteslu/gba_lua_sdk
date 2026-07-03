@@ -1635,16 +1635,11 @@ end
 
 -- ---- draw -------------------------------------------------------------------
 
--- PERF: chunk kinds are pre-rendered into a GRAM atlas at init (atlas_init),
--- so a 3x3-tile chunk is ONE gt.gspr blit instead of nine spr() blits — the
--- track was ~200 tile blits per frame, far past the saturated-frame budget.
--- Atlas slot for kind k: ((k-16) & 7, (k-16) >> 3) on a 24px grid (mask+shift,
--- no modulo). Empty tiles stay canvas color 0 = colorkey-transparent, exactly
--- like the spr() path skipped them. See docs/performance.md.
-function draw_tiles(k, wx, wy)
-  local a = k - 16
-  gt.gspr((a & 7) * 24, (a >> 3) * 24, 24, 24, wx, wy)
-end
+-- PERF: chunk kinds are pre-rendered into a GRAM atlas at init (atlas_init);
+-- each 3x3-tile chunk draws as ONE gt.gspr blit, INLINED at the three call
+-- sites — the cc65 call overhead for the old draw_tiles() wrapper measured
+-- ~1,200 cycles per invocation x ~23 chunks/frame = 0.47 vsyncs of pure
+-- calling convention. See docs/performance.md.
 
 function atlas_init()
   gt.bg_clear()
@@ -1764,7 +1759,7 @@ function _draw()
         if r != 0 then
           local k = ckd(r)
           if k >= 16 then
-            draw_tiles(k, wx, wy)
+            gt.gspr(((k - 16) & 7) * 24, ((k - 16) >> 3) * 24, 24, 24, wx, wy)
           else
             rectfill(wx, wy, wx + 23, wy + 23, k)
           end
@@ -1773,7 +1768,7 @@ function _draw()
         if d != 0 then
           local k2 = ckd(d + decb)
           if k2 >= 16 then
-            draw_tiles(k2, wx, wy)
+            gt.gspr(((k2 - 16) & 7) * 24, ((k2 - 16) >> 3) * 24, 24, 24, wx, wy)
           else
             rectfill(wx, wy, wx + 23, wy + 23, k2)
           end
@@ -1809,7 +1804,7 @@ function _draw()
   for i = 1, pcount do
     local k = plk[i]
     if k >= 16 then
-      draw_tiles(k, plx[i], ply[i])
+      gt.gspr(((k - 16) & 7) * 24, ((k - 16) >> 3) * 24, 24, 24, plx[i], ply[i])
     else
       rectfill(plx[i], ply[i], plx[i] + 23, ply[i] + 23, k)
     end
