@@ -111,6 +111,21 @@ chunk blits per frame: **10.1 → 7.1 vsyncs (6 → 8.4 fps)**, pixel-identical.
 This works where a static `bg_compose` background can't — the world (720×720)
 never fits the canvas, but its 53 distinct chunk kinds do.
 
+A second shape for levels **wider than 256px but ≤128 tall**: compose the level
+as 128-tall strips (strip s = world x `[s*256,(s+1)*256)` at canvas rows
+`s*128..s*128+127`) and draw the camera window as **four** `gspr` blits (two
+x-pieces at the strip boundary × two 64-tall halves — the blitter's W/H are
+7-bit). newleste's whole map pass went from ~80 tile blits to 4: 9.0 → 7.1
+vsyncs. Cache which level the canvas holds so death-respawns skip the
+recompose (no reload hitch).
+
+**PAGE_OUT gotcha for long canvas work:** the emulator presents from the LIVE
+`$2007`, and compose/clear hold their own register state across many vsyncs —
+if that state drops the frameflip bit, the presented page goes out of phase
+with the flip protocol and screenshots catch half-drawn frames. The SDK's bg
+write states now preserve `frameflip`; if you ever hand-roll VDMA state, do the
+same.
+
 ### The budget is an overlap economy
 
 An important refinement, learned the hard way: **queued blits overlap your
@@ -285,7 +300,7 @@ feels productive and changes nothing players feel.
 | combo-pool | 4.4 | 14 | sprites |
 | just-one-boss | 7.0 | 8.6 | sprites |
 | driftmania | 7.1 (was 10.1) | 8.4 | chunk atlas landed; car physics next |
-| newleste | 9.0 (was 10.7) | 6.7 | draw (physics now 3× faster) |
+| newleste | 7.1 (was 10.7) | 8.5 | physics 3× + map on the canvas (4 blits) |
 | celeste2 (gameplay) | 7.1 (was 14.6) | 8.5 | tilemap + snow + physics |
 | just-one-boss (gameplay) | ~2.2 | ~29 | effectively at 30 fps |
 | combo-pool (gameplay) | 5.0 | 12 | division-heavy ball physics (unprofiled) |
