@@ -44,7 +44,7 @@ function drop()
       px[i] = drop_x
       py[i] = 14
       vx[i] = 0
-      vy[i] = 0.2
+      vy[i] = 0.4
       next_sz = 1 + flr(rnd(2))
       return
     end
@@ -53,7 +53,7 @@ function drop()
   gameover = 1
 end
 
-function _update60()
+function _update()
   if gameover == 1 then
     if btnp(4) then
       gameover = 0
@@ -65,8 +65,8 @@ function _update60()
     return
   end
 
-  if (btn(0)) drop_x -= 2
-  if (btn(1)) drop_x += 2
+  if (btn(0)) drop_x -= 3
+  if (btn(1)) drop_x += 3
   drop_x = mid(10, drop_x, 117)
   if (btnp(4)) drop()
 
@@ -74,10 +74,10 @@ function _update60()
   for i = 1, MAXB do
     if sz[i] > 0 then
       -- gravity + integrate
-      vy[i] += 0.06
+      vy[i] += 0.12
       px[i] += vx[i]
       py[i] += vy[i]
-      vx[i] *= 0.98
+      vx[i] *= 0.96
 
       -- walls and floor
       local r = radii[sz[i]]
@@ -92,33 +92,35 @@ function _update60()
       if py[i] > 124 - r then
         py[i] = 124 - r
         vy[i] = -vy[i] * 0.4
-        if (abs(vy[i]) < 0.15) vy[i] = 0
+        if (abs(vy[i]) < 0.3) vy[i] = 0
       end
 
       -- overflow check: resting above the line
-      if py[i] - r < 18 and abs(vy[i]) < 0.2 then
+      if py[i] - r < 18 and abs(vy[i]) < 0.4 then
         overflow += 1
       end
     end
   end
 
-  -- pairwise collide / merge
+  -- pairwise collide / merge (coarse reject in cheap int math first)
   for i = 1, MAXB do
     if sz[i] > 0 then
       for j = 1, MAXB do
         if j > i and sz[j] > 0 then
-          local dx = px[j] - px[i]
-          local dy = py[j] - py[i]
           local rr = radii[sz[i]] + radii[sz[j]]
-          local d2 = dx * dx + dy * dy
-          if d2 < rr * rr and d2 > 0 then
+          local dxi = flr(px[j]) - flr(px[i])
+          local dyi = flr(py[j]) - flr(py[i])
+          if abs(dxi) <= rr and abs(dyi) <= rr and dxi * dxi + dyi * dyi < rr * rr then
+            local dx = px[j] - px[i]
+            local dy = py[j] - py[i]
+            local d2 = dx * dx + dy * dy
             if sz[i] == sz[j] and sz[i] < 5 then
               -- merge j into i
               sz[i] += 1
               score += sz[i] * sz[i]
               px[i] = (px[i] + px[j]) / 2
               py[i] = (py[i] + py[j]) / 2
-              vy[i] = -0.8
+              vy[i] = -1.2
               sz[j] = 0
             else
               -- push apart + exchange a little velocity
@@ -170,7 +172,6 @@ function _draw()
       local x = flr(px[i])
       local y = flr(py[i])
       circfill(x, y, radii[sz[i]], cols[sz[i]])
-      circ(x, y, radii[sz[i]], 7)
       pset(x - radii[sz[i]] \ 2, y - radii[sz[i]] \ 2, 7)
     end
   end
@@ -178,7 +179,6 @@ function _draw()
   -- dropper + next marble
   rectfill(drop_x - 1, 0, drop_x + 1, 6, 6)
   circfill(drop_x, 10, radii[next_sz], cols[next_sz])
-  circ(drop_x, 10, radii[next_sz], 7)
 
   -- score bar
   rectfill(0, 0, mid(0, score \ 8, 127), 1, 10)

@@ -105,7 +105,7 @@ function hitwall(nx, ny)
   return 0
 end
 
-function _update60()
+function _update()
   if dead == 1 or win == 1 then
     if btnp(4) then
       dead = 0
@@ -118,22 +118,22 @@ function _update60()
     return
   end
 
-  wob += 0.02
+  wob += 0.04
 
   -- thrust
   if btn(4) and fuel > 0 then
-    vy -= 0.09
-    fuel -= 1
+    vy -= 0.18
+    fuel -= 2
     if (fuel < 0) fuel = 0
   end
-  if (btn(0)) vx -= 0.04
-  if (btn(1)) vx += 0.04
+  if (btn(0)) vx -= 0.08
+  if (btn(1)) vx += 0.08
 
   -- gravity + drag
-  vy += 0.045
-  vx *= 0.97
-  vy = mid(-1.6, vy, 1.6)
-  vx = mid(-1.4, vx, 1.4)
+  vy += 0.09
+  vx *= 0.94
+  vy = mid(-3, vy, 3)
+  vx = mid(-2.6, vx, 2.6)
 
   local ox = ux
   local oy = uy
@@ -149,7 +149,7 @@ function _update60()
     vy = -vy * 0.5
     if hurt == 0 then
       hp -= 1
-      hurt = 60
+      hurt = 30
       if (hp <= 0) dead = 1
     end
   end
@@ -166,7 +166,7 @@ function _update60()
 
   -- landing pad: refuel, and exit when all frogs held
   if abs(flr(ux) - padx) < 8 and abs(flr(uy) - pady) < 6 then
-    if (fuel < 100) fuel += 2
+    if (fuel < 100) fuel += 4
     if (fuel > 100) fuel = 100
     if frogs >= needed then
       if room == 1 then
@@ -183,7 +183,7 @@ function _draw()
   cls(0)
 
   -- swamp glow
-  circfill(64, 130, 30, 3)
+  rectfill(34, 122, 94, 127, 3)
 
   -- cave walls
   for i = 1, wn do
@@ -200,7 +200,7 @@ function _draw()
   for i = 1, fn do
     if flive[i] == 1 then
       local hop = flr(sin(wob + i * 0.3) * 2)
-      circfill(fx[i], fy[i] + hop, 3, 11)
+      rectfill(fx[i] - 2, fy[i] + hop - 2, fx[i] + 2, fy[i] + hop + 2, 11)
       pset(fx[i] - 1, fy[i] + hop - 2, 7)
       pset(fx[i] + 1, fy[i] + hop - 2, 7)
     end
@@ -222,7 +222,7 @@ function _draw()
   if hurt % 8 < 4 then
     local x = flr(ux)
     local y = flr(uy)
-    circfill(x, y - 2, 3, 12)                 -- dome
+    rectfill(x - 2, y - 4, x + 2, y - 1, 12)  -- dome
     rectfill(x - 6, y, x + 6, y + 2, 6)       -- saucer
     pset(x - 4, y + 3, 10)
     pset(x, y + 3, 10)
@@ -239,6 +239,6 @@ function _draw()
     rectfill(114 + i * 4, 2, 116 + i * 4, 4, 8)
   end
   for i = 1, frogs do
-    circfill(2 + i * 6, 8, 2, 11)
+    rectfill(i * 6 - 2, 6, i * 6 + 1, 9, 11)
   end
 end

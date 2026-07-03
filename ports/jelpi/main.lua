@@ -111,7 +111,7 @@ function _init()
   build_level()
 end
 
-function _update60()
+function _update()
   if dead == 1 or win == 1 then
     if btnp(4) then
       dead = 0
@@ -124,30 +124,30 @@ function _update60()
     return
   end
 
-  anim += 0.03
+  anim += 0.06
   if (hurt > 0) hurt -= 1
 
   -- run
   if btn(0) then
-    dx -= 0.15
+    dx -= 0.3
     face = -1
   else
     if btn(1) then
-      dx += 0.15
+      dx += 0.3
       face = 1
     else
-      dx *= 0.8
-      if (abs(dx) < 0.08) dx = 0
+      dx *= 0.65
+      if (abs(dx) < 0.15) dx = 0
     end
   end
-  dx = mid(-1.4, dx, 1.4)
+  dx = mid(-2.6, dx, 2.6)
 
   -- gravity
-  dy += 0.16
-  if (dy > 3) dy = 3
+  dy += 0.32
+  if (dy > 4) dy = 4
 
   -- jump
-  if (grounded == 1 and btnp(4)) dy = -2.7 grounded = 0
+  if (grounded == 1 and btnp(4)) dy = -3.8 grounded = 0
 
   local fxp = flr(x)
   local fyp = flr(y)
@@ -175,23 +175,23 @@ function _update60()
   -- critters patrol
   for i = 1, cn do
     if clive[i] == 1 then
-      cx[i] += cdir[i] * 0.4
+      cx[i] += cdir[i] * 0.8
       if (cx[i] < cx0[i]) cdir[i] = 1
       if (cx[i] > cx1[i]) cdir[i] = -1
 
       local ccx = flr(cx[i])
       if abs(fxp - ccx) < 6 and abs(fyp - cy[i]) < 8 then
-        if dy > 0.3 and fyp < cy[i] - 2 then
+        if dy > 0.5 and fyp < cy[i] - 2 then
           -- stomp!
           clive[i] = 0
-          dy = -1.8
+          dy = -2.5
           coins += 1
         else
           if hurt == 0 then
             hp -= 1
-            hurt = 60
-            dx = -face * 2
-            dy = -1
+            hurt = 30
+            dx = -face * 3
+            dy = -1.6
             if (hp <= 0) dead = 1
           end
         end
@@ -216,11 +216,9 @@ end
 function _draw()
   cls(12)                       -- sky
 
-  -- sun + clouds
-  circfill(108, 14, 8, 10)
-  circfill(30, 20, 6, 7)
-  circfill(40, 22, 7, 7)
-  circfill(22, 23, 5, 7)
+  -- sun + cloud
+  rectfill(102, 8, 114, 20, 10)
+  rectfill(24, 18, 46, 24, 7)
 
   -- platforms: dirt with grass tops
   for i = 1, pn do
@@ -235,7 +233,7 @@ function _draw()
   for i = 1, nn do
     if nlive[i] == 1 then
       local bob = flr(sin(anim + i * 0.2) * 2)
-      circfill(nx[i], ny[i] + bob, 2, 10)
+      rectfill(nx[i] - 1, ny[i] + bob - 1, nx[i] + 1, ny[i] + bob + 1, 10)
       pset(nx[i], ny[i] + bob - 1, 7)
     end
   end
@@ -244,8 +242,7 @@ function _draw()
   for i = 1, cn do
     if clive[i] == 1 then
       local ccx = flr(cx[i])
-      circfill(ccx, cy[i] + 2, 4, 8)
-      rectfill(ccx - 4, cy[i] + 4, ccx + 4, cy[i] + 6, 2)
+      rectfill(ccx - 4, cy[i] - 1, ccx + 4, cy[i] + 6, 8)
       pset(ccx - 2, cy[i], 7)
       pset(ccx + 2, cy[i], 7)
     end
@@ -260,7 +257,7 @@ function _draw()
     local px = flr(x)
     local py = flr(y)
     rectfill(px, py + 2, px + 4, py + 6, 9)          -- body
-    circfill(px + 2, py, 3, 15)                      -- head
+    rectfill(px, py - 2, px + 4, py + 1, 15)         -- head
     pset(px + 2 + face, py, 0)                       -- eye
     if grounded == 1 and abs(dx) > 0.2 then
       local step = flr(anim * 40) % 2
@@ -276,10 +273,10 @@ function _draw()
 
   -- hud: hp hearts + coin pips
   for i = 1, hp do
-    circfill(i * 8 - 3, 4, 2, 8)
+    rectfill(i * 8 - 5, 2, i * 8 - 2, 5, 8)
   end
   for i = 1, coins do
-    if (i < 16) circfill(120 - i * 6, 4, 2, 10)
+    if (i < 16) rectfill(118 - i * 6, 2, 121 - i * 6, 5, 10)
   end
 
   if dead == 1 then

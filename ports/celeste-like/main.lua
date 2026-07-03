@@ -101,7 +101,7 @@ end
 
 function die()
   deaths += 1
-  freeze = 12
+  freeze = 6
   respawn()
 end
 
@@ -122,7 +122,7 @@ function _init()
   load_room(1)
 end
 
-function _update60()
+function _update()
   if freeze > 0 then
     freeze -= 1
     return
@@ -142,27 +142,27 @@ function _update60()
     dy = ddy
   else
     -- run
-    local accel = 0.2
-    if (grounded == 0) accel = 0.12
+    local accel = 0.4
+    if (grounded == 0) accel = 0.24
     if btn(0) then
       dx -= accel
     else
       if btn(1) then
         dx += accel
       else
-        dx *= 0.8
-        if (abs(dx) < 0.1) dx = 0
+        dx *= 0.65
+        if (abs(dx) < 0.2) dx = 0
       end
     end
-    dx = mid(-1.6, dx, 1.6)
+    dx = mid(-3, dx, 3)
 
     -- gravity
-    dy += 0.18
-    if (dy > 3.2) dy = 3.2
+    dy += 0.36
+    if (dy > 4) dy = 4
 
     -- jump
     if grounded == 1 and btnp(4) then
-      dy = -3.1
+      dy = -4.4
       grounded = 0
     end
 
@@ -178,10 +178,10 @@ function _update60()
         ax = 1
         if (dx < 0) ax = -1
       end
-      ddx = ax * 3.4
-      ddy = ay * 3.4
-      if (ax ~= 0 and ay ~= 0) ddx = ax * 2.5 ddy = ay * 2.5
-      dtime = 8
+      ddx = ax * 5.4
+      ddy = ay * 5.4
+      if (ax ~= 0 and ay ~= 0) ddx = ax * 4 ddy = ay * 4
+      dtime = 5
       dashes -= 1
       freeze = 2
     end
@@ -249,10 +249,10 @@ end
 function _draw()
   cls(1)
 
-  -- background hills
-  circfill(20, 132, 24, 13)
-  circfill(70, 140, 34, 13)
-  circfill(115, 134, 26, 13)
+  -- background hills (kept cheap: one band + two small domes)
+  rectfill(0, 118, 127, 127, 13)
+  circfill(24, 118, 10, 13)
+  circfill(96, 118, 13, 13)
 
   -- platforms
   for i = 1, pn do
@@ -260,12 +260,13 @@ function _draw()
     rectfill(plx0[i], ply0[i], plx1[i], ply0[i] + 1, 11)
   end
 
-  -- spikes as triangles-ish teeth
+  -- spikes: cheap tooth strip (one fill + tip dots)
   for i = 1, sn do
-    local sx = spx0[i]
+    rectfill(spx0[i], spy[i] - 2, spx1[i], spy[i], 6)
+    local sx = spx0[i] + 2
     while sx < spx1[i] do
-      line(sx, spy[i], sx + 2, spy[i] - 4, 6)
-      line(sx + 4, spy[i], sx + 2, spy[i] - 4, 6)
+      pset(sx, spy[i] - 4, 6)
+      pset(sx, spy[i] - 3, 6)
       sx += 4
     end
   end

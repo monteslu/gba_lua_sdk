@@ -79,9 +79,24 @@ export function emit(chunk, symbols, file) {
     switch (op) {
       case "+": case "-":
         return cv(`(${expr(e.left, k)} ${op} ${expr(e.right, k)})`, k, want);
-      case "*":
+      case "*": {
         if (k === "int") return cv(`(${expr(e.left, "int")} * ${expr(e.right, "int")})`, "int", want);
+        // fixed result: (v<<16)*i == (v*i)<<16, so fixed*int needs only ONE
+        // long multiply (or a shift for power-of-two ints) — far cheaper
+        // than the 4-partial-product gt_fmul.
+        const intSide = e.left.tk === "int" ? e.left : (e.right.tk === "int" ? e.right : null);
+        const fixSide = intSide === e.left ? e.right : e.left;
+        if (intSide) {
+          if (intSide.kind === "number" && intSide.isInt) {
+            const v = Math.trunc(intSide.value);
+            if (v > 0 && (v & (v - 1)) === 0) {
+              return cv(`(${expr(fixSide, "fixed")} << ${Math.log2(v)})`, "fixed", want);
+            }
+          }
+          return cv(`(${expr(fixSide, "fixed")} * ${expr(intSide, "int")})`, "fixed", want);
+        }
         return cv(`gt_fmul(${expr(e.left, "fixed")}, ${expr(e.right, "fixed")})`, "fixed", want);
+      }
       case "/": {
         if (e.divConst) {
           if (e.left.tk === "int" && 16 - lg >= 0) {

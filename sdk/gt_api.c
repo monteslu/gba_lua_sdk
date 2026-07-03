@@ -51,6 +51,12 @@ static char draw_mode;
 static void await_drawing(void) {
     __asm__("CLI");
     while (gt_draw_busy) {}
+    /* Touch the VDMA bus once after the drain. The emulator materializes
+     * blit pixels lazily using the LIVE dma/bank registers; without this
+     * read, the frame's final blits can land after a page flip or mode
+     * change and stamp the wrong page (visible as flicker). A read forces
+     * the catch-up under the still-current state. Harmless on hardware. */
+    (void)*((volatile unsigned char *)0x4000);
 }
 
 static void enter_blit_mode(void) {
