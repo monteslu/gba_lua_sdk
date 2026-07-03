@@ -124,6 +124,51 @@ it. Fixed-point add/subtract are cheap, but fixed `*`/`/`/`%` are not (see §1).
 - Sub-pixel motion needs fixed point, but the *drawing* position is always a
   pixel — `flr()` at the draw boundary and do any wrap/compare in int space.
 
+### Shrink your fixed-point: 8.8 in an int
+
+When a fractional quantity has a small range — a speed that never exceeds ±8, a
+subpixel remainder always in (−1, 1) — you don't need 16.16 in a 4-byte long.
+Store it as **8.8 fixed-point in a plain int**: `value * 256`, where `256 = 1.0`.
+Every add, compare, and assignment is then cheap int math instead of 4-byte
+long arithmetic, and nothing that survives to a pixel is lost.
+
+```lua
+local pvy8 = 0                    -- player y speed, 8.8 (256 = 1.0)
+local pry8 = 0                    -- subpixel remainder, 8.8
+
+pvy8 += 54                        -- gravity 0.21  (0.21*256 ≈ 54)
+if pvy8 > 512 then pvy8 = 512 end -- max fall 2.0
+pry8 += pvy8                      -- accumulate subpixels
+local amt = (pry8 + 128) \ 256    -- == flr(rem + 0.5), bit-exact, a shift
+pry8 -= amt * 256
+py += amt                         -- whole pixels only
+```
+
+The `(x + 128) \ 256` round is **bit-exact** with the classic `flr(rem + 0.5)`
+pattern, and `\ 256` compiles to an arithmetic shift. Scale your constants once
+(±0.5% rounding on something like gravity is imperceptible) and comment the
+original value. This is how the newleste port runs the canonical Celeste
+movement engine — the whole player-physics state is 8.8 ints, and its movement
+trace stayed **bit-identical** to the 16.16 version.
+
+### Scan once, not three times
+
+Collision helpers love to re-scan the same tiles: newleste's `p_is_solid` did a
+one-way-platform check as *two extra full scans* of the same 2×2 tile window on
+top of the solid scan (~14k cycles per call, several calls per frame). Restructure
+to **one pass that collects every flag you need** (`solid = f & 1`, `oneway = f & 8`),
+then decide afterwards. Same trick, smaller scale: hoist `tile_at()`→`mget()`
+call chains out of inner loops — after the loop bounds are clamped, a direct
+`m[rowb]` array read with `rowb += 64` per row replaces two nested function
+calls per tile.
+
+And guard rarely-true work with a cheap **broad-phase test**: fall-floors ran
+three precise player-overlap calls per floor per frame; one inline box test
+(the union of the three rects) skips them all when the player is nowhere near —
+which is nearly every floor, nearly every frame. Springs decayed
+`spgdelta *= 0.75` forever after reaching exactly 0 — `if (spgdelta ~= 0)` ends
+that. Idle cost is real cost: profile the *standing still* frame too.
+
 ---
 
 ## How to profile a slow cart
@@ -143,6 +188,35 @@ Bisect:
 
 The pacing harness reads `_gt_ticks` vs `_gt_time_acc` over a fixed vsync window;
 2.00 vsyncs/frame == locked 30 fps.
+
+**Beware vsync quantization.** A frame ends by *waiting for the next vsync*, so
+frame time snaps up to whole vsyncs — a change worth 0.3 vsyncs can show
+**zero** pace difference if it doesn't cross a boundary, and small stub-based
+bisects all read as "no change". When the plateau hides your signal, use an
+**amplifier**: call the suspect function 10–30 extra times per frame and divide
+the pace delta by the extra calls.
+
+```lua
+-- temporarily, at the end of _update():
+if pmode == 2 then
+  for bi_ = 1, 29 do
+    local zz_ = p_is_solid(0, 1)   -- suspect under test
+  end
+end
+-- per-call cost ≈ (amped_pace − baseline_pace) / 29
+```
+
+Pick amp bodies that don't corrupt state (pure predicates are ideal; an update
+that converges, like hair smoothing, is fine too). This is how the newleste
+physics work found `p_is_solid` at ~14k cycles/call and hair smoothing at ~13k
+per frame after ordinary bisecting showed nothing.
+
+**Verify with a movement trace, not vibes.** Before touching physics, record a
+deterministic trace (e.g. player px/py/state at fixed frame checkpoints from
+boot — the spawn animation is perfect: no input, no randomness in the path).
+After every optimization step, the trace must match **bit-exactly**. It caught
+nothing in the newleste 8.8 conversion because the conversion was chosen to be
+exact — that's the point: pick transforms you can prove, then prove them.
 
 **Profile the screen you actually play, not the title.** A cart that boots to a
 menu or title screen will pace *that* screen if your harness just loads and
@@ -165,11 +239,13 @@ feels productive and changes nothing players feel.
 | combo-pool | 4.4 | 14 | sprites |
 | just-one-boss | 7.0 | 8.6 | sprites |
 | driftmania | 10.1 | 6 | full-screen tile blits |
-| newleste | 10.7 | 5.6 | half physics / half draw |
+| newleste | 9.0 (was 10.7) | 6.7 | draw (physics now 3× faster) |
 | celeste2 (gameplay) | 7.1 (was 14.6) | 8.5 | tilemap + snow + physics |
 
 (celeste2's row is *gameplay*; its title screen paces differently — see the
 profiling note above.) None yet hit locked 30 fps — the light carts sit at ~20.
 The heavy ports are blit-volume bound (the biggest lever left is `gt.bg_compose`
-for their tilemaps) with fixed-point-math footguns on top (celeste2's snow, now
-fixed: 14.6 → 7.1 gameplay vsyncs from integer `%` + a sine LUT).
+for their tilemaps) with fixed-point-math footguns on top (celeste2's snow:
+14.6 → 7.1 gameplay vsyncs from integer `%` + a sine LUT; newleste's whole
+player engine: update floor 5.0 → 3.0 vsyncs via 8.8 ints + merged collision
+scans + the idle-leak fixes — its fps ceiling rose from ~12 to ~20).
