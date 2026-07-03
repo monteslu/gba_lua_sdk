@@ -14,6 +14,16 @@
 -- 16.16 fixed, and 1/16 px is below anything visible on a 128x128
 -- screen. Trig stays real 16.16 (sin/cos/atan2), floored into 16ths.
 
+-- PERF: the enemy sway sines (green sin(t/45), red sin(t/20)) used to run
+-- gt_fsin + a fixed multiply PER ENEMY PER FRAME (~4k cycles each). The
+-- outputs are floored to 1/16-px ints, so a per-period lookup table built at
+-- init with the SAME formula is value-identical; swayg/swayr are wrap
+-- counters advanced once per tick (no modulo). See docs/performance.md.
+local sway45 = array(45)
+local sway20 = array(20)
+local swayg = 0
+local swayr = 0
+
 -- modes (original uses strings)
 local MSTART = 0
 local MGAME = 1
@@ -820,13 +830,13 @@ function update_game()
     if e.type==1 then
      --green guy: sy=1.7, sway sin(t/45)
      e.sy=27
-     e.sx=flr(sin(tick*0.022222)*16)
+     e.sx=sway45[swayg+1]
      if e.x<512 then e.sx+=16-e.x\32 end
      if e.x>1408 then e.sx-=(e.x-1408)\32 end
     elseif e.type==2 then
      --red guy: sy=2.5, sway sin(t/20)
      e.sy=40
-     e.sx=flr(sin(tick*0.05)*16)
+     e.sx=sway20[swayr+1]
      if e.x<512 then e.sx+=16-e.x\32 end
      if e.x>1408 then e.sx-=(e.x-1408)\32 end
     elseif e.type==3 then
@@ -1310,6 +1320,8 @@ function _init()
  bossoff[2]=4
  bossoff[3]=8
  bossoff[4]=4
+ for i=1,45 do sway45[i]=flr(sin((i-1)*0.022222)*16) end
+ for i=1,20 do sway20[i]=flr(sin((i-1)*0.05)*16) end
  makesil()
  gt.starfield_init(100)
 end
@@ -1331,6 +1343,10 @@ function _update()
 
  tick+=1
  blinkt+=1
+ swayg+=1
+ if (swayg>=45) swayg=0
+ swayr+=1
+ if (swayr>=20) swayr=0
 
  if mode==MGAME then
   update_game()
