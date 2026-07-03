@@ -299,6 +299,18 @@ cheap). The emitter controls both definition and every call site of user
 functions — pass the first 2-3 int args of NON-RECURSIVE hot functions in zp
 slots. p_check_solid/appr-class callees are called 5-10x/frame everywhere.
 
+### NEXT TOP TRACK: automatic small-function inlining (measured 2026-07-04)
+
+Inlining driftmania's 4-line draw_tiles() at its 3 call sites (a mechanical
+source transform) bought 0.47 vsyncs — ~1,200 cycles per call of pure cc65
+calling convention. This is the prize zp-fastcall was fighting for, taken
+whole with zero ABI risk. The emitter controls every user-fn call site and
+definition: an inliner for non-recursive functions with small bodies (single
+expression / few statements, <=3 params, args pure or hoisted to temps) is the
+highest-value remaining codegen track. Candidates everywhere: ckd/ctile/appr/
+sign0/wheelx/wheely-class helpers are called 20-100x per frame across the
+ports.
+
 ### POOL-FIELD NARROWING: attempted, reverted (2026-07-04, session 4)
 
 Design: pool fields whose every store is a plain `=` of a constant 0-255
