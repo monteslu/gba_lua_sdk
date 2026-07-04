@@ -29,6 +29,38 @@ function peelIndex(e) {
   return [e, 0];
 }
 
+// Decompose a small positive constant into <=3 signed power-of-two terms
+// ([shift, sign] pairs) for multiply strength-reduction, or null. 16-bit
+// wrap semantics are identical for shift-adds, so the rewrite is exact.
+function shiftTerms(c) {
+  if (c < 2 || c > 255) return null;
+  const bits = [];
+  for (let k = 7; k >= 0; k--) if (c & (1 << k)) bits.push([k, 1]);
+  if (bits.length <= 3) return bits;
+  // difference form: c = 2^a - r where r has <=2 bits (e.g. 15 = 16 - 1)
+  for (let a = 8; a >= 0; a--) {
+    const r = (1 << a) - c;
+    if (r < 0) continue;
+    const rb = [];
+    for (let k = 7; k >= 0; k--) if (r & (1 << k)) rb.push([k, -1]);
+    if (rb.length <= 2) return [[a, 1], ...rb];
+  }
+  return null;
+}
+
+// Pure and small enough to duplicate per shift term: names, numbers, and
+// call-free operator trees of a few nodes (re-evaluating one costs a few
+// cycles; the runtime multiply it replaces costs hundreds).
+function purelyDup(e, budget = 4) {
+  if (budget <= 0 || !e) return false;
+  switch (e.kind) {
+    case "number": case "name": return true;
+    case "unop": return purelyDup(e.operand ?? e.expr, budget - 1);
+    case "binop": return purelyDup(e.left, budget - 1) && purelyDup(e.right, budget - 1);
+    default: return false;
+  }
+}
+
 // constant-fold a numeric node (literals + neg/binops over literals). Used for
 // gt.rgb(r,g,b), whose args the checker already proved constant.
 function constFold(e) {
@@ -400,7 +432,27 @@ export function emit(chunk, symbols, file, opts = {}) {
       case "+": case "-":
         return cv(`(${expr(e.left, k)} ${op} ${expr(e.right, k)})`, k, want);
       case "*": {
-        if (k === "int") return cv(`(${expr(e.left, "int")} * ${expr(e.right, "int")})`, "int", want);
+        if (k === "int") {
+          // strength-reduce x * C: cc65 lowers non-power-of-two constant
+          // multiplies to the generic runtime (~250+ cycles); a 2-3 term
+          // shift-add is ~10x cheaper and bit-exact under 16-bit wrap
+          const lc = constFold(e.left), rc = constFold(e.right);
+          const c = Number.isInteger(rc) ? rc : (Number.isInteger(lc) ? lc : null);
+          const base = Number.isInteger(rc) ? e.left : e.right;
+          if (c !== null && purelyDup(base)) {
+            const terms = shiftTerms(Math.abs(c));
+            if (terms) {
+              const b = expr(base, "int");
+              const t = terms.map(([sh, sg], i) => {
+                const piece = sh === 0 ? `(${b})` : `((${b}) << ${sh})`;
+                return i === 0 ? piece : (sg > 0 ? ` + ${piece}` : ` - ${piece}`);
+              }).join("");
+              const body = `(${t})`;
+              return cv(c < 0 ? `(0 - ${body})` : body, "int", want);
+            }
+          }
+          return cv(`(${expr(e.left, "int")} * ${expr(e.right, "int")})`, "int", want);
+        }
         // fixed result: (v<<16)*i == (v*i)<<16, so fixed*int needs only ONE
         // long multiply (or a shift for power-of-two ints) — far cheaper
         // than the 4-partial-product gt_fmul.
