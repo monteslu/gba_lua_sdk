@@ -311,10 +311,18 @@ cyc/update; ideal asm 40). Helper calls are free (probe: 256 calls/frame =
 4.0 vsyncs cdecl, 2.0 locked with the inliner). The flat-bg "bug" was closed
 as boot latency (see git 5c54721).
 
-REMAINING TRACKS, in value order: statement-body inliner tier (local + stmts
-shape — needs temps and statement-context substitution) · zp-fastcall for
-fixed/long params (4-byte slots) · local-scalar narrowing for constant-
-assigned state variables.
+REMAINING TRACKS: zp-fastcall for fixed/long params (4-byte slots) ·
+local-scalar narrowing for constant-assigned state variables.
+
+NEGATIVE RESULT (measured): the statement-body inliner tier (void wrappers
+pasted as blocks with ordered param temps) measured EXACTLY ZERO on every
+cart — zp-fastcall had already made those calls cheap — while its paste
+bloat broke celeste2 and combo-pool placement. Built, measured, reverted;
+its two byproducts (capture guard, size-relief ladder) shipped.
+
+NEGATIVE RESULT (measured): zp-fastcall for 4-5 params is a net loss
+(combo-pool 4.99 -> 5.50 vs celeste2 -0.07). Params <= 3 is the sweet spot;
+gt_p3/gt_p4 reserved if a per-shape gate ever justifies them.
 
 NEGATIVE RESULT (measured): `register` on u8 loop counters is a 33-40% LOSS
 on the entity probes (9.99 -> 14.03, 5.99 -> 8.00) — cc65 register vars evict
