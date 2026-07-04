@@ -314,7 +314,12 @@ as boot latency (see git 5c54721).
 REMAINING TRACKS, in value order: statement-body inliner tier (local + stmts
 shape — needs temps and statement-context substitution) · zp-fastcall for
 fixed/long params (4-byte slots) · local-scalar narrowing for constant-
-assigned state variables · revisit cc65 -Oi/register-keyword experiments.
+assigned state variables.
+
+NEGATIVE RESULT (measured): `register` on u8 loop counters is a 33-40% LOSS
+on the entity probes (9.99 -> 14.03, 5.99 -> 8.00) — cc65 register vars evict
+the counter from the Y register into the zp regbank, forcing ldy reloads on
+every arr,y access plus save/restore prologues. Do not revisit.
 
 ### NEXT TOP TRACK: automatic small-function inlining (measured 2026-07-04)
 
