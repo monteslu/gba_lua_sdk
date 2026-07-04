@@ -143,21 +143,16 @@ void GT_BG_COMPOSE(int *map, int cols, int cx, int cy, int cw, int ch) {
      * window, the whole reason compose blocked _init for well over a hundred
      * frames. Now it's 16 calls total, then a byte index per pixel. */
     for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
-    /* Clear the quadrants this compose can touch to color 0 first: GRAM
-     * powers on random and empty (tile 0) cells are SKIPPED below. Under
-     * GT_BANKED (FLASH2M) all four quadrants clear, so a bg_draw with a
-     * small wrapping source offset — a screenshake — samples clean black
-     * (verified on real carts). KNOWN ISSUE: the 4-quadrant clear kills all
-     * subsequent rendering in FLAT builds (root cause not yet found — the
-     * 1-quadrant clear is fine), so flat carts keep the original behavior;
-     * no flat cart shakes a composed background today. */
+    /* Clear all four quadrants to color 0 first: GRAM powers on random and
+     * empty (tile 0) cells are SKIPPED below, and a bg_draw with a small
+     * wrapping source offset — a screenshake — must sample clean black.
+     * The old "kills rendering in FLAT builds" issue was a phantom: the
+     * 64K CPU clear plus a 16K sheet load takes ~55 frames of boot time,
+     * and every black screen was a screenshot taken before _init finished
+     * (verified: same cart renders at frame 200). Budget accordingly: a
+     * full compose is a one-time cost of around a second. */
     { unsigned char q; unsigned int p; unsigned char c0 = lut[0];
-#ifdef GT_BANKED
-      unsigned char nq = 4;
-#else
-      unsigned char nq = (cw > 16 || ch > 16) ? 4 : 1;
-#endif
-      for (q = 0; q < nq; ++q) {
+      for (q = 0; q < 4; ++q) {
           bg_enter_write_q(q);
           for (p = 0; p < 16384u; ++p) vram[p] = c0;
       }
