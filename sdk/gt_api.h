@@ -18,7 +18,7 @@ extern unsigned int gt_ticks;
  * push, and the callee reads zp instead of (sp),y. Camera and pad words
  * are zp too so camera()/btn()/btnp() emit as inline zp ops. */
 extern int gt_a0, gt_a1, gt_a2, gt_a3, gt_a4, gt_a5;
-extern int gt_p0, gt_p1, gt_p2;   /* zp-fastcall USER-fn params (emit.js) */
+extern int gt_p0, gt_p1, gt_p2, gt_p3, gt_p4;   /* zp-fastcall USER-fn params */
 extern int gt_cam_x, gt_cam_y;
 extern unsigned int gt_pad0, gt_pad1, gt_rpt0, gt_rpt1;
 extern volatile unsigned char gt_qhead, gt_qtail;
@@ -34,6 +34,8 @@ extern unsigned char gt_q[256];
 #pragma zpsym ("gt_p0")
 #pragma zpsym ("gt_p1")
 #pragma zpsym ("gt_p2")
+#pragma zpsym ("gt_p3")
+#pragma zpsym ("gt_p4")
 #pragma zpsym ("gt_cam_x")
 #pragma zpsym ("gt_cam_y")
 #pragma zpsym ("gt_pad0")

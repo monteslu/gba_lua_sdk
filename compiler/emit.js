@@ -228,7 +228,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   // (draw_tiles) no longer exists as a call.
   const zpCall = new Set();
   for (const [name, fn] of functions) {
-    if (fn.params.length >= 1 && fn.params.length <= 3 &&
+    if (fn.params.length >= 1 && fn.params.length <= 5 &&
         fn.params.every((_, i) => (fn.paramKinds[i] ?? "int") === "int")) {
       zpCall.add(name);
     }

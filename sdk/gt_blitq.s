@@ -33,7 +33,7 @@
 .export   _gt_qhead, _gt_qtail, _gt_qbank
 .export   _gt_q
 .export   _gt_ent
-.export   _gt_p0, _gt_p1, _gt_p2
+.export   _gt_p0, _gt_p1, _gt_p2, _gt_p3, _gt_p4
 .export   _gt_q_kick, _gt_q_push, _gt_q_pump
 .export   _gt_p8_spr_z
 .export   _irq_int
@@ -67,8 +67,10 @@ _gt_qtail: .res 1               ; consumer index (advanced by the pump)
 _gt_qbank: .res 1               ; this frame's $2005 byte for blits
 _gt_ent:   .res 8               ; entry staging: C fills, gt_q_push commits
 _gt_p0:    .res 2               ; zp-fastcall USER-function arg slots: the
-_gt_p1:    .res 2               ;   emitter passes 1-3 int params here instead
+_gt_p1:    .res 2               ;   emitter passes 1-5 int params here instead
 _gt_p2:    .res 2               ;   of cc65's C stack (see emit.js zpCall)
+_gt_p3:    .res 2
+_gt_p4:    .res 2
 q_pwh:     .res 1               ; spr_z scratch: pixel-width high byte
 q_phl:     .res 1               ;                pixel-height low
 q_phh:     .res 1               ;                pixel-height high
