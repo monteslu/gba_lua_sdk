@@ -41,6 +41,7 @@ end
 
 ```sh
 node bin/gtlua.js build examples/orbit/main.lua
+# add --num8 for the 8.8 number mode (faster math; see docs/performance.md)
 ```
 
 That produces `examples/orbit/main.gtr` in under 100 ms. Run it in the

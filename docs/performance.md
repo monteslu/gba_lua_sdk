@@ -220,6 +220,21 @@ arithmetic dominates. So: entity fields that fit a byte (hp, type, sprite,
 timer, color, size) belong in `array8`; a 1024-entry map keeps its speed
 profile but drops from 2 KB to 1 KB.
 
+### The `--num8` build flag: 8.8 numbers everywhere
+
+The manual 8.8 tricks below are now a compiler mode: `gtlua build game.lua
+--num8` makes every fractional value 8.8 in a 16-bit int instead of PICO-8's
+16.16 in a 32-bit long. Every fixed add/compare/array element halves or
+better. **Measured: celeste2 gameplay runs 16% faster from the flag alone**,
+with exact arithmetic on the whole math test suite (trig, atan2, floored
+mod, saturating divide) at 8.8 scale.
+
+The contract: values live in ±127.996 with 1/256 steps, and `t()` wraps at
+128 seconds. That fits most games — positions on a 128px screen, speeds,
+timers, angles in turns — but it is NOT bit-exact PICO-8: constants like 0.1
+round to the nearest 1/256, so replays and physics feel are approximately,
+not identically, preserved. Verify your game plays right, then keep the flag.
+
 ### Shrink your fixed-point: 8.8 in an int
 
 When a fractional quantity has a small range — a speed that never exceeds ±8, a
@@ -336,7 +351,7 @@ feels productive and changes nothing players feel.
 | cherry-bomb (combat) | 4.5 (was 4.8) | 13 | entity volume; compiler recovered ~0.3 |
 | combo-pool (gameplay) | 5.0 | 12 | physics floor 4.0 |
 | driftmania | 5.6 (was 10.1) | 10.7 | chunk atlas + inline + shift-add multiplies |
-| celeste2 (gameplay) | 6.7 (was 14.6) | 9.0 | footgun fixes + compiler inlining |
+| celeste2 (gameplay) | 5.6 with --num8 (was 14.6) | 10.7 | footgun fixes + compiler inlining + 8.8 numbers |
 | newleste | 7.1 (was 11.1) | 8.5 | physics 3x + canvas map |
 
 Gameplay numbers, measured in real play (never the title screen). The compiler
