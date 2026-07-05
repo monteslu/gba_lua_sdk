@@ -75,6 +75,9 @@ export const GT_MEMBERS = {
   rgb:    { kind: "fn", params: [["int", false]], ret: "int", special: "rgb" },
   ticks:  { kind: "fn", params: [], ret: "int", c: "(int)gt_ticks", isValue: true },
   border: { kind: "fn", params: [["color", false]], ret: "void", c: "gt_p8_border" },
+  // frame clear queued after the page flip — its pixel time hides inside the
+  // fps30 second vsync wait. Call once (usually _init); pass -1 to disable.
+  autocls: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_autocls_set" },
   note:    { kind: "fn", params: [["int", false], ["int", false], ["int", true]], ret: "void", c: "gt_note", audio: true },
   noteoff: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_noteoff", audio: true },
   // parallax starfield: the whole field moves/draws in one tight C loop each,

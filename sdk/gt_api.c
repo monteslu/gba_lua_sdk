@@ -29,14 +29,14 @@ char bankflip;              /* BANK_SECOND_FRAMEBUFFER bit state */
 static char fps30;          /* _update() mode: two vsyncs per logical frame */
 
 /* draw state (PICO-8 sticky globals; camera lives in zp — gt_blitq.s) */
-static unsigned char draw_color;   /* resolved GameTank byte */
+unsigned char draw_color;          /* resolved GameTank byte (asm fast paths read/write) */
 
 /* PICO-8 color 0-15 -> GameTank byte; pal() remaps this live table */
 static const unsigned char p8pal_rom[16] = {
     0x00, 0xA9, 0x5A, 0xDB, 0x33, 0x03, 0x06, 0x07,
     0x5B, 0x3E, 0x1F, 0xFE, 0xBE, 0x8C, 0x5E, 0x2F,
 };
-static unsigned char p8pal[16];
+unsigned char p8pal[16];           /* non-static: asm rectfill fast path indexes it */
 
 /* resolve a color argument: -1 = current; 0x100|b = raw byte; else p8 index.
  * Giving a color also SETS the current color (P8 trailing-color rule). */
@@ -386,7 +386,10 @@ void gt_p8_pal(int c0, int c1) {
     p8pal[c0 & 15] = (c1 & 0x100) ? (unsigned char)c1 : p8pal_rom[c1 & 15];
 }
 
-void gt_p8_rectfill_z(void) {
+/* Fallback for the asm fast path in gt_blitq.s (_gt_p8_rectfill_z): handles
+ * offscreen/reversed/128-span rects. resolve_color is idempotent, so the asm
+ * path having peeked at the color first is harmless. */
+void gt_p8_rectfill_slow(void) {
     fc_col = resolve_color(gt_a4);
     gt_a0 -= gt_cam_x;
     gt_a1 -= gt_cam_y;
@@ -427,7 +430,16 @@ static void pset_raw(int x, int y, unsigned char col) {
 }
 
 void gt_p8_pset_z(void) {
-    pset_raw(gt_a0 - gt_cam_x, gt_a1 - gt_cam_y, resolve_color(gt_a2));
+    /* a pset is a 1x1 FILL through the blit pipeline: switching to CPU mode
+     * here would first drain every queued blit's pixels (~16k cycles with a
+     * frame clear in flight) — two decorative psets after the fills used to
+     * cost more than the entire rest of the frame. Same pixel, queue path.
+     * (print/sset still batch in CPU mode where it amortizes; pset_raw stays
+     * the internal primitive for line's Bresenham inner loop.) */
+    gt_a4 = gt_a2;
+    gt_a2 = gt_a0;
+    gt_a3 = gt_a1;
+    gt_p8_rectfill_z();
 }
 
 void gt_p8_pset(int x, int y, int c) {
@@ -725,6 +737,24 @@ void gt_init(void) {
     flip_pages();
 }
 
+/* gt.autocls(c): queue the frame clear right after the page flip so its
+ * ~16k pixels of blitter time drain inside the fps30 second vsync wait
+ * (measured: a full-screen cls is 27% of the whole 30fps budget when the
+ * game clears at draw time). -1 = off. */
+int gt_autocls = -1;
+
+void gt_autocls_set(int c) { gt_autocls = c; }
+
+static void queue_autocls(void) {
+    unsigned char col;
+    if (gt_autocls < 0) return;
+    col = resolve_color(gt_autocls);
+    box_raw(127, 0, 1, 127, col);
+    box_raw(0, 127, 127, 1, col);
+    box_raw(127, 127, 1, 1, col);
+    box_raw(0, 0, 127, 127, col);
+}
+
 void gt_endframe(void) {
     /* vsync FIRST, then the drain check: queued blits keep draining DURING
      * the vsync wait, so their pixel time vanishes from the frame budget
@@ -736,10 +766,11 @@ void gt_endframe(void) {
     await_vsync();
     await_drawing();
     flip_pages();
+    queue_autocls();             /* the NEW draw page clears during the wait */
     gt_time_tick();
     if (gt_frame_hook) gt_frame_hook();     /* advance sfx/music (60 Hz base) */
     if (fps30) {                 /* 30fps mode: burn the second vsync */
-        await_vsync();
+        await_vsync();           /* (pumps: the autocls drains in here) */
         gt_time_tick();
         if (gt_frame_hook) gt_frame_hook(); /* keep music at 60 Hz in 30fps mode */
     }

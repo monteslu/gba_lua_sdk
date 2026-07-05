@@ -28,6 +28,10 @@
 .import   _gt_draw_busy
 .import   _gt_draw_mode
 .import   _frameflip
+.import   _p8pal
+.import   _draw_color
+.import   _gt_p8_rectfill_slow
+.export   _gt_p8_rectfill_z
 .export   _gt_a0, _gt_a1, _gt_a2, _gt_a3, _gt_a4, _gt_a5
 .export   _gt_cam_x, _gt_cam_y
 .export   _gt_pad0, _gt_pad1, _gt_rpt0, _gt_rpt1
@@ -72,6 +76,9 @@ _gt_p1:    .res 2               ;   emitter passes 1-5 int params here instead
 _gt_p2:    .res 2               ;   of cc65's C stack (see emit.js zpCall)
 _gt_p3:    .res 2
 _gt_p4:    .res 2
+rf_x0:     .res 1               ; rectfill_z scratch: cam-adjusted coords
+rf_y0:     .res 1
+rf_x1:     .res 1
 q_pwh:     .res 1               ; spr_z scratch: pixel-width high byte
 q_phl:     .res 1               ;                pixel-height low
 q_phh:     .res 1               ;                pixel-height high
@@ -180,6 +187,107 @@ _gt_q_pump:
 
 ; kept as an alias for any external kick callers
 _gt_q_kick = _gt_q_pump
+
+; ---------------------------------------------------------------------------
+; gt_p8_rectfill_z: the hot fill call, fast path fully in asm.
+;   gt_a0=x0 gt_a1=y0 gt_a2=x1 gt_a3=y1 gt_a4=color
+; Resolve the color (p8pal lookup / raw 0x1xx byte / negative = keep current),
+; camera-adjust all four coordinates, and when everything is on-screen,
+; ordered, and under the 7-bit span limit — the overwhelmingly common case —
+; stage the entry and fall into the push (~90 cycles vs ~300 through the C
+; chain). Anything else jumps to the C fallback, which redoes the resolve
+; (idempotent) and handles swap/clip/128-splits. Clobbers A,X.
+; ---------------------------------------------------------------------------
+QF_RECT = $CD                   ; NMI|ENABLE|IRQ|COLORFILL|OPAQUE
+
+_gt_p8_rectfill_z:
+        ; ---- color: negative keeps draw_color; 0x1xx is a raw byte ----
+        LDA _gt_a4+1
+        BMI @ckeep
+        BNE @craw
+        LDA _gt_a4
+        AND #$0F
+        TAX
+        LDA _p8pal,x
+        BRA @cstore
+@craw:  LDA _gt_a4
+@cstore:
+        STA _draw_color
+@cinv:  EOR #$FF
+        STA _gt_ent+7
+        BRA @cam
+@ckeep: LDA _draw_color
+        BRA @cinv
+
+@cam:   ; ---- x0 - cam_x: must land in 0..127 ----
+        SEC
+        LDA _gt_a0
+        SBC _gt_cam_x
+        STA rf_x0
+        LDA _gt_a0+1
+        SBC _gt_cam_x+1
+        BNE @slow               ; <0 or >255
+        LDA rf_x0
+        BMI @slow               ; 128..255
+        ; ---- y0 - cam_y ----
+        SEC
+        LDA _gt_a1
+        SBC _gt_cam_y
+        STA rf_y0
+        LDA _gt_a1+1
+        SBC _gt_cam_y+1
+        BNE @slow
+        LDA rf_y0
+        BMI @slow
+        ; ---- x1 - cam_x ----
+        SEC
+        LDA _gt_a2
+        SBC _gt_cam_x
+        STA rf_x1
+        LDA _gt_a2+1
+        SBC _gt_cam_x+1
+        BNE @slow
+        LDA rf_x1
+        BMI @slow
+        ; ---- y1 - cam_y (kept in A) ----
+        SEC
+        LDA _gt_a3
+        SBC _gt_cam_y
+        TAX
+        LDA _gt_a3+1
+        SBC _gt_cam_y+1
+        BNE @slow
+        TXA
+        BMI @slow
+        ; ---- height = y1 - y0 + 1 (ordered, < 128) ----
+        SEC
+        SBC rf_y0
+        BCC @slow               ; y1 < y0
+        CMP #$7F
+        BCS @slow               ; span 128 needs the split path
+        INC A
+        STA _gt_ent+6
+        ; ---- width = x1 - x0 + 1 ----
+        LDA rf_x1
+        SEC
+        SBC rf_x0
+        BCC @slow
+        CMP #$7F
+        BCS @slow
+        INC A
+        STA _gt_ent+5
+        ; ---- stage the rest + commit ----
+        LDA #QF_RECT
+        STA _gt_ent+0
+        LDA rf_x0
+        STA _gt_ent+1
+        LDA rf_y0
+        STA _gt_ent+2
+        STZ _gt_ent+3
+        STZ _gt_ent+4
+        STZ _gt_draw_mode       ; MODE_NONE: flags register now queue-owned
+        JMP _gt_q_push
+@slow:  JMP _gt_p8_rectfill_slow
 
 ; ---------------------------------------------------------------------------
 ; gt_p8_spr_z: the hot per-entity draw call, fully in asm.

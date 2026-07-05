@@ -93,6 +93,7 @@ function load_room(n)
 end
 
 function _init()
+  gt.autocls(0)               -- frame clear rides the post-flip vsync wait
   load_room(1)
 end
 
@@ -180,7 +181,6 @@ function _update()
 end
 
 function _draw()
-  cls(0)
 
   -- swamp glow
   rectfill(34, 122, 94, 127, 3)

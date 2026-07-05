@@ -108,6 +108,7 @@ function respawn()
 end
 
 function _init()
+  gt.autocls(12)               -- frame clear rides the post-flip vsync wait
   build_level()
 end
 

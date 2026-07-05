@@ -142,6 +142,7 @@ function hill_spans(cx, cy, r)
 end
 
 function _init()
+  gt.autocls(1)                 -- the frame clear rides the post-flip vsync wait
   hill_spans(24, 122, 14)
   hill_spans(70, 126, 18)
   hill_spans(104, 121, 12)
@@ -273,11 +274,13 @@ function _update()
 end
 
 function _draw()
-  cls(1)
 
   -- background hills (precomputed spans + the ground band)
   rectfill(0, 120, 127, 127, 13)
-  for i = 1, hn do
+  -- constant bound on purpose: the compiler narrows the counter to a byte
+  -- and folds the 1-based indexing only for provably-bounded loops — worth
+  -- ~1k cycles/frame here, which is real margin this close to the vsync line
+  for i = 1, 35 do
     rectfill(hx0[i], hy[i], hx1[i], hy[i], 13)
   end
 
@@ -304,8 +307,11 @@ function _draw()
   if room == 3 and berry == 0 then
     local bob = flr(sin(t()) * 2)
     circfill(goalx, goaly + bob, 3, 8)
-    pset(goalx - 1, goaly + bob - 1, 7)
-    line(goalx, goaly + bob - 4, goalx + 2, goaly + bob - 5, 11)
+    rectfill(goalx - 1, goaly + bob - 1, goalx - 1, goaly + bob - 1, 7)
+    -- the 3px stem as fills (a diagonal line() walks pset_raw in CPU mode)
+    rectfill(goalx, goaly + bob - 4, goalx, goaly + bob - 4, 11)
+    rectfill(goalx + 1, goaly + bob - 4, goalx + 1, goaly + bob - 5, 11)
+    rectfill(goalx + 2, goaly + bob - 5, goalx + 2, goaly + bob - 5, 11)
   end
 
   -- player: hair color shows dash availability
@@ -315,8 +321,11 @@ function _draw()
   if (dashes == 0) hair = 12
   rectfill(fx, fy, fx + 4, fy + 5, 15)
   rectfill(fx, fy, fx + 4, fy + 2, hair)
-  pset(fx + 1, fy + 3, 0)
-  pset(fx + 3, fy + 3, 0)
+  -- eyes as 1x1 FILLS: a pset here switches the pipeline to CPU mode, and
+  -- that transition drains every queued fill's pixels first (~16k cycles
+  -- with a full clear in flight). Two pixels were costing two drains.
+  rectfill(fx + 1, fy + 3, fx + 1, fy + 3, 0)
+  rectfill(fx + 3, fy + 3, fx + 3, fy + 3, 0)
 
   -- hud: room pips + death count bar
   for i = 1, room do
@@ -328,6 +337,6 @@ function _draw()
     rectfill(28, 54, 99, 74, 3)
     rect(28, 54, 99, 74, 7)
     circfill(64, 64, 4, 8)
-    pset(63, 62, 7)
+    rectfill(63, 62, 63, 62, 7)
   end
 end

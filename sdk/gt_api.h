@@ -75,7 +75,8 @@ void gt_p8_pset(int x, int y, int c);
  * argument expressions could themselves draw (user-function calls). */
 void gt_p8_pset_z(void);       /* a0=x a1=y a2=c */
 void gt_p8_rect_z(void);       /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c */
-void gt_p8_rectfill_z(void);   /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c */
+void gt_p8_rectfill_z(void);   /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c (asm fast path) */
+void gt_p8_rectfill_slow(void); /* C fallback: offscreen/reversed/128-span */
 void gt_p8_circ_z(void);       /* a0=cx a1=cy a2=r a3=c */
 void gt_p8_circfill_z(void);   /* a0=cx a1=cy a2=r a3=c */
 void gt_p8_line_z(void);       /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c */
@@ -98,6 +99,7 @@ void gt_p8_circ(int cx, int cy, int r, int c);
 void gt_p8_circfill(int cx, int cy, int r, int c);
 void gt_p8_line(int x0, int y0, int x1, int y1, int c);
 void gt_p8_border(int c);
+void gt_autocls_set(int c);    /* frame clear during the post-flip vsync wait */
 void gt_p8_sset(int x, int y, int c);
 int gt_p8_print(const char *str, int x, int y, int c);
 #ifdef GT_NUM8
