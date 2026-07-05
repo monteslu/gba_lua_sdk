@@ -227,7 +227,10 @@ The manual 8.8 tricks below are now a compiler mode: `gtlua build game.lua
 16.16 in a 32-bit long. Every fixed add/compare/array element halves or
 better. **Measured: celeste2 gameplay runs 16% faster from the flag alone**,
 with exact arithmetic on the whole math test suite (trig, atan2, floored
-mod, saturating divide) at 8.8 scale.
+mod, saturating divide) at 8.8 scale. The multiply is hand-tuned 65C02
+(quarter-square tables, one table lookup when both values are below 1.0) —
+multiply-dense fixed math runs **3.2× faster than 16.16**, verified
+bit-exact against the C reference on a 99-case torture battery.
 
 The contract: values live in ±127.996 with 1/256 steps, and `t()` wraps at
 128 seconds. That fits most games — positions on a 128px screen, speeds,
