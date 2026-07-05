@@ -186,22 +186,27 @@ local smspr = array(12, -1.0)
 local smidx = 0
 
 -- clouds / particles / dead particles
-local clx = array(17, 0.0)
+-- PERF: every decorative layer runs in 8.8 ints (256 = 1.0), not 16.16 fixed:
+-- the snow alone was 25 real sin() calls + 25 gt_minf calls + 150 long-array
+-- accesses PER FRAME (~30k cycles, a quarter of the 30fps budget). The snow
+-- wobble is a 64-entry LUT (snowsin, filled in _init); phase in 8.8 turns.
+local clx8 = array(17)
 local cly = array(17)
-local clspd = array(17, 0.0)
+local clspd8 = array(17)
 local clw = array(17)
 local clh = array(17)
-local pax = array(25, 0.0)
-local pay = array(25, 0.0)
+local pax8 = array(25)
+local pay8 = array(25)
 local pas = array(25)
-local paspd = array(25, 0.0)
-local paoff = array(25, 0.0)
+local paspd8 = array(25)
+local paoff8 = array(25)
 local pac = array(25)
-local dpx = array(8, 0.0)
-local dpy = array(8, 0.0)
-local dpdx = array(8, 0.0)
-local dpdy = array(8, 0.0)
-local dpt = array(8, 0.0)
+local snowsin = array(64)
+local dpx8 = array(8)
+local dpy8 = array(8)
+local dpdx8 = array(8)
+local dpdy8 = array(8)
+local dpt = array(8)
 
 -- one-way platform tiles collected during the map pass, drawn over objects
 -- one-way platforms are collected LEVEL-WIDE at load (not per frame): the
@@ -587,11 +592,11 @@ function kill_player()
   pmode = 0
   local dir = 0.0
   for i = 1, 8 do
-    dpx[i] = px + 4
-    dpy[i] = py + 4
-    dpt[i] = 2
-    dpdx[i] = sin(dir) * 3
-    dpdy[i] = cos(dir) * 3
+    dpx8[i] = (px + 4) * 256
+    dpy8[i] = (py + 4) * 256
+    dpt[i] = 20                              -- ticks (was 2.0 fixed, -0.2/frame)
+    dpdx8[i] = flr(sin(dir) * 768)           -- 3.0 * sin, in 8.8
+    dpdy8[i] = flr(cos(dir) * 768)
     dir += 0.125
   end
   -- a golden in the train forces a full restart; unbanked berries respawn
@@ -1382,19 +1387,19 @@ function game_init()
   for i = 1, 8 do dpt[i] = 0 end
   for i = 1, 12 do smspr[i] = -1 end
   for i = 1, 17 do
-    clx[i] = rnd(128)
+    clx8[i] = flr(rnd(128) * 256)
     cly[i] = flr(rnd(128))
-    clspd[i] = 1 + rnd(4)
+    clspd8[i] = 256 + flr(rnd(4) * 256)
     local w = 32 + flr(rnd(32))
     clw[i] = w
     clh[i] = flr(16 - w * 0.1875)
   end
   for i = 1, 25 do
-    pax[i] = rnd(128)
-    pay[i] = rnd(128)
+    pax8[i] = flr(rnd(128) * 256)
+    pay8[i] = flr(rnd(128) * 256)
     pas[i] = flr(rnd(1.25))
-    paspd[i] = 0.25 + rnd(5)
-    paoff[i] = rnd(1)
+    paspd8[i] = 64 + flr(rnd(5) * 256)
+    paoff8[i] = flr(rnd(1) * 256)
     pac[i] = 6 + flr(rnd(2))
   end
   load_level(1)
@@ -1405,6 +1410,9 @@ function _init()
   while i <= 32 do
     frwob[i] = sin((i - 1) / 32) * 2.5
     i += 1
+  end
+  for i = 1, 64 do
+    snowsin[i] = flr(sin((i - 1) / 64) * 256 + 0.5)   -- 8.8 sine, 64 steps
   end
   map_init()
   game_init()
@@ -1549,14 +1557,16 @@ function _draw()
     end
   end
 
-  -- bg clouds (screen space)
+  -- bg clouds (screen space) — 8.8 int math; one fixed->8.8 conversion of
+  -- the camera speed per frame instead of a long subtract per cloud
   camera()
+  local cams8 = flr(cam_spdx * 256)
   for i = 1, 17 do
-    clx[i] += clspd[i] - cam_spdx
-    local x = flr(clx[i])
+    clx8[i] += clspd8[i] - cams8
+    local x = clx8[i] \ 256
     rectfill(x, cly[i], x + clw[i], cly[i] + clh[i], 1)
-    if clx[i] > 128 then
-      clx[i] = -clw[i]
+    if x > 128 then
+      clx8[i] = -clw[i] * 256
       cly[i] = flr(rnd(120))
     end
   end
@@ -1648,22 +1658,25 @@ function _draw()
     spr(plats[i], platx[i], platy[i])
   end
 
-  -- snow particles (screen space)
-  camera()
+  -- snow particles (screen space) — 8.8 ints + the snowsin LUT: was a real
+  -- sin() + gt_minf + six long-array hits per flake per frame
+  local camy8 = flr(cam_spdy * 256)
   for i = 1, 25 do
-    pax[i] += paspd[i] - cam_spdx
-    pay[i] += sin(paoff[i]) - cam_spdy
-    pay[i] %= 128
-    paoff[i] += min(0.05, paspd[i] / 32)
-    local x = flr(pax[i])
-    local y = flr(pay[i])
+    pax8[i] += paspd8[i] - cams8
+    pay8[i] += snowsin[((paoff8[i] \ 4) & 63) + 1] - camy8
+    pay8[i] = pay8[i] & 0x7FFF
+    local adv = paspd8[i] \ 32
+    if (adv > 12) adv = 12
+    paoff8[i] += adv
+    local x = pax8[i] \ 256
+    local y = pay8[i] \ 256
     rectfill(x, y, x + pas[i], y + pas[i], pac[i])
-    if pax[i] > 132 then
-      pax[i] = -4
-      pay[i] = rnd(128)
-    elseif pax[i] < -4 then
-      pax[i] = 128
-      pay[i] = rnd(128)
+    if x > 132 then
+      pax8[i] = -1024
+      pay8[i] = flr(rnd(128) * 256)
+    elseif x < -4 then
+      pax8[i] = 32767
+      pay8[i] = flr(rnd(128) * 256)
     end
   end
 
@@ -1671,12 +1684,13 @@ function _draw()
   camera(draw_x, draw_y)
   for i = 1, 8 do
     if dpt[i] > 0 then
-      dpx[i] += dpdx[i]
-      dpy[i] += dpdy[i]
-      dpt[i] -= 0.2
-      local t2 = dpt[i]
-      rectfill(flr(dpx[i] - t2), flr(dpy[i] - t2),
-               flr(dpx[i] + t2), flr(dpy[i] + t2), 14 + flr(5 * t2 % 2))
+      dpx8[i] += dpdx8[i]
+      dpy8[i] += dpdy8[i]
+      dpt[i] -= 2                            -- 0.2 in tenth-ticks
+      local t2 = dpt[i] \ 10                -- whole pixels (was flr(fixed))
+      local xx = dpx8[i] \ 256
+      local yy = dpy8[i] \ 256
+      rectfill(xx - t2, yy - t2, xx + t2, yy + t2, 14 + ((dpt[i] \ 2) & 1))
     end
   end
 
