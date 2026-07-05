@@ -118,7 +118,33 @@ function solid(nx, ny)
   return 0
 end
 
+-- background hills, rasterized ONCE into row spans (identical pixels to the
+-- three circfills, ~35 span fills instead of ~88 blits + Bresenham per frame;
+-- rows >= 120 are covered by the ground fill so only the domes are needed)
+local hn = 0
+local hx0 = array(48)
+local hx1 = array(48)
+local hy = array(48)
+
+function hill_spans(cx, cy, r)
+  local dy = -r
+  while dy <= r do
+    local y = cy + dy
+    if y >= 104 and y < 120 then
+      local dx = flr(sqrt(r * r - dy * dy))
+      hn += 1
+      hx0[hn] = cx - dx
+      hx1[hn] = cx + dx
+      hy[hn] = y
+    end
+    dy += 1
+  end
+end
+
 function _init()
+  hill_spans(24, 122, 14)
+  hill_spans(70, 126, 18)
+  hill_spans(104, 121, 12)
   load_room(1)
 end
 
@@ -249,11 +275,11 @@ end
 function _draw()
   cls(1)
 
-  -- background hills
+  -- background hills (precomputed spans + the ground band)
   rectfill(0, 120, 127, 127, 13)
-  circfill(24, 122, 14, 13)
-  circfill(70, 126, 18, 13)
-  circfill(104, 121, 12, 13)
+  for i = 1, hn do
+    rectfill(hx0[i], hy[i], hx1[i], hy[i], 13)
+  end
 
   -- platforms
   for i = 1, pn do
@@ -266,8 +292,10 @@ function _draw()
     rectfill(spx0[i], spy[i] - 2, spx1[i], spy[i], 6)
     local sx = spx0[i] + 2
     while sx < spx1[i] do
-      pset(sx, spy[i] - 4, 6)
-      pset(sx, spy[i] - 3, 6)
+      -- teeth as 1x2 fills: pset would bounce the pipeline between CPU mode
+      -- and the blitter per tooth (a queue drain each way); a fill stays on
+      -- the blitter path. Same pixels.
+      rectfill(sx, spy[i] - 4, sx, spy[i] - 3, 6)
       sx += 4
     end
   end

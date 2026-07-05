@@ -678,7 +678,9 @@ unsigned char gt_p8_btnp(int i, int pl) {
 
 static void await_vsync(void) {
     gt_frameflag = 1;
-    while (gt_frameflag) {}
+    /* pump while waiting: completed blits would otherwise leave the ring
+     * idle for the whole vsync spin — this is where queued pixel time hides */
+    while (gt_frameflag) { gt_q_pump(); }
 }
 
 static void flip_pages(void) {
@@ -724,8 +726,15 @@ void gt_init(void) {
 }
 
 void gt_endframe(void) {
-    await_drawing();
+    /* vsync FIRST, then the drain check: queued blits keep draining DURING
+     * the vsync wait, so their pixel time vanishes from the frame budget
+     * (a full-screen cls is 16k pixels of blitter time — serializing it
+     * before the wait cost fill-heavy carts a whole extra vsync). The drain
+     * check after the edge is normally already satisfied; when it isn't,
+     * the flip slides a few hundred cycles into vblank, which is where it
+     * belongs anyway. */
     await_vsync();
+    await_drawing();
     flip_pages();
     gt_time_tick();
     if (gt_frame_hook) gt_frame_hook();     /* advance sfx/music (60 Hz base) */

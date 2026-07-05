@@ -84,68 +84,102 @@ _gt_q:     .res 256             ; 32 entries x 8 bytes
 .segment "CODE"
 
 ; ---------------------------------------------------------------------------
-; gt_q_push — the DIRECT draw path (depth-1 write-through).
+; The HYBRID blit pipeline: ring buffering with a lean direct kick.
 ;
-; HISTORY (measured): the pre-queue runtime re-programmed modes inside every
-; primitive (spr 932 cycles); the ring queue got a blit down to ~600 — but
-; that is still 5x what the upstream C SDK pays, and the gap is pure
-; bureaucracy: ring copy, pump, kick indirection, and an IRQ-chained
-; consumer. Native GameTank games poke the eight registers and go. So does
-; this: a primitive stages _gt_ent (zp stores, as before) and gt_q_push
-; waits for the blitter to go idle (usually it already is — the previous
-; blit drained while the game computed this one's arguments: the same
-; overlap the ring bought, without the machinery), pokes the registers
-; straight from zero page, starts, and returns. ~100 cycles.
-;
-; The ring symbols (_gt_q/_gt_qhead/_gt_qtail) remain exported for C-side
-; compatibility: head==tail forever, so existing drain loops fall through.
-; The completion IRQ still fires per blit and just clears _gt_draw_busy.
+; MEASURED HISTORY: the pre-queue runtime cost 932/spr (mode churn); the
+; IRQ-chained ring cost ~600/spr of bureaucracy; a pure depth-1 direct path
+; cost ~185/spr but SERIALIZED big fills — a 16k-pixel cls stalls the very
+; next push for 16k cycles, which is exactly the overlap the ring existed to
+; buy (celeste-like: floor 2.0, yet 3.0 vsyncs either way — ring lost on
+; setup, direct lost on stalls). This hybrid takes both wins:
+;   push: copy the staged entry into the 32-deep ring (~70 cyc), then pump.
+;   pump: if the blitter is idle, kick the ring head straight into the
+;         registers (~70 cyc) — no IRQ-chained consumer, no mode churn.
+;   IRQ:  ack + clear busy only (chaining from the IRQ crashed the emulator's
+;         lazy materializer; every VDMA access stays on the main thread).
+; Big fills drain while the CPU stages the following blits; the ring only
+; stalls when 32 entries are already pending.
 ;
 ; EMULATOR RULE (load-bearing): the dummy $4000 read BEFORE writing new
 ; flags/registers forces the lazy materializer to draw the finished blit
 ; under the state it actually ran with. Harmless on hardware.
 ; ---------------------------------------------------------------------------
 _gt_q_push:
-@wait:  LDA _gt_draw_busy       ; previous blit still draining?
-        BNE @wait               ;   (IRQ clears it; spin is the overlap tax)
+@full:  LDA _gt_qhead
+        CLC
+        ADC #8
+        CMP _gt_qtail
+        BNE @room
+        JSR _gt_q_pump          ; ring full: start/advance the drain, retry
+        BRA @full
+@room:  LDX _gt_qhead
+        LDA _gt_ent+0
+        STA _gt_q+0,x
+        LDA _gt_ent+1
+        STA _gt_q+1,x
+        LDA _gt_ent+2
+        STA _gt_q+2,x
+        LDA _gt_ent+3
+        STA _gt_q+3,x
+        LDA _gt_ent+4
+        STA _gt_q+4,x
+        LDA _gt_ent+5
+        STA _gt_q+5,x
+        LDA _gt_ent+6
+        STA _gt_q+6,x
+        LDA _gt_ent+7
+        STA _gt_q+7,x
+        TXA
+        CLC
+        ADC #8
+        STA _gt_qhead
+        ; FALLS THROUGH into the pump
+
+; gt_q_pump: if the blitter is idle and work is queued, kick the ring head.
+; Safe from any main-thread context; the IRQ only clears _gt_draw_busy.
+_gt_q_pump:
+        LDA _gt_draw_busy
+        BNE @out                ; still draining — the next push re-pumps
+        LDX _gt_qtail
+        CPX _gt_qhead
+        BEQ @out                ; nothing queued
         LDA VDMA_Base           ; dummy read: force emulator catch-up FIRST
-        LDA _gt_ent+0           ; per-blit dma flags...
+        LDA _gt_q+0,x           ; per-blit dma flags...
         ORA _frameflip          ; ...plus the LIVE page bit: the video scans
         STA DMA_Flags           ; from $2007 — never point it at the draw page
         ; bank: colorfill blits use the frame's write bank; COPY blits carry
-        ; their own bank byte in the (otherwise unused) color slot, so sheet
-        ; sprites mix freely with composed-canvas blits (gt.gspr).
+        ; their own bank byte in the (otherwise unused) color slot
         AND #$08                ; DMA_COLORFILL_ENABLE?
         BNE @fill
-        LDA _gt_ent+7           ; copy: bank rides in the color slot
+        LDA _gt_q+7,x
         BRA @bank
 @fill:  LDA _gt_qbank
 @bank:  STA Bank_Reg
-        LDA _gt_ent+1
+        LDA _gt_q+1,x
         STA VDMA_Base
-        LDA _gt_ent+2
+        LDA _gt_q+2,x
         STA VDMA_Base+1
-        LDA _gt_ent+3
+        LDA _gt_q+3,x
         STA VDMA_Base+2
-        LDA _gt_ent+4
+        LDA _gt_q+4,x
         STA VDMA_Base+3
-        LDA _gt_ent+5
+        LDA _gt_q+5,x
         STA VDMA_W
-        LDA _gt_ent+6
+        LDA _gt_q+6,x
         STA VDMA_H
-        LDA _gt_ent+7
+        LDA _gt_q+7,x
         STA VDMA_Col
         LDA #1
         STA _gt_draw_busy       ; busy BEFORE start: the IRQ can fire fast
         STA DMA_Start           ; kick
-        RTS
+        TXA
+        CLC
+        ADC #8
+        STA _gt_qtail
+@out:   RTS
 
-; gt_q_pump / gt_q_kick: kept as no-op entry points — the direct path has no
-; deferred work to advance. C-side callers (bg_drain, await_drawing) loop on
-; qhead != qtail, which is never true now.
-_gt_q_pump:
-_gt_q_kick:
-        RTS
+; kept as an alias for any external kick callers
+_gt_q_kick = _gt_q_pump
 
 ; ---------------------------------------------------------------------------
 ; gt_p8_spr_z: the hot per-entity draw call, fully in asm.
