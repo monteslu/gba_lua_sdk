@@ -19,6 +19,8 @@ local hurt = 0
 local win = 0
 local dead = 0
 local anim = 0.0
+local anim8 = 0                 -- 64ths-of-a-turn mirror for the bob LUT
+local bobsin = array(64)
 
 -- platforms
 local plx0 = array(8)
@@ -107,7 +109,81 @@ function respawn()
   dy = 0
 end
 
+-- static sky decor lives in GRAM cells (sset once at boot) and blits as two
+-- sprites; drawing it with circfills was ~38 blits + Bresenham per frame.
+-- Cell blocks: sun 17x17 at cells 6..8 (3x3), cloud 23x8 at cells 9..11 (3x1
+-- of the lobes' visible band + the rect drawn live, it's 1 fill).
+function decor_disc(bx, by, cx, cy, r, c)
+  local dy = -r
+  while dy <= r do
+    local w = flr(sqrt(r * r - dy * dy))
+    local xx = -w
+    while xx <= w do
+      sset(bx + cx + xx, by + cy + dy, c)
+      xx += 1
+    end
+    dy += 1
+  end
+end
+
+function decor_clear(bx, by, w, h)
+  local yy = 0
+  while yy < h do
+    local xx = 0
+    while xx < w do
+      sset(bx + xx, by + yy, 0)
+      xx += 1
+    end
+    yy += 1
+  end
+end
+
+-- disc sprites: an r2 circfill through the C circle machinery costs ~2k
+-- cycles; the same disc sset into a sheet cell at boot blits for ~190.
+-- Cell 1 = yellow disc (coins + coin pips), cell 2 = red disc (hearts).
+function make_disc(cell, c, r)
+  local bx = (cell % 16) * 8
+  local by = (cell \ 16) * 8
+  local bs = 8
+  if (r > 3) bs = 16
+  -- clear the whole cell block first: GRAM boots random, and spr() only
+  -- colorkeys value 0 — un-cleared neighbors render as noise squares
+  local yy = 0
+  while yy < bs do
+    local xx = 0
+    while xx < bs do
+      sset(bx + xx, by + yy, 0)
+      xx += 1
+    end
+    yy += 1
+  end
+  local cx = bx + r
+  local cy = by + r
+  local dy = -r
+  while dy <= r do
+    local w = flr(sqrt(r * r - dy * dy))
+    local xx = -w
+    while xx <= w do
+      sset(cx + xx, cy + dy, c)
+      xx += 1
+    end
+    dy += 1
+  end
+end
+
 function _init()
+  make_disc(1, 10, 2)           -- coin / coin pip
+  make_disc(2, 8, 2)            -- heart
+  make_disc(3, 8, 4)            -- critter body (9x9: spans cells 3,4,19,20)
+  make_disc(5, 15, 3)           -- player head (7x7)
+  decor_clear(48, 0, 24, 24)    -- sun block: cells 6..8 x 3 rows
+  decor_disc(48, 0, 8, 8, 8, 10)
+  decor_clear(72, 0, 24, 16)    -- cloud block: cells 9..11 x 2 rows
+  decor_disc(72, 0, 4, 7, 5, 7)     -- lobe (28,18) rel to (24,11)
+  decor_disc(72, 0, 16, 6, 6, 7)    -- lobe (40,17)
+  for i = 1, 64 do
+    bobsin[i] = flr(sin((i - 1) / 64) * 2)   -- coin-bob LUT
+  end
   gt.autocls(12)               -- frame clear rides the post-flip vsync wait
   build_level()
 end
@@ -126,6 +202,7 @@ function _update()
   end
 
   anim += 0.06
+  anim8 = (anim8 + 4) & 63      -- 0.06 turns ~ 3.84/64; 4 keeps the wave rate
   if (hurt > 0) hurt -= 1
 
   -- run
@@ -217,11 +294,10 @@ end
 function _draw()
   cls(12)                       -- sky
 
-  -- sun + cloud
-  circfill(108, 14, 8, 10)
+  -- sun + cloud: one sprite each (blocks built at boot)
+  spr(6, 100, 6, 3, 3)
   rectfill(24, 18, 46, 24, 7)
-  circfill(28, 18, 5, 7)
-  circfill(40, 17, 6, 7)
+  spr(9, 24, 11, 3, 2)
 
   -- platforms: dirt with grass tops
   for i = 1, pn do
@@ -235,9 +311,9 @@ function _draw()
   -- coins
   for i = 1, nn do
     if nlive[i] == 1 then
-      local bob = flr(sin(anim + i * 0.2) * 2)
-      circfill(nx[i], ny[i] + bob, 2, 10)
-      pset(nx[i], ny[i] + bob - 1, 7)
+      local bob = bobsin[((anim8 + i * 13) & 63) + 1]
+      spr(1, nx[i] - 2, ny[i] + bob - 2)
+      rectfill(nx[i], ny[i] + bob - 1, nx[i], ny[i] + bob - 1, 7)
     end
   end
 
@@ -245,7 +321,7 @@ function _draw()
   for i = 1, cn do
     if clive[i] == 1 then
       local ccx = flr(cx[i])
-      circfill(ccx, cy[i] + 2, 4, 8)
+      spr(3, ccx - 4, cy[i] - 2, 2, 2)
       rectfill(ccx - 4, cy[i] + 4, ccx + 4, cy[i] + 6, 2)
       pset(ccx - 2, cy[i], 7)
       pset(ccx + 2, cy[i], 7)
@@ -261,7 +337,7 @@ function _draw()
     local px = flr(x)
     local py = flr(y)
     rectfill(px, py + 2, px + 4, py + 6, 9)          -- body
-    circfill(px + 2, py, 3, 15)                      -- head
+    spr(5, px - 1, py - 3)                           -- head (7x7 disc cell)
     pset(px + 2 + face, py, 0)                       -- eye
     if grounded == 1 and abs(dx) > 0.2 then
       local step = flr(anim * 40) % 2
@@ -277,10 +353,10 @@ function _draw()
 
   -- hud: hp hearts + coin pips
   for i = 1, hp do
-    circfill(i * 8 - 3, 4, 2, 8)
+    spr(2, i * 8 - 5, 2)
   end
   for i = 1, coins do
-    if (i < 16) circfill(120 - i * 6, 4, 2, 10)
+    if (i < 16) spr(1, 118 - i * 6, 2)
   end
 
   if dead == 1 then
