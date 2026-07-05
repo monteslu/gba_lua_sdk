@@ -7,10 +7,17 @@
 #ifdef GT_NUM8
 /* ---- 8.8 mode: fixed is a 16-bit int, 8 fraction bits ------------------- */
 
+/* GT_NUM8_ASM: gt_fmul is hand-tuned 65C02 in gt_fixed8_asm.s (quarter-square
+ * partials; bit-identical FLOOR semantics to this C reference, which is kept
+ * for provenance and host-side validation). */
+#define GT_NUM8_ASM 1
+
+#ifndef GT_NUM8_ASM
 int gt_fmul(int a, int b) {
     /* (a*b) >> 8 through a 32-bit intermediate; wraps like the 16.16 core */
     return (int)(((long)a * b) >> 8);
 }
+#endif
 
 int gt_fdiv(int a, int b) {
     long q;

@@ -11,6 +11,13 @@
  * abs/sgn are scale-invariant, so the int helpers serve both kinds. */
 int  gt_fmul(int a, int b);
 int  gt_fdiv(int a, int b);
+
+/* zp fastcall for the hot 8.8 multiply (gt_fixed8_asm.s): operands staged in
+ * the zp ints fa/fb, argless call. Divide has no zp entry in 8.8 (it's C). */
+extern int fa, fb;
+#pragma zpsym ("fa")
+#pragma zpsym ("fb")
+int gt_fmul_zp(void);
 int  gt_fsqrt(int x);
 int  gt_ffmod(int a, int b);
 int  gt_fsin(int turns);
