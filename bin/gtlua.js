@@ -265,6 +265,49 @@ const SEG_BIN = { B0CODE: "b0", B1CODE: "b1", B2CODE: "b2", CODE: "fixed", RODAT
   // a VECTORS overflow means the fixed window ran past its end
   VECTORS: "fixed", DATA: "fixed" };
 
+// ---- layout quality ---------------------------------------------------------
+// The packer's job is FIT; this scores SPEED: every cross-bank call edge
+// costs a far-call stub (~100 cycles), and an edge on the per-frame path
+// costs it every frame. Score = weighted count of stubbed edges, lower is
+// better. Used by the post-convergence repair pass to compare layouts.
+function hotSet(callGraph) {
+  const hot = new Set();
+  const stack = ["_update", "_update60", "_draw"];
+  while (stack.length) {
+    const n = stack.pop();
+    if (hot.has(n)) continue;
+    hot.add(n);
+    for (const c of callGraph.get(n) ?? []) stack.push(c);
+  }
+  return hot;
+}
+function layoutScore(placement, callGraph, hot) {
+  let score = 0;
+  for (const [caller, callees] of callGraph) {
+    const cb = placement[caller] ?? "fixed";
+    for (const cee of callees) {
+      const eb = placement[cee] ?? "fixed";
+      if (eb !== "fixed" && eb !== cb) score += hot.has(caller) ? 10 : 1;
+    }
+  }
+  return score;
+}
+// the stubbed edges of a layout, worst (hot) first — repair candidates
+function stubbedEdges(placement, callGraph, hot) {
+  const edges = [];
+  for (const [caller, callees] of callGraph) {
+    const cb = placement[caller] ?? "fixed";
+    for (const cee of callees) {
+      const eb = placement[cee] ?? "fixed";
+      if (eb !== "fixed" && eb !== cb) {
+        edges.push({ caller, callee: cee, w: hot.has(caller) ? 10 : 1 });
+      }
+    }
+  }
+  edges.sort((a, b) => b.w - a.w);
+  return edges;
+}
+
 // rebalance after a link overflow: move functions out of the fat bins
 function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, usesAudio, usesMusic, usesAtlas, sdkLoad) {
   const bins = { b0: [], b1: [], b2: [], fixed: [] };
@@ -689,32 +732,83 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: retrying with all inlining off");
     }
-    result = compileLua(entry, { banked: true, placement: workPlacement, midInline, inliner: fnInline, num8, rndInt });
-    writeFileSync(B(`${name}.c`), result.c);
-    cc(B(`${name}.c`), B(`${name}.s`));
-    as(B(`${name}.s`), B(`${name}.o`));
+    const compileAndLink = (placementNow) => {
+      result = compileLua(entry, { banked: true, placement: placementNow, midInline, inliner: fnInline, num8, rndInt });
+      writeFileSync(B(`${name}.c`), result.c);
+      cc(B(`${name}.c`), B(`${name}.s`));
+      as(B(`${name}.s`), B(`${name}.o`));
+      writeFileSync(B("stubs.s"), (result.stubs ?? "; no cross-bank calls\n") + "\n");
+      as(B("stubs.s"), B("stubs.o"));
+      return runLink(tc.ld65, [
+        "-C", path.join(SDK, "gametank_flash2m.cfg"),
+        "-o", B(`${name}.banks`),
+        "-m", B(`${name}.map`),
+        "-Ln", B(`${name}.lbl`),
+        ...baseObjs, B("gt_bank.o"), B("gt_math_stubs.o"),
+        ...(usesMusic ? [B("gt_music_stubs.o")] : []),
+        B("stubs.o"),
+        B(`${name}.o`),
+        tc.lib,
+      ]);
+    };
+    const link = compileAndLink(workPlacement);
     // re-measure per attempt: the .s parsed before the loop can be stale
     // (previous run's build dir) and the inlining rungs change which
     // functions even exist — a stale map makes the mover shuffle size-0
     // ghosts while the real hogs stay put
     sizes = functionSizes(B(`${name}.s`));
     foldRodataSizes(result.c, sizes);
-    writeFileSync(B("stubs.s"), (result.stubs ?? "; no cross-bank calls\n") + "\n");
-    as(B("stubs.s"), B("stubs.o"));
 
-    const flashOut = B(`${name}.banks`);
-    const link = runLink(tc.ld65, [
-      "-C", path.join(SDK, "gametank_flash2m.cfg"),
-      "-o", flashOut,
-      "-m", B(`${name}.map`),
-      "-Ln", B(`${name}.lbl`),
-      ...baseObjs, B("gt_bank.o"), B("gt_math_stubs.o"),
-      ...(usesMusic ? [B("gt_music_stubs.o")] : []),
-      B("stubs.o"),
-      B(`${name}.o`),
-      tc.lib,
-    ]);
-    if (link.ok) { linked = flashOut; break; }
+    if (link.ok) {
+      linked = B(`${name}.banks`);
+      // ---- hot-edge repair: the packer found A layout; now heal the worst
+      // per-frame cross-bank edges (each costs a ~100-cycle stub every call,
+      // every frame). Move the callee into the caller's bank; keep every
+      // change that still links and lowers the score, revert the rest.
+      const hot = hotSet(result.callGraph);
+      const pinned = new Set(["_update", "_update60", "_draw", "_init"]);
+      let bestScore = layoutScore(workPlacement, result.callGraph, hot);
+      if (bestScore >= 10) {
+        const attempted = new Set();
+        let dirty = false;
+        for (let round = 0; round < 10; round++) {
+          const edges = stubbedEdges(workPlacement, result.callGraph, hot)
+            .filter((e) => e.w >= 10 && !attempted.has(`${e.caller}>${e.callee}`));
+          if (!edges.length) break;
+          const e = edges[0];
+          attempted.add(`${e.caller}>${e.callee}`);
+          // a shared callee can't chase one caller's bank without stubbing
+          // its other callers — score BOTH directions, take the better
+          const options = [];
+          if (!pinned.has(e.callee)) options.push([e.callee, workPlacement[e.caller] ?? "fixed"]);
+          if (!pinned.has(e.caller) && (workPlacement[e.callee] ?? "fixed") !== "fixed") {
+            options.push([e.caller, workPlacement[e.callee]]);
+          }
+          let best = null;
+          for (const [fn, target] of options) {
+            const prev = workPlacement[fn] ?? "fixed";
+            workPlacement[fn] = target;
+            const cand = layoutScore(workPlacement, result.callGraph, hot);
+            workPlacement[fn] = prev;
+            if (cand < bestScore && (!best || cand < best.cand)) best = { fn, target, prev, cand };
+          }
+          if (!best) continue;
+          workPlacement[best.fn] = best.target;
+          const relink = compileAndLink(workPlacement);
+          if (relink.ok) {
+            bestScore = best.cand;
+            dirty = false;
+            if (process.env.GTLUA_DEBUG) console.error(`[repair] ${best.fn} -> ${best.target} (score ${best.cand})`);
+          } else {
+            workPlacement[best.fn] = best.prev;
+            dirty = true;
+          }
+        }
+        // artifacts on disk must match the accepted placement
+        if (dirty) compileAndLink(workPlacement);
+      }
+      break;
+    }
     lastOverflows = link.overflows;
     const mapInfo = sdkLoadFromMap(B(`${name}.map`));
     if (mapInfo) calibrateSizes(sizes, workPlacement, mapInfo.port);
