@@ -335,7 +335,7 @@ export function emit(chunk, symbols, file, opts = {}) {
     // gameplay 4.99 -> 5.50 (a hot 4-5 param physics fn is slower through
     // the slots) vs celeste2's -0.07 win. gt_p3/gt_p4 stay reserved for a
     // future per-shape gate.
-    if (fn.params.length >= 1 && fn.params.length <= 3 &&
+    if (fn.params.length >= 1 && fn.params.length <= 5 &&
         fn.params.every((_, i) => (fn.paramKinds[i] ?? "int") === "int")) {
       zpCall.add(name);
     }
