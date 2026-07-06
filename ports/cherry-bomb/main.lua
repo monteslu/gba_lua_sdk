@@ -142,28 +142,61 @@ function addpart(px,py,vx,vy,age,size2,maxage,blue,spark)
  add(parts,{x=px*16,y=py*16,sx=vx,sy=vy,age=age,size2=size2,maxage=maxage,blue=blue,spark=spark})
 end
 
+-- Explosion spawn budget: a multi-kill volley used to fire up to 4
+-- explosions in ONE frame = ~1000 random rolls + pool adds = the measured
+-- kill hitch. The flash blob and shockwave land instantly; the particle
+-- swarm drains from a pending queue at PEX_BUDGET particles per frame, so
+-- a cloud builds over 2-3 frames — invisible at 30fps, and the effect
+-- parameters are unchanged per particle.
+local pend = pool(6)   -- x, y, blue, big, fleft, sleft
+
+function pump_explosions()
+ -- the original spawned a whole burst instantly into the 56-slot pool, so
+ -- overlapping explosions DROPPED most of their particles. Match that:
+ -- once the pool is crowded, pending bursts forfeit their remainder —
+ -- same look, and the alive-particle ceiling stays where it always was.
+ if #parts >= 44 then
+  for q in all(pend) do del(pend,q) end
+  return
+ end
+ local budget = 16
+ for q in all(pend) do
+  if budget <= 0 then return end
+  -- one spawn body; ranges depend on big/spark phase (same values the
+  -- original immediate loops used)
+  local ab = 10
+  if (q.big == 1) ab = 20
+  while budget > 0 and (q.fleft > 0 or q.sleft > 0) do
+   local vs = 96
+   local sz = 8
+   local sp = 0
+   if q.fleft > 0 then
+    if (q.big == 1) vs = 192
+    if (q.big == 1) sz = 12
+    q.fleft -= 1
+   else
+    vs = 160
+    if (q.big == 1) vs = 480
+    sp = 1
+    q.sleft -= 1
+   end
+   addpart(q.x,q.y,flr(rnd(vs))-vs\2,flr(rnd(vs))-vs\2,flr(rnd(2)),2+flr(rnd(sz)),ab+flr(rnd(ab)),q.blue,sp)
+   budget -= 1
+  end
+  if q.fleft <= 0 and q.sleft <= 0 then del(pend,q) end
+ end
+end
+
 function explode(expx,expy,isblue)
  addpart(expx,expy,0,0,0,20,0,isblue,0)
- for i=1,30 do
-  -- original: sx=rnd()*6-3, size=1+rnd(4), maxage=10+rnd(10)
-  addpart(expx,expy,flr(rnd(96))-48,flr(rnd(96))-48,flr(rnd(2)),2+flr(rnd(8)),10+flr(rnd(10)),isblue,0)
- end
- for i=1,20 do
-  -- original: s=(rnd()-0.5)*10 (sparks)
-  addpart(expx,expy,flr(rnd(160))-80,flr(rnd(160))-80,flr(rnd(2)),2+flr(rnd(8)),10+flr(rnd(10)),isblue,1)
- end
  big_shwave(expx,expy)
+ add(pend,{x=expx,y=expy,blue=isblue,big=0,fleft=30,sleft=20})
 end
 
 function bigexplode(expx,expy)
  addpart(expx,expy,0,0,0,50,0,0,0)
- for i=1,60 do
-  addpart(expx,expy,flr(rnd(192))-96,flr(rnd(192))-96,flr(rnd(2)),2+flr(rnd(12)),20+flr(rnd(20)),0,0)
- end
- for i=1,100 do
-  addpart(expx,expy,flr(rnd(480))-240,flr(rnd(480))-240,flr(rnd(2)),2+flr(rnd(8)),20+flr(rnd(20)),0,1)
- end
  big_shwave(expx,expy)
+ add(pend,{x=expx,y=expy,blue=0,big=1,fleft=60,sleft=100})
 end
 
 function smol_spark(sx2,sy2)
@@ -811,6 +844,7 @@ end
 -- update
 
 function update_game()
+ pump_explosions()
  -- controls
  shipsx=0
  shipsy=0

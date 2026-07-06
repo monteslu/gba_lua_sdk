@@ -685,7 +685,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: b2 relief undone (bank 2 is the tight bank)");
     }
-    if (attempt === 18 && fnInline) {
+    if (attempt === 26 && fnInline) {
       fnInline = false;
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: retrying with function inlining off");
@@ -711,7 +711,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: input block to bank 2");
     }
-    if (attempt === 30 && rndInt) {
+    if (attempt === 14 && rndInt) {
       // size relief: the integer-rnd fast path costs ~90 fixed bytes of
       // trampoline + call-site changes; carts at the absolute capacity
       // cliff give it up before giving up the blit font
@@ -719,7 +719,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: integer-rnd fast path off");
     }
-    if (attempt === 36 && !apiDefs.includes("-DGT_NO_BLITFONT")) {
+    if (attempt === 20 && !apiDefs.includes("-DGT_NO_BLITFONT")) {
       // final size relief: drop the GRAM blit font (~1 KB across banks);
       // print falls back to the per-pixel CPU path — correct, just slower
       apiDefs.push("-DGT_NO_BLITFONT");
@@ -729,7 +729,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: dropping the blit font (CPU print fallback)");
     }
-    if (attempt === 24 && midInline) {
+    if (attempt === 32 && midInline) {
       midInline = false;
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: retrying with all inlining off");
