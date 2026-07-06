@@ -33,6 +33,9 @@
 
 /* 108 MIDI notes, 2 bytes each (MSB, LSB) — from the MIT gametank_sdk.
  * Non-static: gt_music.c (sfx/music) reads the same table via `extern`. */
+#ifdef GT_BANKED
+#pragma rodata-name ("B0RODATA")
+#endif
 const unsigned char gt_pitch_table[216] = {
     0x00,0x4D,0x00,0x51,0x00,0x56,0x00,0x5B,0x00,0x61,0x00,0x66,0x00,0x6C,0x00,0x73,0x00,0x7A,0x00,0x81,0x00,0x89,0x00,0x91,
     0x00,0x99,0x00,0xA2,0x00,0xAC,0x00,0xB6,0x00,0xC1,0x00,0xCD,0x00,0xD9,0x00,0xE6,0x00,0xF3,0x01,0x02,0x01,0x11,0x01,0x21,
@@ -44,11 +47,34 @@ const unsigned char gt_pitch_table[216] = {
     0x26,0x52,0x28,0x99,0x2B,0x03,0x2D,0x92,0x30,0x48,0x33,0x27,0x36,0x31,0x39,0x6A,0x3C,0xD4,0x40,0x72,0x44,0x47,0x48,0x57,
     0x4C,0xA4,0x51,0x32,0x56,0x06,0x5B,0x24,0x60,0x8F,0x66,0x4D,0x6C,0x62,0x72,0xD4,0x79,0xA8,0x80,0xE4,0x88,0x8E,0x90,0xAD,
 };
+#ifdef GT_BANKED
+#pragma rodata-name ("RODATA")
+#endif
 
 #define FEEDBACK_AMT 0x04
 static unsigned char audio_ready = 0;
 
-void gt_audio_init(void) {
+/* FLASH2M: the audio bodies + pitch table ride in bank 0 with the firmware;
+ * fixed stubs bank-switch (a note trigger is a few calls per frame at most).
+ * gt_cur_bank lives in gt_bank.s. */
+#ifdef GT_BANKED
+extern unsigned char gt_cur_bank;
+#pragma code-name ("B0CODE")
+#define GT_AUDIO_INIT gt_audio_init_impl
+#define GT_NOTE gt_note_impl
+#define GT_NOTEOFF gt_noteoff_impl
+static void gt_audio_init_impl(void);
+static void gt_note_impl(int ch, int note, int vol);
+static void gt_noteoff_impl(int ch);
+#else
+#define GT_AUDIO_INIT gt_audio_init
+#define GT_NOTE gt_note
+#define GT_NOTEOFF gt_noteoff
+#endif
+#ifdef GT_BANKED
+static
+#endif
+void GT_AUDIO_INIT(void) {
     unsigned int i;
     unsigned char op;
     *audio_rate = 0x7F;
@@ -78,7 +104,10 @@ void gt_audio_init(void) {
  * 4th operator (index op+3) reaches the DAC; ops 1-3 are phase modulators.
  * Keeping the modulators at 128 zeroes their stages out of the chain and
  * yields a clean sine from the carrier. */
-void gt_note(int ch, int note, int vol) {
+#ifdef GT_BANKED
+static
+#endif
+void GT_NOTE(int ch, int note, int vol) {
     unsigned char op, i, idx;
     if (!audio_ready) return;
     op = (unsigned char)((ch & 3) << 2);
@@ -94,10 +123,34 @@ void gt_note(int ch, int note, int vol) {
     *audio_nmi = 1;
 }
 
-void gt_noteoff(int ch) {
+#ifdef GT_BANKED
+static
+#endif
+void GT_NOTEOFF(int ch) {
     unsigned char op, i;
     if (!audio_ready) return;
     op = (unsigned char)((ch & 3) << 2);
     for (i = 0; i < 4; ++i) aram[AMPLITUDE + op + i] = 128;
     *audio_nmi = 1;
 }
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+void gt_audio_init(void) {
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(0);
+    gt_audio_init_impl();
+    gt_bank(saved_bank);
+}
+void gt_note(int ch, int note, int vol) {
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(0);
+    gt_note_impl(ch, note, vol);
+    gt_bank(saved_bank);
+}
+void gt_noteoff(int ch) {
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(0);
+    gt_noteoff_impl(ch);
+    gt_bank(saved_bank);
+}
+#endif

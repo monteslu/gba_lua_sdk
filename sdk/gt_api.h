@@ -80,7 +80,8 @@ void gt_p8_rectfill_slow(void); /* C fallback: offscreen/reversed/128-span */
 void gt_p8_circ_z(void);       /* a0=cx a1=cy a2=r a3=c */
 void gt_p8_circfill_z(void);   /* a0=cx a1=cy a2=r a3=c */
 void gt_p8_line_z(void);       /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c */
-void gt_p8_spr_z(void);        /* a0=n a1=x a2=y a3=w a4=h */
+void gt_p8_spr_z(void);
+void gt_p8_spr_wide(void);  /* 128px-span splitter (asm punts here) */        /* a0=n a1=x a2=y a3=w a4=h */
 void gt_p8_sset_z(void);       /* a0=x a1=y a2=c */
 void gt_starfield_init(int n);      /* seed n parallax stars (n<=128) */
 void gt_starfield_move(int mode);   /* scroll: 0=drift 1=1x 2=2x */
@@ -108,6 +109,7 @@ int gt_p8_print_num(int v, int x, int y, int c);
 int gt_p8_print_num(long v, int x, int y, int c);
 #endif
 void gt_sheet_load(const unsigned char *packed);
+void gt_sheet_load_packed(const unsigned char *p, unsigned int plen); /* packbits */
 void gt_sheet_init(void);   /* generated per-build: loads the sheet or no-op */
 void __fastcall__ gt_bank(unsigned char b);  /* FLASH2M: switch the $8000 window */
 

@@ -126,22 +126,56 @@ function functionSizes(sPath) {
   return sizes;
 }
 
-function makeSheetC(sheetPath, banked) {
+// packbits: [n, b0..bn-1] literal run (n 1..127), [n|0x80, v] repeat run
+// (n 3..127). Sheets are ~half zero bytes, so this typically halves the
+// ROM cost. Only when the game never re-reads the raw sheet (bg_compose
+// random-accesses it), else the plain form is kept.
+function packbits(raw) {
+  const out = [];
+  let i = 0;
+  while (i < raw.length) {
+    let run = 1;
+    while (run < 127 && i + run < raw.length && raw[i + run] === raw[i]) run++;
+    if (run >= 3) {
+      out.push(0x80 | run, raw[i]);
+      i += run;
+      continue;
+    }
+    let lit = i;
+    while (lit < raw.length && lit - i < 127) {
+      let r = 1;
+      while (r < 3 && lit + r < raw.length && raw[lit + r] === raw[lit]) r++;
+      if (r >= 3) break;
+      lit++;
+    }
+    out.push(lit - i, ...raw.slice(i, lit));
+    i = lit;
+  }
+  return out;
+}
+
+function makeSheetC(sheetPath, banked, packed) {
   if (!sheetPath) return `void gt_sheet_init(void) {}\n`;
   const raw = readFileSync(sheetPath);
   if (raw.length !== 8192) fail(`--sheet expects an 8192-byte 4bpp gfx.bin (got ${raw.length})`);
-  const bytes = Array.from(raw).join(",");
+  let decl, call;
+  if (packed) {
+    const pk = packbits(Array.from(raw));
+    decl = `static const unsigned char sheet_data[${pk.length}] = {${pk.join(",")}};\n`;
+    call = `gt_sheet_load_packed(sheet_data, ${pk.length}U)`;
+  } else {
+    decl = `static const unsigned char sheet_data[8192] = {${Array.from(raw).join(",")}};\n`;
+    call = `gt_sheet_load(sheet_data)`;
+  }
   if (banked) {
     // sheet data lives in bank 2; the loader (fixed bank) maps it in first
     return `#include "gt_api.h"\n` +
-      `#pragma rodata-name ("SHEET")\n` +
-      `static const unsigned char sheet_data[8192] = {${bytes}};\n` +
+      `#pragma rodata-name ("SHEET")\n` + decl +
       `#pragma rodata-name ("RODATA")\n` +
-      `void gt_sheet_init(void) { gt_bank(2); gt_sheet_load(sheet_data); }\n`;
+      `void gt_sheet_init(void) { gt_bank(2); ${call}; }\n`;
   }
-  return `#include "gt_api.h"\n` +
-    `static const unsigned char sheet_data[8192] = {${bytes}};\n` +
-    `void gt_sheet_init(void) { gt_sheet_load(sheet_data); }\n`;
+  return `#include "gt_api.h"\n` + decl +
+    `void gt_sheet_init(void) { ${call}; }\n`;
 }
 
 // ---- FLASH2M bank placement -------------------------------------------------
@@ -203,10 +237,10 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
   // carts. Reserve so the game-function packer doesn't overfill and fail
   // to converge.
   const B2_SDK_RESERVE =
-    (usesBg ? 700 : 0) + (usesAtlas ? 500 : 0) + 2100 + (usesMusic ? 2800 : 0);
+    (usesBg ? 700 : 0) + (usesAtlas ? 500 : 0) + 2600 + (usesMusic ? 2800 : 0);
   const capacity = {
-    b0: BANK_SIZE - BANK_MARGIN - (usesAudio ? 4096 : 0),
-    b1: BANK_SIZE - BANK_MARGIN,
+    b0: BANK_SIZE - BANK_MARGIN - (usesAudio ? 4400 : 0) - 3400 /* SDK B0 bodies: print+font+glyphs, spr splitter, pal/sset/starfield, rect/border, fsqrt/ffmod */,
+    b1: BANK_SIZE - BANK_MARGIN - 1450 /* gt_math B1CODE+B1RODATA (sin/atan tables ride bank 1) */,
     b2: BANK_SIZE - BANK_MARGIN - sheetBytes - B2_SDK_RESERVE,
     fixed: estUsed("fixed") + 2500,
   };
@@ -348,6 +382,15 @@ function build(entry, outPath, sheetPath, num8 = false) {
   // 1. lua -> C (flat 32 KB attempt first)
   let result = compileLua(entry, { num8 });
   const usesAudio = result.c.includes("gt_audio_init(");
+  const usesStarfield = result.c.includes("gt_starfield");
+  const usesAutocls = result.c.includes("gt_autocls_set(");
+  const usesPackedSheet = !!sheetPath &&
+    !(result.c.includes("gt_bg_compose(") || result.c.includes("gt_gspr("));
+  const apiDefs = [
+    ...(usesStarfield ? ["-DGT_STARFIELD"] : []),
+    ...(usesAutocls ? ["-DGT_AUTOCLS"] : []),
+    ...(usesPackedSheet ? ["-DGT_SHEET_PACKED"] : []),
+  ];
   // sfx()/music() pull in the tracker (gt_music.c). Its data + per-frame
   // sequencer are small and read across arbitrary game banks every frame, so
   // it stays in the always-mapped fixed bank (compiled plain, not -DGT_BANKED).
@@ -366,7 +409,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
 
   // 2. compile + assemble everything
   cc(B(`${name}.c`), B(`${name}.s`));
-  cc(path.join(SDK, "gt_api.c"), B("gt_api.s"));
+  cc(path.join(SDK, "gt_api.c"), B("gt_api.s"), apiDefs);
   cc(path.join(SDK, "gt_fixed.c"), B("gt_fixed.s"));
   cc(path.join(SDK, "gt_math.c"), B("gt_math.s"));
   if (usesBg) cc(path.join(SDK, "gt_bg.c"), B("gt_bg.s"), usesAtlas ? ["-DGT_BG_ATLAS"] : []);
@@ -415,11 +458,35 @@ function build(entry, outPath, sheetPath, num8 = false) {
   const over = link32.overflows.reduce((a, o) => a + o.bytes, 0);
   console.error(`32 KB cart overflows by ~${over} bytes — re-targeting the 2 MB FLASH2M cart`);
   const sizes = functionSizes(B(`${name}.s`));
-  const sheetBytes = sheetPath ? 8192 : 0;
+  // fold each function's string-literal bytes into its size: a function's
+  // rodata rides its bank (the emitter pushes rodata-name with code-name),
+  // so the packer must see the full footprint — B1RODATA overflows were
+  // unfixable when a small-code menu function owned a fat string pool.
+  {
+    const fnRe = /^void gtl_(\w+)\(void\)\s*$|^\w[^\n]*gtl_(\w+)\([^;{]*\)\s*$/;
+    let cur = null;
+    for (const ln of result.c.split("\n")) {
+      const m = ln.match(/^[\w ]*\bgtl_(\w+)\([^;]*\)$/);
+      if (m && !ln.includes(";")) { cur = m[1]; continue; }
+      if (!cur) continue;
+      for (const str of ln.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+        sizes.set(cur, (sizes.get(cur) ?? 0) + str[1].length + 1);
+      }
+      // literal-run tables are proc-local statics: rodata the .s size
+      // parser can't see (cc65 emits them outside the .proc)
+      const lit = ln.match(/static const (int|long) gtl__lit\d+\[(\d+)\]/);
+      if (lit) {
+        sizes.set(cur, (sizes.get(cur) ?? 0) + (lit[1] === "long" ? 4 : 2) * parseInt(lit[2], 10));
+      }
+    }
+  }
+  const sheetBytes = sheetPath
+    ? (usesBg ? 8192 : packbits(Array.from(readFileSync(sheetPath))).length)
+    : 0;
   const placement = initialPlacement(result.callGraph);
 
   as(path.join(SDK, "gt_bank.s"), B("gt_bank.o"));
-  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, true));
+  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, true, !usesBg));
   cc(B("sheet.c"), B("sheet.s"));
   as(B("sheet.s"), B("sheet.o"));
 
@@ -460,9 +527,12 @@ function build(entry, outPath, sheetPath, num8 = false) {
   // circ/line-diagonal, starfield init/move, the glyph table) that exile to
   // bank 2 under GT_BANKED — the fixed window can't hold them all plus the
   // blitter font. Recompile banked so those pragmas take effect.
-  run(tc.cc65, [...CFLAGS, "-DGT_BANKED",
+  run(tc.cc65, [...CFLAGS, "-DGT_BANKED", ...apiDefs,
                 "-o", B("gt_api.s"), path.join(SDK, "gt_api.c")]);
   as(B("gt_api.s"), B("gt_api.o"));
+  run(tc.cc65, [...CFLAGS, "-DGT_BANKED",
+                "-o", B("gt_fixed.s"), path.join(SDK, "gt_fixed.c")]);
+  as(B("gt_fixed.s"), B("gt_fixed.o"));
 
   // gt_music (sfx/music sequencer + its instrument/sfx/song tables) is another
   // fat unit that would blow the near-full fixed bank's RODATA/CODE. Recompile
@@ -493,6 +563,16 @@ function build(entry, outPath, sheetPath, num8 = false) {
       fnInline = false;
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: retrying with function inlining off");
+    }
+    if (attempt === 12 && !apiDefs.includes("-DGT_NO_BLITFONT")) {
+      // final size relief: drop the GRAM blit font (~1 KB across banks);
+      // print falls back to the per-pixel CPU path — correct, just slower
+      apiDefs.push("-DGT_NO_BLITFONT");
+      run(tc.cc65, [...CFLAGS, "-DGT_BANKED", ...apiDefs,
+                    "-o", B("gt_api.s"), path.join(SDK, "gt_api.c")]);
+      as(B("gt_api.s"), B("gt_api.o"));
+      workPlacement = initialPlacement(result.callGraph);
+      console.error("bank placement tight: dropping the blit font (CPU print fallback)");
     }
     if (attempt === 16 && midInline) {
       midInline = false;

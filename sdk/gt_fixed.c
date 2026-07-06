@@ -98,7 +98,25 @@ long gt_fdiv(long a, long b) {
 }
 #endif /* !GT_FIXED_ASM */
 
-long gt_fsqrt(long x) {
+/* FLASH2M: sqrt/ffmod are cold, loop-heavy bodies (spawn-time math, and
+ * ffmod is the documented 19k-cycle footgun ports avoid) — they ride in
+ * bank 0; fixed stubs bank-switch. gt_cur_bank lives in gt_bank.s. */
+#ifdef GT_BANKED
+extern unsigned char gt_cur_bank;
+extern void __fastcall__ gt_bank(unsigned char b);
+#pragma code-name ("B0CODE")
+#define GT_FSQRT gt_fsqrt_impl
+#define GT_FFMOD gt_ffmod_impl
+static long gt_fsqrt_impl(long x);
+static long gt_ffmod_impl(long a, long b);
+#else
+#define GT_FSQRT gt_fsqrt
+#define GT_FFMOD gt_ffmod
+#endif
+#ifdef GT_BANKED
+static
+#endif
+long GT_FSQRT(long x) {
     /* canonical bit-by-bit integer sqrt of the raw bits, then scale:
      * sqrt(bits/2^16)*2^16 == sqrt(bits)*2^8. One Newton step recovers the
      * low fraction bits. sqrt of negative = 0 (P8). */
@@ -121,7 +139,10 @@ long gt_fsqrt(long x) {
     return (long)res;
 }
 
-long gt_ffmod(long a, long b) {
+#ifdef GT_BANKED
+static
+#endif
+long GT_FFMOD(long a, long b) {
     /* floored modulo: a - flr(a/b)*b, result takes the divisor's sign.
      * Masking the fraction bits of the quotient IS floor toward -inf in
      * two's complement 16.16. */
@@ -130,6 +151,25 @@ long gt_ffmod(long a, long b) {
     q = gt_fdiv(a, b) & (long)0xFFFF0000L;
     return a - gt_fmul(q, b);
 }
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+long gt_fsqrt(long x) {
+    unsigned char saved_bank = gt_cur_bank;
+    long r;
+    gt_bank(0);
+    r = gt_fsqrt_impl(x);
+    gt_bank(saved_bank);
+    return r;
+}
+long gt_ffmod(long a, long b) {
+    unsigned char saved_bank = gt_cur_bank;
+    long r;
+    gt_bank(0);
+    r = gt_ffmod_impl(a, b);
+    gt_bank(saved_bank);
+    return r;
+}
+#endif
 #endif /* !GT_NUM8 */
 
 int gt_ifdiv(int a, int b) {

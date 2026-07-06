@@ -31,6 +31,7 @@
 .import   _p8pal
 .import   _draw_color
 .import   _gt_p8_rectfill_slow
+.import   _gt_p8_spr_wide
 .export   _gt_p8_rectfill_z
 .export   _gt_a0, _gt_a1, _gt_a2, _gt_a3, _gt_a4, _gt_a5
 .export   _gt_cam_x, _gt_cam_y
@@ -299,6 +300,17 @@ _gt_p8_rectfill_z:
 QF_SPR = $55                    ; DMA_NMI|DMA_ENABLE|DMA_IRQ|DMA_GCARRY
 
 _gt_p8_spr_z:
+        ; ---- 16-cell (128px) spans overflow the 7-bit blit counters and the
+        ; hardware wraps them to zero-width garbage: punt to the C splitter,
+        ; which redraws as two 64px halves through this same path. ----
+        LDA _gt_a3
+        CMP #16
+        BCS @wide
+        LDA _gt_a4
+        CMP #16
+        BCC @norm
+@wide:  JMP _gt_p8_spr_wide
+@norm:
         ; ---- pw = max(w,1) << 3 (16-bit result: A=lo, q_pwh=hi) ----
         LDA _gt_a3
         BNE :+

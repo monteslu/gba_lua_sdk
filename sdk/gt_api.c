@@ -15,7 +15,7 @@
  * glyph path (edge clips / 9th color) maps the bank around its reads */
 #ifdef GT_BANKED
 extern unsigned char gt_cur_bank;   /* live $8000-window bank (gt_bank.s) */
-#pragma rodata-name ("B2RODATA")
+#pragma rodata-name ("B0RODATA")
 #endif
 #include "gt_font.h"
 #ifdef GT_BANKED
@@ -151,6 +151,7 @@ static unsigned char *const vram_row[128] = {
  * the quadrant for CPU GRAM writes) and preserves frameflip. */
 #define FONT_GROUP 2
 #define FONT_SLOTS 8
+#ifndef GT_NO_BLITFONT
 static unsigned char font_cols[FONT_SLOTS];
 static unsigned char font_nslots = 0;
 
@@ -165,9 +166,9 @@ static void bg_pipeline_restore(void) {
 }
 
 /* FLASH2M: the upload body is cold (once per text color) — it rides in
- * bank 2 like gt_bg_compose's decode; a fixed-bank stub banks + restores. */
+ * bank 0 WITH the glyph table it reads; a fixed-bank stub banks + restores. */
 #ifdef GT_BANKED
-#pragma code-name ("B2CODE")
+#pragma code-name ("B0CODE")
 #define GT_FONT_UPLOAD font_upload_impl
 #else
 #define GT_FONT_UPLOAD font_upload
@@ -211,13 +212,35 @@ static void GT_FONT_UPLOAD(unsigned char slot, unsigned char col) {
 #pragma code-name ("CODE")
 static void font_upload(unsigned char slot, unsigned char col) {
     unsigned char saved_bank = gt_cur_bank;
-    gt_bank(2);
+    gt_bank(0);                  /* the glyph table rides bank 0 */
     font_upload_impl(slot, col);
     gt_bank(saved_bank);
 }
 #endif
+#endif /* !GT_NO_BLITFONT */
+
+#ifdef GT_BANKED
+#pragma code-name ("B0CODE")
+#endif
+static unsigned char gt_glyph(char ch) {
+    if (ch >= '0' && ch <= '9') return ch - '0';
+    if (ch >= 'a' && ch <= 'z') return 10 + ch - 'a';
+    if (ch >= 'A' && ch <= 'Z') return 10 + ch - 'A';
+    switch (ch) {
+        case '!': return 37;
+        case '-': return 38;
+        case ':': return 39;
+        case '.': return 40;
+        case '/': return 41;
+        default: return 36;   /* space */
+    }
+}
 
 static signed char font_slot(unsigned char col) {
+#ifdef GT_NO_BLITFONT
+    (void)col;
+    return -1;                  /* every print takes the CPU glyph path */
+#else
     unsigned char i;
     for (i = 0; i < font_nslots; ++i) {
         if (font_cols[i] == col) return (signed char)i;
@@ -226,6 +249,7 @@ static signed char font_slot(unsigned char col) {
     i = font_nslots++;
     font_upload(i, col);
     return (signed char)i;
+#endif
 }
 
 /* print: 3x5 glyphs via CPU writes; returns the x after the last glyph
@@ -240,7 +264,7 @@ static void glyph_cpu(unsigned char gn, int x, int y, unsigned char col) {
     {
 #ifdef GT_BANKED
         unsigned char saved_bank = gt_cur_bank;
-        gt_bank(2);
+        gt_bank(0);
 #endif
         for (row = 0; row < 5; ++row) rows[row] = gt_font[gn][row];
 #ifdef GT_BANKED
@@ -257,7 +281,16 @@ static void glyph_cpu(unsigned char gn, int x, int y, unsigned char col) {
     }
 }
 
-int gt_p8_print(const char *str, int x, int y, int c) {
+#ifdef GT_BANKED
+#define GT_PRINT gt_p8_print_impl
+static int gt_p8_print_impl(const char *str, int x, int y, int c);
+#else
+#define GT_PRINT gt_p8_print
+#endif
+#ifdef GT_BANKED
+static
+#endif
+int GT_PRINT(const char *str, int x, int y, int c) {
     unsigned char col = resolve_color(c);
     unsigned char gn;
     signed char slot;
@@ -290,13 +323,24 @@ int gt_p8_print(const char *str, int x, int y, int c) {
 }
 
 /* print a fixed number: integer part (P8 prints integers bare) */
+#ifdef GT_BANKED
+#define GT_PRINT_NUM gt_p8_print_num_impl
+#else
+#define GT_PRINT_NUM gt_p8_print_num
+#endif
 #ifdef GT_NUM8
-int gt_p8_print_num(int v, int x, int y, int c) {
+#ifdef GT_BANKED
+static
+#endif
+int GT_PRINT_NUM(int v, int x, int y, int c) {
     char buf[8];
     char *p = buf + 7;
     int iv = v >> 8;
 #else
-int gt_p8_print_num(long v, int x, int y, int c) {
+#ifdef GT_BANKED
+static
+#endif
+int GT_PRINT_NUM(long v, int x, int y, int c) {
     char buf[8];
     char *p = buf + 7;
     int iv = (int)(v >> 16);
@@ -307,8 +351,38 @@ int gt_p8_print_num(long v, int x, int y, int c) {
     if (iv < 0) { neg = 1; uv = (unsigned int)(-iv); } else uv = (unsigned int)iv;
     do { *--p = '0' + (uv % 10); uv /= 10; } while (uv);
     if (neg) *--p = '-';
-    return gt_p8_print(p, x, y, c);
+    return GT_PRINT(p, x, y, c);
 }
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+int gt_p8_print(const char *str, int x, int y, int c) {
+    /* the string usually lives in the CALLER'S bank (a B1 draw function's
+     * literal pool) — copy it to RAM while that bank is still mapped, THEN
+     * switch to the print body's bank. Garbled glyphs otherwise. */
+    char buf[33];               /* 32 glyphs = a full 128px line */
+    unsigned char saved_bank = gt_cur_bank;
+    unsigned char i;
+    int r;
+    for (i = 0; i < 32 && str[i]; ++i) buf[i] = str[i];
+    buf[i] = 0;
+    gt_bank(0);
+    r = gt_p8_print_impl(buf, x, y, c);
+    gt_bank(saved_bank);
+    return r;
+}
+#ifdef GT_NUM8
+int gt_p8_print_num(int v, int x, int y, int c) {
+#else
+int gt_p8_print_num(long v, int x, int y, int c) {
+#endif
+    unsigned char saved_bank = gt_cur_bank;
+    int r;
+    gt_bank(0);
+    r = gt_p8_print_num_impl(v, x, y, c);
+    gt_bank(saved_bank);
+    return r;
+}
+#endif
 
 /* The packed sheet pointer, stashed by gt_sheet_load so the background
  * compositor (gt_bg.c) can re-read tile pixels from it. In FLASH2M builds the
@@ -334,6 +408,35 @@ void gt_sheet_load(const unsigned char *packed) {
         vram[(i << 1) | 1] = p8pal[b >> 4];
     }
 }
+/* packbits variant: [n,b0..bn-1] literal (n 1..127), [n|0x80,v] repeat
+ * (n 3..127). Emitted by the builder when the game never re-reads the raw
+ * sheet; typically halves the sheet's ROM cost. NOTE: gt_sheet_ptr stays
+ * NULL — bg_compose needs the raw form and the builder keeps them apart. */
+#ifdef GT_SHEET_PACKED
+void gt_sheet_load_packed(const unsigned char *p, unsigned int plen) {
+    const unsigned char *end = p + plen;
+    unsigned int vi = 0;
+    unsigned char n, b;
+    enter_gram_mode();
+    while (p < end) {
+        n = *p++;
+        if (n & 0x80) {
+            n &= 0x7F;
+            b = *p++;
+            while (n--) {
+                vram[vi++] = p8pal[b & 15];
+                vram[vi++] = p8pal[b >> 4];
+            }
+        } else {
+            while (n--) {
+                b = *p++;
+                vram[vi++] = p8pal[b & 15];
+                vram[vi++] = p8pal[b >> 4];
+            }
+        }
+    }
+}
+#endif /* GT_SHEET_PACKED */
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
 #endif
@@ -341,7 +444,7 @@ void gt_sheet_load(const unsigned char *packed) {
 /* PICO-8 sset: plot into the 128x128 sprite sheet (GRAM quadrant 0).
  * Cold (boot-time cell drawing) — the body rides in bank 2 under FLASH2M. */
 #ifdef GT_BANKED
-#pragma code-name ("B2CODE")
+#pragma code-name ("B0CODE")
 #define GT_SSET_Z gt_p8_sset_z_impl
 static void gt_p8_sset_z_impl(void);
 #else
@@ -361,7 +464,7 @@ void GT_SSET_Z(void) {
 #pragma code-name ("CODE")
 void gt_p8_sset_z(void) {
     unsigned char saved_bank = gt_cur_bank;
-    gt_bank(2);
+    gt_bank(0);
     gt_p8_sset_z_impl();
     gt_bank(saved_bank);
 }
@@ -371,6 +474,46 @@ void gt_p8_sset(int x, int y, int c) {
     gt_a0 = x; gt_a1 = y; gt_a2 = c;
     gt_p8_sset_z();
 }
+
+/* 16-cell-wide/tall sprites are 128px spans — past the 7-bit blit counter
+ * (the hardware wraps the width to 0). The asm fast path punts here; split
+ * in halves, each half re-entering the fast path. Mirrored halves swap
+ * sides so hardware flips stay correct. */
+#ifdef GT_BANKED
+#pragma code-name ("B0CODE")
+#define GT_SPR_WIDE gt_p8_spr_wide_impl
+static void gt_p8_spr_wide_impl(void);
+#else
+#define GT_SPR_WIDE gt_p8_spr_wide
+#endif
+#ifdef GT_BANKED
+static
+#endif
+void GT_SPR_WIDE(void) {
+    int n = gt_a0, x = gt_a1, y = gt_a2, w = gt_a3, h = gt_a4, f = gt_a5;
+    if (w >= 16) {
+        int nl = (f & 1) ? n + 8 : n;
+        int nr = (f & 1) ? n : n + 8;
+        gt_p8_spr(nl, x, y, 8, h, f);
+        gt_p8_spr(nr, x + 64, y, w - 8, h, f);
+        return;
+    }
+    {
+        int nt = (f & 2) ? n + 128 : n;
+        int nb = (f & 2) ? n : n + 128;
+        gt_p8_spr(nt, x, y, w, 8, f);
+        gt_p8_spr(nb, x, y + 64, w, h - 8, f);
+    }
+}
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+void gt_p8_spr_wide(void) {
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(0);
+    gt_p8_spr_wide_impl();
+    gt_bank(saved_bank);
+}
+#endif
 
 /* PICO-8 spr: blit sprite cell n (8x8, 16 per row) with transparency.
  * The hot path lives in asm (gt_blitq.s _gt_p8_spr_z): camera-adjust,
@@ -523,7 +666,17 @@ void gt_p8_cls(int c) {
 void gt_p8_camera(int x, int y) { gt_cam_x = x; gt_cam_y = y; }
 void gt_p8_color(int c) { resolve_color(c); }
 
-void gt_p8_pal(int c0, int c1) {
+#ifdef GT_BANKED
+#pragma code-name ("B0CODE")
+#define GT_PAL gt_p8_pal_impl
+static void gt_p8_pal_impl(int c0, int c1);
+#else
+#define GT_PAL gt_p8_pal
+#endif
+#ifdef GT_BANKED
+static
+#endif
+void GT_PAL(int c0, int c1) {
     unsigned char i;
     if (c0 < 0) {                     /* pal() — reset */
         for (i = 0; i < 16; ++i) p8pal[i] = p8pal_rom[i];
@@ -532,6 +685,15 @@ void gt_p8_pal(int c0, int c1) {
     if (c1 < 0) return;
     p8pal[c0 & 15] = (c1 & 0x100) ? (unsigned char)c1 : p8pal_rom[c1 & 15];
 }
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+void gt_p8_pal(int c0, int c1) {
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(0);
+    gt_p8_pal_impl(c0, c1);
+    gt_bank(saved_bank);
+}
+#endif
 
 /* Fallback for the asm fast path in gt_blitq.s (_gt_p8_rectfill_z): handles
  * offscreen/reversed/128-span rects. resolve_color is idempotent, so the asm
@@ -550,7 +712,17 @@ void gt_p8_rectfill(int x0, int y0, int x1, int y1, int c) {
     gt_p8_rectfill_z();
 }
 
-void gt_p8_rect_z(void) {
+#ifdef GT_BANKED
+#pragma code-name ("B0CODE")
+#define GT_RECT_Z gt_p8_rect_z_impl
+static void gt_p8_rect_z_impl(void);
+#else
+#define GT_RECT_Z gt_p8_rect_z
+#endif
+#ifdef GT_BANKED
+static
+#endif
+void GT_RECT_Z(void) {
     int x0, y0, x1, y1, t;
     fc_col = resolve_color(gt_a4);
     x0 = gt_a0 - gt_cam_x; x1 = gt_a2 - gt_cam_x;
@@ -564,6 +736,15 @@ void gt_p8_rect_z(void) {
         if (x1 != x0) { gt_a0 = x1; gt_a1 = y0 + 1; gt_a2 = x1; gt_a3 = y1 - 1; fill_clipped_z(); }
     }
 }
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+void gt_p8_rect_z(void) {
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(0);
+    gt_p8_rect_z_impl();
+    gt_bank(saved_bank);
+}
+#endif
 
 void gt_p8_rect(int x0, int y0, int x1, int y1, int c) {
     gt_a0 = x0; gt_a1 = y0; gt_a2 = x1; gt_a3 = y1; gt_a4 = c;
@@ -594,6 +775,7 @@ void gt_p8_pset(int x, int y, int c) {
     gt_p8_pset_z();
 }
 
+#ifdef GT_STARFIELD
 /* ---- parallax starfield ----------------------------------------------------
  * A stock scrolling-starfield primitive. Ports that draw a full-screen field
  * of drifting stars (shmups, space games) would otherwise pay ~1000 cycles of
@@ -687,13 +869,34 @@ void gt_starfield_move(int mode) {
 }
 #endif
 
-void gt_starfield_draw(void) {
+#ifdef GT_BANKED
+#pragma code-name ("B0CODE")
+#define GT_SF_DRAW gt_starfield_draw_impl
+static void gt_starfield_draw_impl(void);
+#else
+#define GT_SF_DRAW gt_starfield_draw
+#endif
+#ifdef GT_BANKED
+static
+#endif
+void GT_SF_DRAW(void) {
     unsigned char i;
     enter_cpu_mode();
     for (i = 0; i < star_n; ++i) {
         vram_row[star_row[i]][star_x[i]] = star_col[i];
     }
 }
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+void gt_starfield_draw(void) {
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(0);
+    gt_starfield_draw_impl();
+    gt_bank(saved_bank);
+}
+#endif
+
+#endif /* GT_STARFIELD */
 
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
@@ -843,7 +1046,17 @@ void gt_p8_circ(int cx, int cy, int r, int c) {
     gt_p8_circ_z();
 }
 
-void gt_p8_border(int c) {
+#ifdef GT_BANKED
+#pragma code-name ("B0CODE")
+#define GT_BORDER gt_p8_border_impl
+static void gt_p8_border_impl(int c);
+#else
+#define GT_BORDER gt_p8_border
+#endif
+#ifdef GT_BANKED
+static
+#endif
+void GT_BORDER(int c) {
     /* fill the overscan ring (visible area is x 1..126, y 7..119) */
     unsigned char col = resolve_color(c);
     fill_clipped(0, 0, 127, 6, col);
@@ -851,8 +1064,31 @@ void gt_p8_border(int c) {
     fill_clipped(0, 7, 0, 119, col);
     fill_clipped(127, 7, 127, 119, col);
 }
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+void gt_p8_border(int c) {
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(0);
+    gt_p8_border_impl(c);
+    gt_bank(saved_bank);
+}
+#endif
 
 /* ---- input: latch + two reads per pad (active-low), per the C SDK ---- */
+#ifdef GT_BANKED
+#pragma code-name ("B0CODE")
+#pragma rodata-name ("B0RODATA")
+#define GT_UPDATE_INPUTS gt_update_inputs_impl
+#define GT_BTN gt_p8_btn_impl
+#define GT_BTNP gt_p8_btnp_impl
+static void gt_update_inputs_impl(void);
+static unsigned char gt_p8_btn_impl(int i, int pl);
+static unsigned char gt_p8_btnp_impl(int i, int pl);
+#else
+#define GT_UPDATE_INPUTS gt_update_inputs
+#define GT_BTN gt_p8_btn
+#define GT_BTNP gt_p8_btnp
+#endif
 
 /* held/newpress words live in zp (gt_blitq.s) so btn()/btnp() with constant
  * arguments compile to inline bit tests — no call at all. */
@@ -898,7 +1134,10 @@ static unsigned int rpt_of(unsigned char pl, unsigned int now,
     return rpt;
 }
 
-void gt_update_inputs(void) {
+#ifdef GT_BANKED
+static
+#endif
+void GT_UPDATE_INPUTS(void) {
     unsigned char rpt_start, rpt_every;
     /* P8 btnp auto-repeat: 15 frames then every 4 at 30fps; doubled at 60 */
     if (fps30) { rpt_start = 15; rpt_every = 4; }
@@ -909,15 +1148,47 @@ void gt_update_inputs(void) {
     gt_rpt1 = rpt_of(1, gt_pad1, rpt_start, rpt_every);
 }
 
-unsigned char gt_p8_btn(int i, int pl) {
+#ifdef GT_BANKED
+static
+#endif
+unsigned char GT_BTN(int i, int pl) {
     if (i < 0 || i > 7) return 0;
     return ((pl & 1 ? gt_pad1 : gt_pad0) & btn_mask[i]) != 0;
 }
 
-unsigned char gt_p8_btnp(int i, int pl) {
+#ifdef GT_BANKED
+static
+#endif
+unsigned char GT_BTNP(int i, int pl) {
     if (i < 0 || i > 7) return 0;
     return ((pl & 1 ? gt_rpt1 : gt_rpt0) & btn_mask[i]) != 0;
 }
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+#pragma rodata-name ("RODATA")
+void gt_update_inputs(void) {
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(0);
+    gt_update_inputs_impl();
+    gt_bank(saved_bank);
+}
+unsigned char gt_p8_btn(int i, int pl) {
+    unsigned char saved_bank = gt_cur_bank;
+    unsigned char r;
+    gt_bank(0);
+    r = gt_p8_btn_impl(i, pl);
+    gt_bank(saved_bank);
+    return r;
+}
+unsigned char gt_p8_btnp(int i, int pl) {
+    unsigned char saved_bank = gt_cur_bank;
+    unsigned char r;
+    gt_bank(0);
+    r = gt_p8_btnp_impl(i, pl);
+    gt_bank(saved_bank);
+    return r;
+}
+#endif
 
 /* ---- lifecycle ---- */
 
@@ -974,10 +1245,13 @@ void gt_init(void) {
  * ~16k pixels of blitter time drain inside the fps30 second vsync wait
  * (measured: a full-screen cls is 27% of the whole 30fps budget when the
  * game clears at draw time). -1 = off. */
+#ifdef GT_AUTOCLS
 int gt_autocls = -1;
 
 void gt_autocls_set(int c) { gt_autocls = c; }
+#endif
 
+#ifdef GT_AUTOCLS
 static void queue_autocls(void) {
     unsigned char col;
     if (gt_autocls < 0) return;
@@ -987,6 +1261,9 @@ static void queue_autocls(void) {
     box_raw(127, 127, 1, 1, col);
     box_raw(0, 0, 127, 127, col);
 }
+#else
+#define queue_autocls()
+#endif
 
 void gt_endframe(void) {
     /* vsync FIRST, then the drain check: queued blits keep draining DURING

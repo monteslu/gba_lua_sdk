@@ -14,16 +14,5 @@ static const unsigned char gt_font[42][5] = {
     {1,1,2,4,4},
 };
 
-static unsigned char gt_glyph(char ch) {
-    if (ch >= '0' && ch <= '9') return ch - '0';
-    if (ch >= 'a' && ch <= 'z') return 10 + ch - 'a';
-    if (ch >= 'A' && ch <= 'Z') return 10 + ch - 'A';
-    switch (ch) {
-        case '!': return 37;
-        case '-': return 38;
-        case ':': return 39;
-        case '.': return 40;
-        case '/': return 41;
-        default: return 36;   /* space */
-    }
-}
+/* gt_glyph() lives with the print block in gt_api.c (bank 0 under
+ * FLASH2M) — its only caller. */

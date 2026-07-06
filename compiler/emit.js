@@ -848,9 +848,54 @@ export function emit(chunk, symbols, file, opts = {}) {
 
   // ---- statements -------------------------------------------------------------
 
+  // ---- literal-run packing: N consecutive `arr[k]=lit; arr[k+1]=lit; ...`
+  // statements each cost ~10-14 bytes of cc65 code; as a const table + copy
+  // loop they cost the data + ~30 bytes. Big _init data blocks (sfx tables,
+  // palettes, level data) shrink by ~70%. The table rides the function's
+  // bank via the surrounding rodata-name pragma.
+  function matchLitAssign(st) {
+    if (!st || st.kind !== "assign" || st.op !== "=") return null;
+    if (st.target.kind !== "index" || st.target.object?.kind !== "name") return null;
+    const idx = st.target.index;
+    if (idx.kind !== "number" || !Number.isInteger(idx.value)) return null;
+    if (st.value.kind !== "number") return null;
+    return { name: st.target.object.name, tk: st.targetKind ?? "int",
+             index: Math.trunc(idx.value), value: st.value };
+  }
+  let runSeq = 0;
+  function literalRun(stmts, i) {
+    const m = matchLitAssign(stmts[i]);
+    if (!m) return null;
+    const vals = [m.value];
+    let k = m.index, j = i + 1;
+    while (j < stmts.length) {
+      const n = matchLitAssign(stmts[j]);
+      if (!n || n.name !== m.name || n.tk !== m.tk || n.index !== k + 1) break;
+      vals.push(n.value); k++; j++;
+    }
+    if (vals.length < 6) return null;
+    return { name: m.name, tk: m.tk, start: m.index, vals, len: j - i };
+  }
+
   function block(b) {
     let opened = 0;
-    for (const s of b.stmts) {
+    for (let bi = 0; bi < b.stmts.length; bi++) {
+      const s = b.stmts[bi];
+      const run = literalRun(b.stmts, bi);
+      if (run) {
+        const id = `gtl__lit${runSeq++}`;
+        const ct = run.tk === "fixed" ? ctype("fixed") : "int";
+        const lits = run.vals.map((v) => expr(v, run.tk)).join(", ");
+        line(`{ static const ${ct} ${id}[${run.vals.length}] = { ${lits} };`);
+        indent++;
+        line(`unsigned char ${id}_i;`);
+        line(`for (${id}_i = 0; ${id}_i < ${run.vals.length}; ++${id}_i) ` +
+             `${mangle(run.name)}[${run.start - 1} + ${id}_i] = ${id}[${id}_i];`);
+        indent--;
+        line("}");
+        bi += run.len - 1;
+        continue;
+      }
       if (s.kind === "local") {
         // C89: declarations open a block; extent matches the Lua scope
         const decls = s.names.map((n, i) => {
