@@ -26,6 +26,10 @@ VIA_DDRA = $2803
 gt_cur_bank:
 _gt_cur_bank: .byte $FF           ; C-visible alias (extern unsigned char gt_cur_bank)
 
+.segment "BSS"
+.export _gt_bank_switches
+_gt_bank_switches: .res 4         ; diagnostic: real hardware switches (u32)
+
 .segment "CODE"
 
 ; void __fastcall__ gt_bank(unsigned char b);
@@ -41,6 +45,12 @@ gt_bank_raw:
         bne     @go
         rts
 @go:    sta     gt_cur_bank
+        inc     _gt_bank_switches
+        bne     @cnt
+        inc     _gt_bank_switches+1
+        bne     @cnt
+        inc     _gt_bank_switches+2
+@cnt:
         ldx     #$07            ; CLK/MOSI/CS as outputs
         stx     VIA_DDRA
         cmp     #0
