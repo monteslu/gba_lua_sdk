@@ -1606,7 +1606,8 @@ function _update()
   end
 
   spd = sqrt(vx * vx + vy * vy)
-  kph = flr(spd * 32.28)
+  local s8 = flr(spd * 8)
+  kph = s8 * 4 + s8 \ 32
 
   -- dirt kicked up by a front wheel on grass (once per frame)
   if gwheels > 0 and spd > 1 then
