@@ -264,6 +264,16 @@ export function emit(chunk, symbols, file, opts = {}) {
   let currentFnName = null; // for cross-bank call rewriting
   const narrowedVars = new Set(); // u8 fornum counters currently in scope
   let inlineMap = null;           // inlined callee: param name -> rendered arg
+  let inlineSeq = 0;              // unique suffix for statement-inline bindings
+  const hasReturn = (node, seen = new WeakSet()) => {
+    if (!node || typeof node !== "object") return false;
+    if (seen.has(node)) return false;             // AST back-references
+    seen.add(node);
+    if (Array.isArray(node)) return node.some((n) => hasReturn(n, seen));
+    if (node.kind === "return") return true;
+    if (node.kind === "function") return false;
+    return Object.values(node).some((v) => typeof v === "object" && v !== null && hasReturn(v, seen));
+  };
   let zpParamMap = null;          // leaf zp-fastcall fns: param -> gt_pN
   const inlineStack = new Set();  // fns currently being inlined (recursion guard)
   const declaredCache = new Map(); // fn name -> Set of names declared inside it
@@ -991,6 +1001,46 @@ export function emit(chunk, symbols, file, opts = {}) {
         break;
       }
       case "callstmt": {
+        // Statement-level inlining for FAT calls: a >=6-param user function
+        // called as a statement pastes as a block that binds every argument
+        // to a local FIRST (evaluation order — including rnd() state — is
+        // exactly a call's), then emits the body with params mapped to the
+        // bindings. With --static-locals each binding is an absolute store
+        // (~8 cycles) instead of cc65's pusha marshalling (~40/arg) plus
+        // (sp),y parameter reads in the callee: a 9-arg particle spawner
+        // drops ~450 cycles per call. Gates: no return value (retKind
+        // defaults to "int" — use hasReturnValue), no own locals (the
+        // emitter hoists local decls to the prologue, a pasted body would
+        // reference undeclared names), tiny body, capture-safe.
+        const c = s.call;
+        if (inliner && c.userFn && c.callee?.kind === "name" &&
+            !inlineStack.has(c.callee.name) && functions.has(c.callee.name)) {
+          const ifn = functions.get(c.callee.name);
+          const ibody = ifn?.node?.body;
+          const ownDecls = ibody ? declaredOf(c.callee.name) : null;
+          const declaresLocals = ownDecls ? ownDecls.size > ifn.params.length : true;
+          if (ibody && ifn.params.length >= 6 && ibody.stmts.length <= 2 &&
+              c.args.length === ifn.params.length &&
+              !ifn.hasReturnValue && !declaresLocals &&
+              !hasReturn(ibody) && noCapture(c.callee.name)) {
+            const bind = ifn.params.map((pname, i) =>
+              [`L_i${inlineSeq}_${i}`, expr(c.args[i], ifn.paramKinds[i] ?? "int"), ifn.paramKinds[i] ?? "int"]);
+            inlineSeq++;
+            line("{");
+            indent++;
+            for (const [ln, ex, k] of bind) line(`${ctype(k)} ${ln} = ${ex};`);
+            const rendered = new Map(ifn.params.map((pname, i) => [pname, bind[i][0]]));
+            const saved = inlineMap;
+            inlineMap = rendered;
+            inlineStack.add(c.callee.name);
+            block(ibody);
+            inlineStack.delete(c.callee.name);
+            inlineMap = saved;
+            indent--;
+            line("}");
+            break;
+          }
+        }
         const txt = call(s.call);
         line(txt.startsWith("{") ? txt : `${txt};`);
         break;
