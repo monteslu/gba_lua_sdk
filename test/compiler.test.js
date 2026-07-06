@@ -212,17 +212,23 @@ test("pool iteration scans [0.._hi), not the full capacity", () => {
   assert.doesNotMatch(c, /for \(L_p\d+ = 0; L_p\d+ < 8;/);
 });
 
-test("add() grows the high-water mark when it appends a new top slot", () => {
+test("add() allocates O(1): free-chain pop, else the watermark slot", () => {
   const c = cOf(POOL);
-  assert.match(c, /for \(L_s\d+ = 0; L_s\d+ < gtl_ps_hi; \+\+L_s\d+\)/);
+  // pop the +1-encoded free chain (links ride the first field array) ...
+  assert.match(c, /if \(gtl_ps_free\) \{ L_s\d+ = \(unsigned char\)\(gtl_ps_free - 1\);/);
+  // ... else append at the watermark, growing it
+  assert.match(c, /else L_s\d+ = gtl_ps_hi;/);
   assert.match(c, /if \(L_s\d+ >= gtl_ps_hi\) gtl_ps_hi = L_s\d+ \+ 1;/);
   // capacity is still the hard ceiling on placement
   assert.match(c, /if \(L_s\d+ < 8\)/);
 });
 
-test("del() snaps the high-water mark to 0 the moment the pool empties", () => {
+test("del() pushes the free chain and snaps hi + chain on empty", () => {
   const c = cOf(POOL);
-  assert.match(c, /--gtl_ps_n == 0 \? \(gtl_ps_hi = 0\) : 0/);
+  // freed slot joins the chain through its first field's storage
+  assert.match(c, /gtl_ps_free = \(unsigned char\)\(\w+ \+ 1\)/);
+  // pool emptying resets both the watermark and the chain
+  assert.match(c, /--gtl_ps_n == 0 \? \(gtl_ps_hi = 0, gtl_ps_free = 0\) : 0/);
 });
 
 // ---- gt.* extras -------------------------------------------------------------------

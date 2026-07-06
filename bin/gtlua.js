@@ -87,7 +87,9 @@ function runLink(cmd, args) {
   const text = `${r.stdout ?? ""}${r.stderr ?? ""}`;
   if (r.status === 0) return { ok: true, overflows: [], text };
   const overflows = [];
-  const re = /Segment '?‘?([A-Z0-9]+)'?’? overflows memory area '?‘?\w+'?’? by (\d+) bytes/g;
+  // NB: ld65 says "by 1 byte" (singular) — a 1-byte overflow with a plural-
+  // only pattern is invisible to the juggler and hard-fails the build
+  const re = /Segment '?‘?([A-Z0-9]+)'?’? overflows memory area '?‘?\w+'?’? by (\d+) bytes?/g;
   let m;
   while ((m = re.exec(text)) !== null) overflows.push({ segment: m[1], bytes: Number(m[2]) });
   if (!overflows.length) {

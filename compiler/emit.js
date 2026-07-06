@@ -740,10 +740,15 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (b.special === "del") {
       const pl = e.poolSym;
       const sv = e.args[1].sym?.forall?.slotVar ?? e.bindingSym?.forall?.slotVar;
-      // snap the high-water mark back to 0 the moment the pool empties, so a
-      // one-shot burst (an explosion's particles) doesn't leave every later
-      // frame scanning the whole capacity.
-      return `(${pl.cname}_used[${sv}] = 0, (--${pl.cname}_n == 0 ? (${pl.cname}_hi = 0) : 0), (void)0)`;
+      const f0 = `${pl.cname}_${pl.fields.keys().next().value}`;
+      // Free slots chain through the FIRST field array (dead storage) with
+      // +1-encoded links so a BSS-zeroed head means "empty chain" — add()
+      // pops in O(1) instead of scanning for a hole (an explosion's 51
+      // adds used to walk the pool per particle). The high-water mark still
+      // snaps to 0 when the pool empties (short all() scans), which also
+      // resets the chain.
+      return `(${pl.cname}_used[${sv}] = 0, ${f0}[${sv}] = ${pl.cname}_free, ${pl.cname}_free = (unsigned char)(${sv} + 1), ` +
+             `(--${pl.cname}_n == 0 ? (${pl.cname}_hi = 0, ${pl.cname}_free = 0) : 0), (void)0)`;
     }
     if (b.special) return specialCall(e, b, name);
 
@@ -1104,9 +1109,12 @@ export function emit(chunk, symbols, file, opts = {}) {
       return `${pl.cname}_${f.name}[${sv}] = ${expr(f.expr, fl.kind)};`;
     }).join(" ");
     // statement-expression shape via a helper block emitted inline by callstmt.
-    // The free slot is the first hole in [0.._hi); if that scan reaches _hi the
-    // slot at _hi is free (still within capacity) and _hi grows by one.
-    return `{ unsigned char ${sv}; for (${sv} = 0; ${sv} < ${pl.cname}_hi; ++${sv}) if (!${pl.cname}_used[${sv}]) break; ` +
+    // O(1) allocation: pop the free chain (links ride the first field array
+    // of dead slots, +1-encoded) or take the fresh slot at the watermark.
+    const f0 = `${pl.cname}_${pl.fields.keys().next().value}`;
+    return `{ unsigned char ${sv}; ` +
+           `if (${pl.cname}_free) { ${sv} = (unsigned char)(${pl.cname}_free - 1); ${pl.cname}_free = (unsigned char)${f0}[${sv}]; } ` +
+           `else ${sv} = ${pl.cname}_hi; ` +
            `if (${sv} < ${pl.size}) { ${pl.cname}_used[${sv}] = 1; ++${pl.cname}_n; ` +
            `if (${sv} >= ${pl.cname}_hi) ${pl.cname}_hi = ${sv} + 1; ${sets} } }`;
   }
@@ -1165,6 +1173,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         out.push(`${ct} ${g.cname}_${fname}[${g.size}];`);
       }
       out.push(`unsigned char ${g.cname}_used[${g.size}];`);
+      out.push(`unsigned char ${g.cname}_free;   /* free-chain head, +1-encoded (0 = empty) */`);
       out.push(`int ${g.cname}_n;`);
       // high-water mark: 1 + the highest ever-occupied slot since the pool
       // last emptied. Loops scan [0.._hi) instead of the full capacity, so a
