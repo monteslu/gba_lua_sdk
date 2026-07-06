@@ -261,7 +261,9 @@ function initialPlacement(callGraph) {
 }
 
 // segment name -> placement bin
-const SEG_BIN = { B0CODE: "b0", B1CODE: "b1", B2CODE: "b2", CODE: "fixed", RODATA: "fixed", B0RODATA: "b0", B1RODATA: "b1", B2RODATA: "b2" };
+const SEG_BIN = { B0CODE: "b0", B1CODE: "b1", B2CODE: "b2", CODE: "fixed", RODATA: "fixed", B0RODATA: "b0", B1RODATA: "b1", B2RODATA: "b2",
+  // a VECTORS overflow means the fixed window ran past its end
+  VECTORS: "fixed", DATA: "fixed" };
 
 // rebalance after a link overflow: move functions out of the fat bins
 function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, usesAudio, usesMusic, usesAtlas, sdkLoad) {
@@ -625,12 +627,25 @@ function build(entry, outPath, sheetPath, num8 = false) {
     // size-relief ladder: 0-7 everything on -> 8-15 function inlining off
     // (mid ternaries STAY: they're smaller than the cdecl mid() call) ->
     // 16-23 everything off. Each rung restarts from a fresh placement.
-    if (attempt === 12 && fnInline) {
+    // Bank-moving rungs are overflow-aware: they read which bins the last
+    // failed link actually overflowed and never move load INTO one.
+    const overBins = new Set(lastOverflows.map((o) => SEG_BIN[o.segment]));
+    if (attempt === 10 && apiDefs.includes("-DGT_INPUT_B2") && overBins.has("b2")) {
+      // the b2 relief move backfired (this cart's bank 2 is the tight one):
+      // undo it and let the cold bodies go back to bank 0
+      apiDefs.splice(apiDefs.indexOf("-DGT_INPUT_B2"), 1);
+      run(tc.cc65, [...CFLAGS, "-DGT_BANKED", ...apiDefs,
+                    "-o", B("gt_api.s"), path.join(SDK, "gt_api.c")]);
+      as(B("gt_api.s"), B("gt_api.o"));
+      workPlacement = initialPlacement(result.callGraph);
+      console.error("bank placement tight: b2 relief undone (bank 2 is the tight bank)");
+    }
+    if (attempt === 18 && fnInline) {
       fnInline = false;
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: retrying with function inlining off");
     }
-    if (attempt === 4 && usesAudio && !fwB1) {
+    if (attempt === 4 && usesAudio && !fwB1 && (overBins.has("b0") || overBins.has("fixed"))) {
       // the 4KB ACP firmware defaults to bank 0; carts whose update loop
       // owns bank 0 need it in bank 1 instead
       fwB1 = true;
@@ -640,7 +655,8 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: audio firmware to bank 1");
     }
-    if (attempt === 8 && !apiDefs.includes("-DGT_INPUT_B2")) {
+    if (attempt === 8 && !apiDefs.includes("-DGT_INPUT_B2") &&
+        (overBins.has("b0") || overBins.has("fixed")) && !overBins.has("b2")) {
       // which bank the SDK input block fits in is per-cart: b0-heavy carts
       // (big update loop + audio firmware) need it in bank 2 and vice versa
       apiDefs.push("-DGT_INPUT_B2");
@@ -650,7 +666,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: input block to bank 2");
     }
-    if (attempt === 18 && rndInt) {
+    if (attempt === 30 && rndInt) {
       // size relief: the integer-rnd fast path costs ~90 fixed bytes of
       // trampoline + call-site changes; carts at the absolute capacity
       // cliff give it up before giving up the blit font
@@ -658,7 +674,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: integer-rnd fast path off");
     }
-    if (attempt === 20 && !apiDefs.includes("-DGT_NO_BLITFONT")) {
+    if (attempt === 36 && !apiDefs.includes("-DGT_NO_BLITFONT")) {
       // final size relief: drop the GRAM blit font (~1 KB across banks);
       // print falls back to the per-pixel CPU path — correct, just slower
       apiDefs.push("-DGT_NO_BLITFONT");
@@ -668,7 +684,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: dropping the blit font (CPU print fallback)");
     }
-    if (attempt === 16 && midInline) {
+    if (attempt === 24 && midInline) {
       midInline = false;
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: retrying with all inlining off");

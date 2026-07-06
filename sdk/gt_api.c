@@ -15,6 +15,13 @@
  * glyph path (edge clips / 9th color) maps the bank around its reads */
 #ifdef GT_BANKED
 extern unsigned char gt_cur_bank;   /* live $8000-window bank (gt_bank.s) */
+/* the relief bank: cold SDK bodies that default to bank 0 move to bank 2
+ * when the placement ladder sets GT_INPUT_B2 (b0-critical carts) */
+#ifdef GT_INPUT_B2
+#define GT_RELIEF_BANK 2
+#else
+#define GT_RELIEF_BANK 0
+#endif
 #pragma rodata-name ("B0RODATA")
 #endif
 #include "gt_font.h"
@@ -591,6 +598,18 @@ static void hspan_raw(int x0, int x1, int y) {
 /* clipped fill in screen coords: corners in gt_a0..gt_a3 (inclusive, camera
  * already applied), color in fc_col. Argless — the draw core's hot path has
  * no cc65 arg-push anywhere: zp in, staging out. Clobbers gt_a0..a3. */
+/* FLASH2M: the clip/swap/split fill path is cold — the asm rectfill fast
+ * path covers the common case. Rides the same relief bank as the input
+ * block (B0 normally, B2 under GT_INPUT_B2) so b0-critical carts get both
+ * out of the way with one ladder rung. Callers cross banks only via the
+ * fixed stubs (line, the asm punt). */
+#ifdef GT_BANKED
+#ifdef GT_INPUT_B2
+#pragma code-name ("B2CODE")
+#else
+#pragma code-name ("B0CODE")
+#endif
+#endif
 static void fill_clipped_z(void) {
     int t;
     /* Hot fast path: all four corners already on-screen and ordered, and
@@ -673,10 +692,27 @@ static void fill_clipped(int x0, int y0, int x1, int y1, unsigned char color) {
     gt_a0 = x0; gt_a1 = y0; gt_a2 = x1; gt_a3 = y1; fc_col = color;
     fill_clipped_z();
 }
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+#endif
 
 /* ---- PICO-8 drawing API ---- */
 
-void gt_p8_cls(int c) {
+#ifdef GT_BANKED
+#ifdef GT_INPUT_B2
+#pragma code-name ("B2CODE")
+#else
+#pragma code-name ("B0CODE")
+#endif
+#define GT_CLS gt_p8_cls_impl
+static void gt_p8_cls_impl(int c);
+#else
+#define GT_CLS gt_p8_cls
+#endif
+#ifdef GT_BANKED
+static
+#endif
+void GT_CLS(int c) {
     /* Edge slivers first, the big 127x127 blit LAST: the caller returns
      * while the big DMA is still in flight, so a cls() at the top of
      * _update() overlaps the whole frame's game logic. */
@@ -686,6 +722,15 @@ void gt_p8_cls(int c) {
     box_raw(127, 127, 1, 1, col);
     box_raw(0, 0, 127, 127, col);
 }
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+void gt_p8_cls(int c) {
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(GT_RELIEF_BANK);
+    gt_p8_cls_impl(c);
+    gt_bank(saved_bank);
+}
+#endif
 
 void gt_p8_camera(int x, int y) { gt_cam_x = x; gt_cam_y = y; }
 void gt_p8_color(int c) { resolve_color(c); }
@@ -722,7 +767,21 @@ void gt_p8_pal(int c0, int c1) {
 /* Fallback for the asm fast path in gt_blitq.s (_gt_p8_rectfill_z): handles
  * offscreen/reversed/128-span rects. resolve_color is idempotent, so the asm
  * path having peeked at the color first is harmless. */
-void gt_p8_rectfill_slow(void) {
+#ifdef GT_BANKED
+#ifdef GT_INPUT_B2
+#pragma code-name ("B2CODE")
+#else
+#pragma code-name ("B0CODE")
+#endif
+#define GT_RECTFILL_SLOW gt_p8_rectfill_slow_impl
+static void gt_p8_rectfill_slow_impl(void);
+#else
+#define GT_RECTFILL_SLOW gt_p8_rectfill_slow
+#endif
+#ifdef GT_BANKED
+static
+#endif
+void GT_RECTFILL_SLOW(void) {
     fc_col = resolve_color(gt_a4);
     gt_a0 -= gt_cam_x;
     gt_a1 -= gt_cam_y;
@@ -730,6 +789,15 @@ void gt_p8_rectfill_slow(void) {
     gt_a3 -= gt_cam_y;
     fill_clipped_z();
 }
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+void gt_p8_rectfill_slow(void) {
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(GT_RELIEF_BANK);
+    gt_p8_rectfill_slow_impl();
+    gt_bank(saved_bank);
+}
+#endif
 
 void gt_p8_rectfill(int x0, int y0, int x1, int y1, int c) {
     gt_a0 = x0; gt_a1 = y0; gt_a2 = x1; gt_a3 = y1; gt_a4 = c;
@@ -737,7 +805,11 @@ void gt_p8_rectfill(int x0, int y0, int x1, int y1, int c) {
 }
 
 #ifdef GT_BANKED
+#ifdef GT_INPUT_B2
+#pragma code-name ("B2CODE")
+#else
 #pragma code-name ("B0CODE")
+#endif
 #define GT_RECT_Z gt_p8_rect_z_impl
 static void gt_p8_rect_z_impl(void);
 #else
@@ -764,7 +836,7 @@ void GT_RECT_Z(void) {
 #pragma code-name ("CODE")
 void gt_p8_rect_z(void) {
     unsigned char saved_bank = gt_cur_bank;
-    gt_bank(0);
+    gt_bank(GT_RELIEF_BANK);
     gt_p8_rect_z_impl();
     gt_bank(saved_bank);
 }
@@ -957,9 +1029,23 @@ static void line_diag(int x0, int y0, int x1, int y1, unsigned char col) {
 }
 #endif
 
-/* fixed-bank entry: axis-aligned lines become blitter fills (the hot case);
- * true diagonals walk Bresenham in the banked cold body. */
-void gt_p8_line_z(void) {
+/* axis-aligned lines become blitter fills (the hot case); true diagonals
+ * walk Bresenham in the B2 cold body. Rides in B0 with fill_clipped. */
+#ifdef GT_BANKED
+#ifdef GT_INPUT_B2
+#pragma code-name ("B2CODE")
+#else
+#pragma code-name ("B0CODE")
+#endif
+#define GT_LINE_Z gt_p8_line_z_impl
+static void gt_p8_line_z_impl(void);
+#else
+#define GT_LINE_Z gt_p8_line_z
+#endif
+#ifdef GT_BANKED
+static
+#endif
+void GT_LINE_Z(void) {
     unsigned char col = resolve_color(gt_a4);
     int x0, y0, x1, y1;
     x0 = gt_a0 - gt_cam_x; y0 = gt_a1 - gt_cam_y;
@@ -968,6 +1054,15 @@ void gt_p8_line_z(void) {
     if (x0 == x1) { fill_clipped(x0, y0, x1, y1, col); return; }
     line_diag(x0, y0, x1, y1, col);
 }
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+void gt_p8_line_z(void) {
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(GT_RELIEF_BANK);
+    gt_p8_line_z_impl();
+    gt_bank(saved_bank);
+}
+#endif
 
 void gt_p8_line(int x0, int y0, int x1, int y1, int c) {
     gt_a0 = x0; gt_a1 = y0; gt_a2 = x1; gt_a3 = y1; gt_a4 = c;
@@ -1071,7 +1166,11 @@ void gt_p8_circ(int cx, int cy, int r, int c) {
 }
 
 #ifdef GT_BANKED
+#ifdef GT_INPUT_B2
+#pragma code-name ("B2CODE")
+#else
 #pragma code-name ("B0CODE")
+#endif
 #define GT_BORDER gt_p8_border_impl
 static void gt_p8_border_impl(int c);
 #else
@@ -1092,7 +1191,7 @@ void GT_BORDER(int c) {
 #pragma code-name ("CODE")
 void gt_p8_border(int c) {
     unsigned char saved_bank = gt_cur_bank;
-    gt_bank(0);
+    gt_bank(GT_RELIEF_BANK);
     gt_p8_border_impl(c);
     gt_bank(saved_bank);
 }
