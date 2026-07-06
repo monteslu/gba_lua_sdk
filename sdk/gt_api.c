@@ -1302,6 +1302,8 @@ static void queue_autocls(void) {
 #define queue_autocls()
 #endif
 
+static unsigned char hook_tick_last;
+
 void gt_endframe(void) {
     /* vsync FIRST, then the drain check: queued blits keep draining DURING
      * the vsync wait, so their pixel time vanishes from the frame budget
@@ -1315,10 +1317,21 @@ void gt_endframe(void) {
     flip_pages();
     queue_autocls();             /* the NEW draw page clears during the wait */
     gt_time_tick();
-    if (gt_frame_hook) gt_frame_hook();     /* advance sfx/music (60 Hz base) */
+    if (gt_frame_hook) {
+        /* The sequencer is a 60 Hz clock: when a heavy frame spans extra
+         * vsyncs, step it once per ELAPSED vsync (capped) or envelopes
+         * stretch and notes hang on loud phases — audible as distortion
+         * during slowdown. gt_ticks counts real vsyncs via the NMI. */
+        unsigned char steps = (unsigned char)(gt_ticks - hook_tick_last);
+        if (steps > 6) steps = 6;
+        if (steps < 1) steps = 1;
+        while (steps--) gt_frame_hook();
+    }
+    hook_tick_last = (unsigned char)gt_ticks;
     if (fps30) {                 /* 30fps mode: burn the second vsync */
         await_vsync();           /* (pumps: the autocls drains in here) */
         gt_time_tick();
         if (gt_frame_hook) gt_frame_hook(); /* keep music at 60 Hz in 30fps mode */
+        hook_tick_last = (unsigned char)gt_ticks;
     }
 }

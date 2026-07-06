@@ -109,6 +109,19 @@ long gt_fatan2(long dx, long dy) {
 extern unsigned int gt_rng_state;
 unsigned int __fastcall__ gt_rng_next(void);
 
+/* rnd consumed as an integer with an integral range — the emitter routes
+ * flr(rnd(n))/int-context rnd here: one 16x32 runtime multiply instead of
+ * the full fixed multiply. Bit-identical to flr(rnd(n)) by construction. */
+int gt_p8_rnd_int(int n) {
+    unsigned int s = gt_rng_next();
+    if (n <= 0) return 0;
+#ifdef GT_NUM8
+    return (int)(((unsigned long)(s & 0xFFU) * (unsigned int)n) >> 8);
+#else
+    return (int)(((unsigned long)s * (unsigned int)n) >> 16);
+#endif
+}
+
 #ifdef GT_NUM8
 int gt_p8_rnd(int x) {
     unsigned int s = gt_rng_next();

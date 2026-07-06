@@ -24,6 +24,7 @@ int  gt_fsin(int turns);
 int  gt_fcos(int turns);
 int  gt_fatan2(int dx, int dy);
 int  gt_p8_rnd(int x);
+int  gt_p8_rnd_int(int n);  /* integer-range rnd, no fixed multiply */
 void gt_p8_srand(int seed);
 int  gt_p8_time(void);
 int  gt_ifdiv(int a, int b);
@@ -70,6 +71,7 @@ long gt_fsin(long turns);
 long gt_fcos(long turns);
 long gt_fatan2(long dx, long dy);
 long gt_p8_rnd(long x);
+int  gt_p8_rnd_int(int n);  /* integer-range rnd, no fixed multiply */
 void gt_p8_srand(long seed);
 long gt_p8_time(void);
 #endif /* GT_NUM8 */

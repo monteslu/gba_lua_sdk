@@ -229,6 +229,26 @@ function bake_particle_discs()
  end
 end
 
+-- sfx gates: a multi-kill retriggers the explosion voice mid-envelope
+-- (audible clicks) and held fire chatters the hit blip nonstop. One boom
+-- per 5 ticks, one hit blip per 6, is what the ear resolves anyway.
+local boom_t = 0
+local hitsfx_t = 0
+
+function boom_sfx()
+ if tick - boom_t >= 5 then
+  boom_t = tick
+  sfx(3,1)
+ end
+end
+
+function hit_sfx()
+ if tick - hitsfx_t >= 6 then
+  hitsfx_t = tick
+  sfx(4,3)
+ end
+end
+
 function page_red(page)
  local c=7
  if page>5 then c=10 end
@@ -727,7 +747,7 @@ function bossrun()
   eb_flash=10
   if tick%8==0 then
    explode(eb_x\16+flr(rnd(32)),eb_y\16+flr(rnd(24)),0)
-   sfx(3,1)                      -- boss death throes (orig sfx 2)
+   boom_sfx()                    -- boss death throes (orig sfx 2)
    shake=2
   end
   if eb_phb+90<tick then
@@ -744,7 +764,7 @@ function bossrun()
    bigexplode(eb_x\16+16,eb_y\16+12)
    shake=15
    eb_die=1
-   sfx(3,1)                      -- boss final blast (orig sfx 35)
+   boom_sfx()                    -- boss final blast (orig sfx 35)
   end
  end
 end
@@ -976,7 +996,7 @@ function update_game()
      if e.mission!=MI_FLYIN then
       e.hp-=b.dmg
      end
-     sfx(4,3)                   -- bullet hit registered (orig sfx 3)
+     hit_sfx()                  -- bullet hit registered (orig sfx 3)
      if e.type==5 then e.flash=5 else e.flash=2 end
      if e.hp<=0 then
       -- killen(), inlined
@@ -984,10 +1004,10 @@ function update_game()
        e.mission=MI_B5    -- ghost + death throes
        e.phbegin=tick
        for eb in all(ebuls) do del(ebuls,eb) end
-       sfx(3,1)                  -- boss down (orig music stop + sfx 51)
+       boom_sfx()                -- boss down (orig music stop + sfx 51)
       else
        del(enemies,e)
-       sfx(3,1)                  -- enemy explodes (orig sfx 2)
+       boom_sfx()                -- enemy explodes (orig sfx 2)
        explode(exp+4,eyp+4,0)
        local cherchance=13   -- 0.1 in 1/128ths
        local scoremult=1

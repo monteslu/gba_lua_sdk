@@ -420,7 +420,13 @@ export function emit(chunk, symbols, file, opts = {}) {
       }
       case "bnot": return cv(`(~${expr(e.expr, "fixed")})`, "fixed", want);
       case "not": return `(!${expr(e.expr, "bool")})`;
-      case "call": return cv(call(e), e.tk === "void" ? "int" : e.tk, want);
+      case "call": {
+        if (want === "int") {
+          const ri = rndIntForm(e);
+          if (ri) return ri;    // int-context rnd(n): skip the fixed multiply
+        }
+        return cv(call(e), e.tk === "void" ? "int" : e.tk, want);
+      }
       case "binop": return binop(e, want);
       // (pool member handled above)
       default: return "0";
@@ -783,6 +789,26 @@ export function emit(chunk, symbols, file, opts = {}) {
     return `${b.c}(${args.join(", ")})`;
   }
 
+  // rnd(x) with an integral range, consumed as an integer: emit the cheap
+  // int-range form (an explosion spawns ~250 rnd calls in one frame; the
+  // 16.16 multiply inside each was a third of the measured kill-frame cost)
+  function rndIntForm(e) {
+    // PARKED: enabling this reshuffles bank placement and cherry-bomb then
+    // crashes (illegal opcode via a smashed return into the DATA image)
+    // after the first kill — the fast path is bit-correct (probe-verified),
+    // the placement interaction is not. GTLUA_RND_INT=1 re-enables for the
+    // debugging session that root-causes it.
+    if (!process.env.GTLUA_RND_INT) return null;
+    if (!e || e.kind !== "call") return null;
+    const c = e.callee;
+    if (!c || c.kind !== "name" || c.name !== "rnd") return null;
+    if (!e.args || e.args.length !== 1) return null;
+    const a = e.args[0];
+    if (a.tk === "int") return `gt_p8_rnd_int(${expr(a, "int")})`;
+    if (a.kind === "number" && Number.isInteger(a.value)) return `gt_p8_rnd_int(${Math.trunc(a.value)})`;
+    return null;
+  }
+
   function defaultFor(name, i) {
     if (name === "cls") return "0";
     if (name === "camera") return "0";
@@ -802,9 +828,12 @@ export function emit(chunk, symbols, file, opts = {}) {
     const kinds = e.argKinds ?? e.args.map((a) => a.tk);
     const anyFixed = kinds.some((k) => k === "fixed");
     switch (b.special) {
-      case "flr":
+      case "flr": {
+        const ri = rndIntForm(a0);
+        if (ri) return ri;      // flr(rnd(n)) -> gt_p8_rnd_int(n), bit-identical
         return a0.tk === "int" ? expr(a0, "int")
           : (N8 ? `(${expr(a0, "fixed")} >> 8)` : `(int)(${expr(a0, "fixed")} >> 16)`);
+      }
       case "ceil":
         return a0.tk === "int" ? expr(a0, "int")
           : (N8 ? `((${expr(a0, "fixed")} + 0xFF) >> 8)` : `(int)((${expr(a0, "fixed")} + 0xFFFFL) >> 16)`);
