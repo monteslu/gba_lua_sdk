@@ -195,14 +195,17 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
   // ~12 KB runtime + stubs, so game functions get a small conservative slice
   // of it; ld65 re-checks every iteration and the ROM-overflow branch bails
   // us out if the estimate was optimistic.
-  // Bank 2 also carries SDK RODATA/CODE that must be mapped when read: the 4 KB
-  // ACP firmware (usesAudio), gt_bg_compose's ~625 B decode body (usesBg), and
-  // the ~2.7 KB sfx/music sequencer + its tables (usesMusic). Reserve for them
-  // so the game-function packer doesn't overfill bank 2 and fail to converge.
+  // Bank 2 also carries SDK RODATA/CODE that must be mapped when read:
+  // gt_bg_compose's ~625 B decode body (usesBg), the ~2.7 KB sfx/music
+  // sequencer + tables (usesMusic), and ~900 B of exiled cold gt_api bodies
+  // (font upload, sheet load, starfield init/move). The 4 KB ACP firmware
+  // rides in BANK 0 (B0RODATA) — bank 2 was strangling the heavy audio
+  // carts. Reserve so the game-function packer doesn't overfill and fail
+  // to converge.
   const B2_SDK_RESERVE =
-    (usesBg ? 700 : 0) + (usesAtlas ? 500 : 0) + (usesAudio ? 4096 : 0) + (usesMusic ? 2800 : 0);
+    (usesBg ? 700 : 0) + (usesAtlas ? 500 : 0) + 2100 + (usesMusic ? 2800 : 0);
   const capacity = {
-    b0: BANK_SIZE - BANK_MARGIN,
+    b0: BANK_SIZE - BANK_MARGIN - (usesAudio ? 4096 : 0),
     b1: BANK_SIZE - BANK_MARGIN,
     b2: BANK_SIZE - BANK_MARGIN - sheetBytes - B2_SDK_RESERVE,
     fixed: estUsed("fixed") + 2500,
@@ -448,10 +451,18 @@ function build(entry, outPath, sheetPath, num8 = false) {
   // ship silent. Recompile it banked: the blob rides in bank 2 (with the
   // sheet) and gt_audio_init() maps that bank in before the ARAM upload.
   if (usesAudio) {
-    run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_FW_BANK=2",
+    run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_FW_BANK=0",
                   "-o", B("gt_audio.s"), path.join(SDK, "gt_audio.c")]);
     as(B("gt_audio.s"), B("gt_audio.o"));
   }
+
+  // gt_api carries ~2 KB of cold bodies (font upload, sheet load, circfill/
+  // circ/line-diagonal, starfield init/move, the glyph table) that exile to
+  // bank 2 under GT_BANKED — the fixed window can't hold them all plus the
+  // blitter font. Recompile banked so those pragmas take effect.
+  run(tc.cc65, [...CFLAGS, "-DGT_BANKED",
+                "-o", B("gt_api.s"), path.join(SDK, "gt_api.c")]);
+  as(B("gt_api.s"), B("gt_api.o"));
 
   // gt_music (sfx/music sequencer + its instrument/sfx/song tables) is another
   // fat unit that would blow the near-full fixed bank's RODATA/CODE. Recompile

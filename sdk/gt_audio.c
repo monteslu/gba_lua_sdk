@@ -13,7 +13,7 @@
  * gt_bank(2)-then-read pattern; a linked-but-unmapped blob uploads garbage
  * and plays silence, which a clean link does NOT catch). */
 #ifdef GT_BANKED
-#pragma rodata-name ("B2RODATA")
+#pragma rodata-name ("B0RODATA")
 #endif
 #include "gt_acp_fw.h"
 #ifdef GT_BANKED
