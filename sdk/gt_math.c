@@ -30,6 +30,7 @@
 #define gt_fcos     GT_M(gt_fcos)
 #define gt_fatan2   GT_M(gt_fatan2)
 #define gt_p8_rnd   GT_M(gt_p8_rnd)
+#define gt_p8_rnd_int GT_M(gt_p8_rnd_int)
 #define gt_p8_srand GT_M(gt_p8_srand)
 #define gt_p8_time  GT_M(gt_p8_time)
 #define gt_time_tick GT_M(gt_time_tick)
@@ -116,9 +117,14 @@ int gt_p8_rnd_int(int n) {
     unsigned int s = gt_rng_next();
     if (n <= 0) return 0;
 #ifdef GT_NUM8
-    return (int)(((unsigned long)(s & 0xFFU) * (unsigned int)n) >> 8);
+    /* frac(8bit)*n >> 8 == the 8.8 fixed multiply of raw ints */
+    return gt_fmul((int)(s & 0xFFU), n);
 #else
-    return (int)(((unsigned long)s * (unsigned int)n) >> 16);
+    /* (s*n) >> 16 == the 16.16 fixed multiply of raw ints — the asm
+     * quarter-square core (~300 cycles); the C long multiply this
+     * replaces was a 32-iteration shift loop (~1.7k) that ate a third
+     * of the measured kill frame */
+    return (int)gt_fmul((long)s, (long)n);
 #endif
 }
 

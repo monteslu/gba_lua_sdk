@@ -793,12 +793,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   // int-range form (an explosion spawns ~250 rnd calls in one frame; the
   // 16.16 multiply inside each was a third of the measured kill-frame cost)
   function rndIntForm(e) {
-    // PARKED: enabling this reshuffles bank placement and cherry-bomb then
-    // crashes (illegal opcode via a smashed return into the DATA image)
-    // after the first kill — the fast path is bit-correct (probe-verified),
-    // the placement interaction is not. GTLUA_RND_INT=1 re-enables for the
-    // debugging session that root-causes it.
-    if (!process.env.GTLUA_RND_INT) return null;
+    if (opts.rndInt === false) return null;   // size-relief ladder rung
     if (!e || e.kind !== "call") return null;
     const c = e.callee;
     if (!c || c.kind !== "name" || c.name !== "rnd") return null;

@@ -24,9 +24,9 @@
 .PC02
 .import gt_bank_raw, gt_cur_bank
 .import _gt_fsin_impl, _gt_fcos_impl, _gt_fatan2_impl
-.import _gt_p8_rnd_impl, _gt_p8_srand_impl, _gt_p8_time_impl, _gt_time_tick_impl
+.import _gt_p8_rnd_impl, _gt_p8_rnd_int_impl, _gt_p8_srand_impl, _gt_p8_time_impl, _gt_time_tick_impl
 .export _gt_fsin, _gt_fcos, _gt_fatan2
-.export _gt_p8_rnd, _gt_p8_srand, _gt_p8_time, _gt_time_tick
+.export _gt_p8_rnd, _gt_p8_rnd_int, _gt_p8_srand, _gt_p8_time, _gt_time_tick
 
 GT_MATH_BANK = 1
 
@@ -63,6 +63,7 @@ label:
         GT_MATH_STUB _gt_fcos,      _gt_fcos_impl
         GT_MATH_STUB _gt_fatan2,    _gt_fatan2_impl
         GT_MATH_STUB _gt_p8_rnd,    _gt_p8_rnd_impl
+GT_MATH_STUB _gt_p8_rnd_int, _gt_p8_rnd_int_impl
         GT_MATH_STUB _gt_p8_srand,  _gt_p8_srand_impl
         GT_MATH_STUB _gt_p8_time,   _gt_p8_time_impl
         GT_MATH_STUB _gt_time_tick, _gt_time_tick_impl

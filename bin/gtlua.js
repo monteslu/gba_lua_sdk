@@ -620,7 +620,8 @@ function build(entry, outPath, sheetPath, num8 = false) {
   let fnInline = true;
   let workPlacement = placement;
   let fwB1 = false;
-  for (let attempt = 0; attempt < 24; attempt++) {
+  let rndInt = true;
+  for (let attempt = 0; attempt < 48; attempt++) {
     // size-relief ladder: 0-7 everything on -> 8-15 function inlining off
     // (mid ternaries STAY: they're smaller than the cdecl mid() call) ->
     // 16-23 everything off. Each rung restarts from a fresh placement.
@@ -649,6 +650,14 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: input block to bank 2");
     }
+    if (attempt === 18 && rndInt) {
+      // size relief: the integer-rnd fast path costs ~90 fixed bytes of
+      // trampoline + call-site changes; carts at the absolute capacity
+      // cliff give it up before giving up the blit font
+      rndInt = false;
+      workPlacement = initialPlacement(result.callGraph);
+      console.error("bank placement tight: integer-rnd fast path off");
+    }
     if (attempt === 20 && !apiDefs.includes("-DGT_NO_BLITFONT")) {
       // final size relief: drop the GRAM blit font (~1 KB across banks);
       // print falls back to the per-pixel CPU path — correct, just slower
@@ -664,7 +673,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: retrying with all inlining off");
     }
-    result = compileLua(entry, { banked: true, placement: workPlacement, midInline, inliner: fnInline, num8 });
+    result = compileLua(entry, { banked: true, placement: workPlacement, midInline, inliner: fnInline, num8, rndInt });
     writeFileSync(B(`${name}.c`), result.c);
     cc(B(`${name}.c`), B(`${name}.s`));
     as(B(`${name}.s`), B(`${name}.o`));
@@ -694,7 +703,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     const mapInfo = sdkLoadFromMap(B(`${name}.map`));
     if (mapInfo) calibrateSizes(sizes, workPlacement, mapInfo.port);
     const moved = rebalance(workPlacement, sizes, link.overflows, sheetBytes, result.callGraph, usesBg, usesAudio, usesMusic, usesAtlas, mapInfo?.load ?? null);
-    if (!moved && attempt >= 17) {
+    if (!moved && attempt >= 40) {
       fail("FLASH2M bank placement failed: " +
         link.overflows.map((o) => `${o.segment} over by ${o.bytes}`).join(", "));
     }
@@ -715,9 +724,12 @@ function build(entry, outPath, sheetPath, num8 = false) {
   img.set(pieces.subarray(3 * BANK_SIZE, 4 * BANK_SIZE), FLASH_SIZE - BANK_SIZE);
   writeFileSync(gtr, img);
 
-  writeFileSync(B("banks.json"), JSON.stringify(placement, null, 1));
+  // save the placement the successful link ACTUALLY used — the ladder rungs
+  // rebind workPlacement, and saving the original seed object poisoned the
+  // next build's starting point with a stale layout
+  writeFileSync(B("banks.json"), JSON.stringify(workPlacement, null, 1));
   const counts = { fixed: 0, b0: 0, b1: 0, b2: 0 };
-  for (const b of Object.values(placement)) counts[b]++;
+  for (const b of Object.values(workPlacement)) counts[b]++;
   console.log(`${gtr} (${statSync(gtr).size} bytes, FLASH2M; ` +
     `functions fixed:${counts.fixed} bank0:${counts.b0} bank1:${counts.b1} bank2:${counts.b2})`);
 }
