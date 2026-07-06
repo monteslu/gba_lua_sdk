@@ -84,7 +84,9 @@ void gt_p8_spr_wide(void);  /* 128px-span splitter (asm punts here) */        /*
 void gt_p8_sset_z(void);       /* a0=x a1=y a2=c */
 void gt_starfield_init(int n);      /* seed n parallax stars (n<=128) */
 void gt_starfield_move(int mode);   /* scroll: 0=drift 1=1x 2=2x */
-void gt_starfield_draw(void);       /* plot the whole field (one CPU pass) */
+void gt_starfield_draw(void);
+void gt_flakes_init(int n);
+void gt_flakes_draw(int camdx8, int camdy8);       /* plot the whole field (one CPU pass) */
 /* offscreen-GRAM background canvas (gt_bg.c) */
 void gt_bg_compose(int *map, int cols, int cx, int cy, int cw, int ch);
 void gt_bg_draw(int sx, int sy);

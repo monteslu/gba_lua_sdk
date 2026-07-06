@@ -502,6 +502,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     !(result.c.includes("gt_bg_compose(") || result.c.includes("gt_gspr("));
   const apiDefs = [
     ...(usesStarfield ? ["-DGT_STARFIELD"] : []),
+    ...(result.c.includes("gt_flakes") ? ["-DGT_FLAKES"] : []),
     ...(usesAutocls ? ["-DGT_AUTOCLS"] : []),
     ...(usesPackedSheet ? ["-DGT_SHEET_PACKED"] : []),
   ];
