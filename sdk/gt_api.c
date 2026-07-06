@@ -331,14 +331,18 @@ int GT_PRINT(const char *str, int x, int y, int c) {
      * use) — no CPU-mode transition, so nothing drains. Edge-clipped glyphs
      * and a 9th text color take the per-pixel CPU path. */
     slot = font_slot(col);
+    {
+    /* hoisted: slot*10 is constant per call; (gn/32)*5 has 3 values */
+    static const unsigned char rowoff[3] = { 0, 5, 10 };
+    unsigned char rowbase = (slot >= 0) ? (unsigned char)(slot * 10) : 0;
     while (*str) {
         gn = gt_glyph(*str);
         if (slot >= 0 && x >= 0 && x <= 125 && y >= 0 && y <= 123) {
             gt_ent[0] = QF_SPR;
             gt_ent[1] = (unsigned char)x;
             gt_ent[2] = (unsigned char)y;
-            gt_ent[3] = (unsigned char)((gn % 32) * 4);
-            gt_ent[4] = (unsigned char)(slot * 10 + (gn / 32) * 5);
+            gt_ent[3] = (unsigned char)((gn & 31) << 2);
+            gt_ent[4] = (unsigned char)(rowbase + rowoff[gn >> 5]);
             gt_ent[5] = 3;
             gt_ent[6] = 5;
             gt_ent[7] = (unsigned char)(bankflip | FONT_GROUP | BANK_CLIP_X | BANK_CLIP_Y);
@@ -349,6 +353,7 @@ int GT_PRINT(const char *str, int x, int y, int c) {
         }
         x += 4;
         ++str;
+    }
     }
     return x + gt_cam_x;
 }
