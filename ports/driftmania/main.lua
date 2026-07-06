@@ -29,6 +29,10 @@ local cpdx = array(3)
 local cpdy = array(3)
 local cpl = array(3)
 local div3 = array(96)
+local cs_lut = array8(30)  -- (i*10)\3 — centiseconds for the race clock
+local ckf = 0              -- race clock: frames 0-29
+local cks = 0              -- seconds 0-59
+local ckm = 0              -- minutes
 
 function gd_1()
  cgrid[138]=1024
@@ -1044,6 +1048,9 @@ function gd_init()
  for i = 0, 95 do
   div3[i + 1] = i \ 3
  end
+ for i = 0, 29 do
+  cs_lut[i + 1] = (i * 10) \ 3
+ end
 end
 -- ==== GENERATED DATA END ====
 
@@ -1353,6 +1360,9 @@ function reset()
   anim = 0
   lap = 1
   frame = 0
+  ckf = 0
+  cks = 0
+  ckm = 0
   lapstart = 0
   lastlap = 0
   finfr = 0
@@ -1409,6 +1419,15 @@ function _update()
   elseif state == 1 then
     if (anim < 120) anim += 1
     frame += 1
+    ckf += 1
+    if ckf >= 30 then
+     ckf = 0
+     cks += 1
+     if cks >= 60 then
+      cks = 0
+      ckm += 1
+     end
+    end
     tcs += 3.3333
     if tcs >= 100 then
       tcs -= 100
@@ -1679,6 +1698,15 @@ function pad2(v, x, y, c)
   return print(v, x, y, c)
 end
 
+function fmt_clock(x, y, c)
+  x = print(ckm, x, y, c)
+  x = print(":", x, y, c)
+  x = pad2(cks, x, y, c)
+  x = print(".", x, y, c)
+  x = pad2(cs_lut[ckf + 1], x, y, c)
+  return x
+end
+
 function fmt_time(fr, x, y, c)
   local s = fr \ 30
   local cs2 = (fr % 30) * 10 \ 3
@@ -1714,7 +1742,7 @@ end
 function hud()
   local hx = camxi
   local hy = camyi
-  fmt_time(frame, hx + 2, hy + 2, 7)
+  fmt_clock(hx + 2, hy + 2, 7)
   local rx = print("lap ", hx + 96, hy + 2, 7)
   rx = print(lap, rx, hy + 2, 7)
   rx = print("/", rx, hy + 2, 7)
