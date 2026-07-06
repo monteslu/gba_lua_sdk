@@ -545,8 +545,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   function fixedCall(fn, left, right) {
     const L = expr(left, "fixed");
     const R = expr(right, "fixed");
-    // under --num8 only the multiply has an asm zp entry (divide stays C)
-    const zpOk = N8 ? fn === "gt_fmul" : true;
+    const zpOk = true;   // both num8 mul AND div have asm zp entries now
     if (zpOk && !touchesFixedRuntime(left) && !touchesFixedRuntime(right)) {
       return `(fa = ${L}, fb = ${R}, ${fn}_zp())`;
     }

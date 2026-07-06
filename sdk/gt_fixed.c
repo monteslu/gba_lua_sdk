@@ -19,12 +19,16 @@ int gt_fmul(int a, int b) {
 }
 #endif
 
-int gt_fdiv(int a, int b) {
-    long q;
-    if (b == 0) return (a < 0) ? (int)0x8001 : 0x7FFF;   /* P8 saturates */
-    q = ((long)a << 8) / b;
-    return (int)q;
-}
+/* gt_fdiv lives in gt_fixed8_asm.s: a restoring 24-bit divide (~500
+ * cycles) replacing this C reference, whose ((long)a << 8) / b routed
+ * through cc65's 32-bit division runtime at ~1.5k a call — and the Newton
+ * sqrt below runs eight of them. Kept for provenance:
+ * int gt_fdiv(int a, int b) {
+ *     long q;
+ *     if (b == 0) return (a < 0) ? (int)0x8001 : 0x7FFF;
+ *     q = ((long)a << 8) / b;
+ *     return (int)q;
+ * } */
 
 int gt_fsqrt(int x) {
     /* Newton on 8.8: two refinements from an 8-bit integer seed */

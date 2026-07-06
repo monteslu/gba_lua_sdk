@@ -23,6 +23,8 @@
         .setcpu "65C02"
         .export _gt_fmul
         .export _gt_fmul_zp
+        .export _gt_fdiv
+        .export _gt_fdiv_zp
         .export _fa
         .export _fb
         .importzp c_sp
@@ -47,6 +49,124 @@ my:     .res 1          ; mul8 operand y
 m16:    .res 2          ; mul8 result (16-bit product)
 
         .segment "CODE"
+
+; ===========================================================================
+; 8.8 fixed divide: q = (a << 8) / b, truncated toward zero (C semantics of
+; the reference ((long)a << 8) / b, which routed through cc65's 32-bit
+; division runtime at ~1.5k cycles per call — and the num8 sqrt runs EIGHT
+; of them per Newton pass). This is a classic restoring divide: 24 dividend
+; bits (|a| << 8) streamed MSB-first through a 16-bit remainder, 24
+; iterations, ~500 cycles worst case. Quotient bits beyond 16 saturate to
+; P8's +/-0x7FFF. b == 0 saturates by sign of a (P8 rule).
+; Reuses the mul unit's zp: aa=|a|, bb=|b|, pr0/pr1=quotient, mneg=sign.
+; ===========================================================================
+.proc _gt_fdiv
+        sta     _fb+0
+        stx     _fb+1
+        ldy     #0
+        lda     (c_sp),y
+        sta     _fa+0
+        iny
+        lda     (c_sp),y
+        sta     _fa+1
+        jsr     incsp2
+        ; falls through
+.endproc
+.proc _gt_fdiv_zp
+        stz     mneg
+        ; |a| -> aa, sign folded into mneg
+        lda     _fa+1
+        bpl     apos
+        inc     mneg
+        sec
+        lda     #0
+        sbc     _fa+0
+        sta     aa+0
+        lda     #0
+        sbc     _fa+1
+        sta     aa+1
+        bra     bsign
+apos:   lda     _fa+0
+        sta     aa+0
+        lda     _fa+1
+        sta     aa+1
+bsign:  ; |b| -> bb, sign folded
+        lda     _fb+1
+        bpl     bpos
+        inc     mneg
+        sec
+        lda     #0
+        sbc     _fb+0
+        sta     bb+0
+        lda     #0
+        sbc     _fb+1
+        sta     bb+1
+        bra     bzchk
+bpos:   lda     _fb+0
+        sta     bb+0
+        lda     _fb+1
+        sta     bb+1
+bzchk:  lda     bb+0
+        ora     bb+1
+        beq     sat             ; div by zero: saturate by sign
+        ; ---- restoring divide, one 24-bit register: pr0:aa = (|a| << 8)
+        ; with pr0 the LOW byte (zeroed = the << 8). Dividend bits exit
+        ; aa+1's top straight into the remainder (my lo / pr2 hi); quotient
+        ; bits fill the vacated bottom of pr0. After 24 rounds the register
+        ; holds Q23..Q0 as aa+1:aa+0:pr0 — aa+1 nonzero means the quotient
+        ; needs >16 bits: saturate.
+        stz     pr0
+        stz     my
+        stz     pr2
+        ldx     #24
+bitlp:  asl     pr0
+        rol     aa+0
+        rol     aa+1
+        rol     my
+        rol     pr2             ; remainder <<= 1 | next dividend bit
+        lda     my
+        sec
+        sbc     bb+0
+        tay
+        lda     pr2
+        sbc     bb+1
+        bcc     nobit           ; rem < b: quotient bit stays 0
+        sta     pr2
+        sty     my
+        inc     pr0             ; quotient bit (bit0 just vacated)
+nobit:  dex
+        bne     bitlp
+        lda     aa+1
+        bne     sat             ; quotient > 16 bits
+        ; result sign: mneg odd -> negate (truncation toward zero holds:
+        ; we divided magnitudes)
+        lda     mneg
+        lsr
+        bcs     qneg
+        lda     aa+0
+        bmi     sat             ; +0x8000.. not representable: saturate
+        tax
+        lda     pr0
+        rts
+qneg:   sec
+        lda     #0
+        sbc     pr0
+        tay
+        lda     #0
+        sbc     aa+0
+        tax
+        tya
+        rts
+sat:    lda     mneg
+        lsr
+        bcs     satn
+        lda     #$FF
+        ldx     #$7F            ; +0x7FFF
+        rts
+satn:   lda     #$01
+        ldx     #$80            ; -0x7FFF (P8's 0x8001)
+        rts
+.endproc
 
 ; ===========================================================================
 ; cdecl wrapper: b (A/X) -> _fb, a (C stack) -> _fa, pop, fall into the body.

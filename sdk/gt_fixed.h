@@ -18,6 +18,7 @@ extern int fa, fb;
 #pragma zpsym ("fa")
 #pragma zpsym ("fb")
 int gt_fmul_zp(void);
+int gt_fdiv_zp(void);           /* returns fa/fb (8.8 asm), /0 saturates */
 int  gt_fsqrt(int x);
 int  gt_ffmod(int a, int b);
 int  gt_fsin(int turns);
