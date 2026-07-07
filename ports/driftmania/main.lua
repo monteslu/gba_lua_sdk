@@ -1578,23 +1578,29 @@ function _update()
     vy -= mid(cf * ryy, vy, -vy)
   end
 
-  -- speed limit
-  local angv = atan2(vx, vy)
+  -- speed limit, direct vector scaling (the angle round-trip — atan2 +
+  -- two cos/sin reconstructions — becomes one conditional divide)
   spd = sqrt(vx * vx + vy * vy)
   local lim = 4.4 * modmax
   if (vdotf < -0.8) lim = 1.0 * modmax
   if spd > lim then
-    spd = max(spd * 0.88, lim)
-    vx = cos(angv) * spd
-    vy = sin(angv) * spd
+    local ns = max(spd * 0.88, lim)
+    local k = ns / spd
+    vx *= k
+    vy *= k
+    spd = ns
   end
 
-  -- velocity vector rotates toward the facing (the drift feel)
+  -- velocity rotates toward the facing (the drift feel): rotate the
+  -- vector directly; the turn direction is the cross-product sign
+  -- (fwd x v), replacing the angle-difference test
   local vrot = 0.010 * abs(vdotr) * modturn
-  if ((angf - angv) % 1 >= 0.5) vrot = -vrot
-  angv += vrot
-  vx = cos(angv) * spd
-  vy = sin(angv) * spd
+  if (fwdx * vy - fwdy * vx < 0) vrot = -vrot
+  local sr = sin(vrot)
+  local cr = cos(vrot)
+  local nvx = vx * cr - vy * sr
+  vy = vx * sr + vy * cr
+  vx = nvx
 
   -- pixel-stepped movement with wall blocking
   local xb = move_x()
