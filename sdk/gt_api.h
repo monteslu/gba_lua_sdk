@@ -92,6 +92,8 @@ void gt_flakes_draw2(int first, int count, int camdx8, int camdy8);
 void gt_flakes_set(int i, int x, int y, int w, int h, int spd8, int col);
 void gt_flakes_mode(int i, int m);
 void gt_canvas_view(int dx, int dy);
+extern unsigned char db_px, db_py, db_v, db_m, db_c, db_c2, db_bg;
+void gt_dbar_z(void);
 void gt_chain_step_draw(int x, int y, int col);
 void gt_tiles_draw(unsigned char *map, unsigned char *flags, int lvlw,
                    int i0, int i1, int j0, int j1);
@@ -100,6 +102,7 @@ void gt_balls_step(long *x, long *y, long *vx, long *vy, int *act,
 void gt_pool_move(int *x, int *y, int *sx, int *sy, unsigned char *used,
                   int n, int mode);
 void gt_balls_drag(long *vx, long *vy, int *act, int n);
+void gt_balls_draw(long *x, long *y, unsigned char *cells, int n);
 void gt_parts_step(long *x, long *y, long *vx, long *vy, unsigned char *u,
                    int n);
 void gt_pool_sprs(int *x, int *y, unsigned char *used, unsigned char *cells,
@@ -130,6 +133,7 @@ int gt_p8_print_num(int v, int x, int y, int c);
 int gt_p8_print_num(long v, int x, int y, int c);
 #endif
 int gt_p8_print_int(int v, int x, int y, int c);
+int gt_p8_print_buf(unsigned char *buf, int off, int x, int y, int c);
 void gt_sheet_load(const unsigned char *packed);
 void gt_sheet_load_packed(const unsigned char *p, unsigned int plen); /* packbits */
 void gt_sheet_init(void);   /* generated per-build: loads the sheet or no-op */

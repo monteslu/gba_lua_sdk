@@ -447,6 +447,20 @@ int gt_p8_print(const char *str, int x, int y, int c) {
     gt_bank(saved_bank);
     return r;
 }
+
+/* print a runtime byte buffer (NUL-terminated ASCII) — the whole string
+ * costs ONE call's worth of wrapper (bank round-trip, clip, font setup)
+ * instead of one per print(); ports cache composed numbers this way. */
+int gt_p8_print_buf(unsigned char *buf, int off, int x, int y, int c) {
+    return gt_p8_print((char *)buf + off, x, y, c);
+}
+#else
+/* flat build: gt_p8_print IS the impl; same one-call contract */
+int gt_p8_print_buf(unsigned char *buf, int off, int x, int y, int c) {
+    return gt_p8_print((char *)buf + off, x, y, c);
+}
+#endif
+#ifdef GT_BANKED
 #ifdef GT_NUM8
 int gt_p8_print_num(int v, int x, int y, int c) {
 #else
@@ -1158,6 +1172,18 @@ void gt_canvas_view(int dx, int dy) {
     gt_canvas_view_z();
 }
 
+/* the HUD stamina/life bar in one asm call (gt_flakes.s): args ride zp
+ * bytes, the emitter writes them directly — no stack marshalling. */
+extern unsigned char db_px, db_py, db_v, db_m, db_c, db_c2, db_bg;
+#pragma zpsym ("db_px")
+#pragma zpsym ("db_py")
+#pragma zpsym ("db_v")
+#pragma zpsym ("db_m")
+#pragma zpsym ("db_c")
+#pragma zpsym ("db_c2")
+#pragma zpsym ("db_bg")
+void gt_dbar_z(void);
+
 /* follower chain: ease + draw in asm (gt_flakes.s). Coordinates are
  * screen-space (the caller's camera() applies before this). */
 void gt_chain_step_draw(int x, int y, int col) {
@@ -1236,6 +1262,17 @@ void gt_balls_drag(long *vx, long *vy, int *act, int n) {
     bp_n = (unsigned char)n;
     gt_balls_drag_z();
 }
+/* one 16x16 sprite per nonzero cell byte, positions from the fixed
+ * arrays' int bytes (gt_balls.s). */
+void gt_balls_draw_z(void);
+void gt_balls_draw(long *x, long *y, unsigned char *cells, int n) {
+    bp_x = (unsigned char *)x;
+    bp_y = (unsigned char *)y;
+    bp_fl = cells;
+    bp_n = (unsigned char)n;
+    gt_balls_draw_z();
+}
+
 /* particle pool integrator (gt_balls.s): x += v and the 31/32-ish damp on
  * every used slot of a 16.16 SoA pool. */
 extern unsigned char *pp_x, *pp_y, *pp_vx, *pp_vy, *pp_u;

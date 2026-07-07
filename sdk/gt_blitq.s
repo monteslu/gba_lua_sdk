@@ -544,3 +544,150 @@ _irq_int:
         STZ DMA_Start           ; acknowledge the DMA interrupt
         STZ _gt_draw_busy
         RTI
+
+; ---------------------------------------------------------------------------
+; gt_dbar_z — the HUD stamina/life bar: up to four small fills staged raw.
+;   pe = px + (v*77 >> 8), pe2 = px + (m*77 >> 8)   (v,m are 0..100 ints)
+;   entries: bg strip (px..px+28, 3 rows; skipped when db_bg >= 16), value
+;   fill (px..pe, 3 rows), highlight (px..pe-1, 2 rows), deficit
+;   (pe+1..pe2, 3 rows, color 6) when m > v.
+; The compiled version made 4 rectfill() calls (~400 each with glue); this
+; stages the same entries in ~450 total. Colors resolve via p8pal ^ $FF.
+;   zp args: db_px db_py db_v db_m db_c db_c2 db_bg (bytes)
+; ---------------------------------------------------------------------------
+.export _gt_dbar_z
+.export _db_px, _db_py, _db_v, _db_m, _db_c, _db_c2, _db_bg
+.import mul8, mx, my, m16
+
+.segment "ZEROPAGE" : zeropage
+_db_px: .res 1
+_db_py: .res 1
+_db_v:  .res 1
+_db_m:  .res 1
+_db_c:  .res 1
+_db_c2: .res 1
+_db_bg: .res 1
+db_pe:  .res 1
+db_pe2: .res 1
+db_x:   .res 1
+db_w:   .res 1
+db_h:   .res 1
+db_col: .res 1
+
+.segment "CODE"
+
+; stage one fill: db_x, _db_py, db_w x db_h, db_col (pico index -> resolved)
+.proc dbfill
+        ldy     db_col
+        lda     _p8pal,y
+        eor     #$FF
+        sta     db_col
+slot:   lda     _gt_qhead
+        clc
+        adc     #8
+        cmp     _gt_qtail
+        bne     free
+        jsr     _gt_q_pump
+        bra     slot
+free:   ldx     _gt_qhead
+        lda     #QF_RECT
+        sta     _gt_q+0,x
+        lda     db_x
+        sta     _gt_q+1,x
+        lda     _db_py
+        sta     _gt_q+2,x
+        stz     _gt_q+3,x
+        stz     _gt_q+4,x
+        lda     db_w
+        sta     _gt_q+5,x
+        lda     db_h
+        sta     _gt_q+6,x
+        lda     db_col
+        sta     _gt_q+7,x
+        txa
+        clc
+        adc     #8
+        sta     _gt_qhead
+        jsr     _gt_q_pump
+        rts
+.endproc
+
+.proc _gt_dbar_z
+        stz     _gt_draw_mode
+        ; pe = px + (v*77 >> 8); pe2 = px + (m*77 >> 8)
+        lda     _db_v
+        sta     mx
+        lda     #77
+        sta     my
+        jsr     mul8
+        lda     m16+1
+        clc
+        adc     _db_px
+        sta     db_pe
+        lda     _db_m
+        sta     mx
+        lda     #77
+        sta     my
+        jsr     mul8
+        lda     m16+1
+        clc
+        adc     _db_px
+        sta     db_pe2
+        ; bg strip: (px, 29 wide, 3 tall, db_bg) unless bg >= 16
+        lda     _db_bg
+        cmp     #16
+        bcs     nobg
+        sta     db_col
+        lda     _db_px
+        sta     db_x
+        lda     #29
+        sta     db_w
+        lda     #3
+        sta     db_h
+        jsr     dbfill
+nobg:   ; value fill: px..pe (w = pe-px+1), 3 tall, c2
+        lda     _db_c2
+        sta     db_col
+        lda     _db_px
+        sta     db_x
+        lda     db_pe
+        sec
+        sbc     _db_px
+        inc     a
+        sta     db_w
+        lda     #3
+        sta     db_h
+        jsr     dbfill
+        ; highlight: px..max(px, pe-1), 2 tall, c
+        lda     _db_c
+        sta     db_col
+        lda     db_pe
+        sec
+        sbc     _db_px          ; pe-px
+        beq     :+              ; pe == px -> width 1 (max(px, pe-1) = px)
+        ; width = pe-1 - px + 1 = pe - px
+        bra     :++
+:       lda     #1
+:       sta     db_w
+        lda     #2
+        sta     db_h
+        jsr     dbfill
+        ; deficit: m > v -> (pe+1 .. pe2), 3 tall, color 6
+        lda     _db_v
+        cmp     _db_m
+        bcs     done
+        lda     #6
+        sta     db_col
+        lda     db_pe
+        inc     a
+        sta     db_x
+        lda     db_pe2
+        sec
+        sbc     db_pe           ; pe2 - (pe+1) + 1 = pe2 - pe
+        beq     done            ; zero width: skip
+        sta     db_w
+        lda     #3
+        sta     db_h
+        jsr     dbfill
+done:   rts
+.endproc

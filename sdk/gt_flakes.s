@@ -578,3 +578,4 @@ full:   lda     #127
 doneall:
         rts
 .endproc
+

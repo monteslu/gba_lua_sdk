@@ -487,6 +487,7 @@ m16:    .res 2          ; mul8 result (16-bit product of mx*my)
 ; hi), via quarter squares:  mx*my = sq[mx+my] - sq[mx-my],  sq[k]=k^2/4.
 ; Uses the pair of 512-byte tables sqlo/sqhi. Clobbers A,Y; preserves X.
 ; ---------------------------------------------------------------------------
+.export mul8, mx, my, m16 ; exported: engines borrow the 8x8 multiply
 .proc mul8
         ; --- s = mx + my (0..510), look up sq[s] into m16 ---
         lda     #<sqlo

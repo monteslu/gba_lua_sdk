@@ -307,7 +307,7 @@ satn:   lda     #$01
 ; mul8: 16-bit unsigned product of mx * my via quarter squares — copied
 ; VERBATIM from the proven 16.16 unit (gt_fixed_asm.s). Clobbers A,Y.
 ; ---------------------------------------------------------------------------
-.export mul8            ; label the hot helper: profiles symbolicate honestly
+.export mul8, mx, my, m16 ; exported: engines borrow the 8x8 multiply
 .proc mul8
         lda     #<sqlo
         sta     mptr+0

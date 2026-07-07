@@ -282,9 +282,12 @@ end
 
 -- returns the slot used, 0 if the table is full (cap 28; the cart is
 -- unbounded — see PORT_NOTES.md)
--- gt.balls engine plumbing: bounce flags + contact-pair list
+-- gt.balls engine plumbing: bounce flags + contact-pair list + draw cells
 local ballfl = array8(32)
 local bpairs = array8(64)
+local bcell = array8(32)
+local bc_norm = array8(8)
+local bc_blink = array8(8)
 
 function new_ball(xx, yy, cc)
   for i = 1, 28 do
@@ -807,37 +810,60 @@ end
 -- ---------------------------------------------------------------------
 
 -- P8 score format: score is points/100, shown as (score*100) .. "0"
--- per-slot split cache: scores change on merges, not per frame, but the
--- flr/*100/\100 split chain was running for every displayed score every
--- frame (~1.5k cycles each through the long helpers)
+-- per-slot ASCII cache: scores change on merges, not per frame. The old
+-- path re-split AND made up to four print() calls per score per frame
+-- (~1.1k each — the wrapper dominates); now the digits render into a
+-- byte buffer when the value changes and draw with ONE gt.print_buf.
 local ps_v = array(3, -1.0)
-local ps_iv = array(3)
-local ps_fr = array(3)
+local ps_b = array8(36)         -- 12 bytes per slot, NUL-terminated
+local mb_b = array8(8)          -- cached 'x<mult>' string
+local mb_last = -1
+local mb_x = 0
 
 function print_score(sl, v, x, y, c)
   if v ~= ps_v[sl] then
     ps_v[sl] = v
-    local niv = flr(v)
-    local nfr = flr((v - niv) * 100 + 0.5)
-    niv += nfr \ 100
-    ps_fr[sl] = nfr % 100
-    ps_iv[sl] = niv
+    local iv = flr(v)
+    local fr = flr((v - iv) * 100 + 0.5)
+    iv += fr \ 100
+    fr %= 100
+    local k = (sl - 1) * 12 + 1
+    if sl == 3 then
+      ps_b[k] = 43              -- '+' fused into the ballscore string
+      k += 1
+    end
+    if iv > 0 then
+      -- iv digits (no leading zeros), then fr zero-padded to 2, then '0'
+      local dv = 10000
+      local started = 0
+      while dv >= 1 do
+        local d = (iv \ dv) % 10
+        if d > 0 or started == 1 or dv == 1 then
+          ps_b[k] = 48 + d
+          k += 1
+          started = 1
+        end
+        dv \= 10
+      end
+      ps_b[k] = 48 + fr \ 10
+      ps_b[k + 1] = 48 + fr % 10
+      ps_b[k + 2] = 48
+      k += 3
+    elseif fr > 0 then
+      if fr >= 10 then
+        ps_b[k] = 48 + fr \ 10
+        k += 1
+      end
+      ps_b[k] = 48 + fr % 10
+      ps_b[k + 1] = 48
+      k += 2
+    else
+      ps_b[k] = 48
+      k += 1
+    end
+    ps_b[k] = 0
   end
-  local iv = ps_iv[sl]
-  local fr = ps_fr[sl]
-  local rx = x
-  if iv > 0 then
-    rx = print(iv, rx, y, c)
-    if (fr < 10) rx = print(0, rx, y, c)
-    rx = print(fr, rx, y, c)
-    rx = print(0, rx, y, c)
-  elseif fr > 0 then
-    rx = print(fr, rx, y, c)
-    rx = print(0, rx, y, c)
-  else
-    rx = print(0, rx, y, c)
-  end
-  return rx
+  return gt.print_buf(ps_b, (sl - 1) * 12, x, y, c)
 end
 
 -- rounded HUD panel: corner cells + edge lines matching the cart's
@@ -862,12 +888,9 @@ end
 -- stamina/life bar; v/m are 0..100 ints; bg < 0 skips the backing strip.
 -- (v*0.3 becomes v*77>>8 = v*0.3008 in cheap int math.)
 function draw_dbar(px, py, v, m, c, c2, bg)
-  local pe = px + (v * 77) \ 256
-  local pe2 = px + (m * 77) \ 256
-  if (bg >= 0) rectfill(px, py, px + 28, py + 2, bg)
-  rectfill(px, py, pe, py + 2, c2)
-  rectfill(px, py, max(px, pe - 1), py + 1, c)
-  if (m > v) rectfill(pe + 1, py, pe2, py + 2, 6)
+  local b = bg
+  if (b < 0) b = 255
+  gt.dbar(px, py, v, m, c, c2, b)
 end
 
 -- the cart's boldline() is five 130px Bresenham passes (~1.5 vsyncs of
@@ -1065,24 +1088,24 @@ function draw_game()
                   flr(launch_y + launch_dy * 90), 1)
   end
 
-  -- balls (baked composite: shadow + backdrop + drawball discs)
+  -- balls (baked composite): cell choice here, the 16x16 blits in bulk asm
   local blinkon = 0
   if (gtime \ 8 % 2 == 0) blinkon = 1
   for i = 1, 28 do
-    if ballc[i] > 0 then
-      local xi = flr(ballx[i])
-      local yi = flr(bally[i])
-      local hot = 0
-      if (ballc[i] == 7) hot = 1
-      if (ballmul[i] >= 8 and balllm[i] > 30) hot = 1
-      if hot == 1 and blinkon == 1 then
-        draw_ball_blink(xi, yi, ballc[i])
-      else
-        draw_ball_spr(xi, yi, ballc[i])
+    local c = ballc[i]
+    local cl = 0
+    if c > 0 then
+      cl = bc_norm[c]
+      if blinkon == 1 then
+        if (c == 7 or (ballmul[i] >= 8 and balllm[i] > 30)) cl = bc_blink[c]
       end
-      if displaynumber == 1 then
-        print(ballc[i], xi - 1, yi - 2, 0)
-      end
+    end
+    bcell[i] = cl
+  end
+  gt.balls_draw(ballx, bally, bcell, 28)
+  if displaynumber == 1 then
+    for i = 1, 28 do
+      if (ballc[i] > 0) print(ballc[i], flr(ballx[i]) - 1, flr(bally[i]) - 2, 0)
     end
   end
 
@@ -1105,14 +1128,32 @@ function draw_game()
 
     local bscol = 13
     if (newballscoretimer > 0 and newballscoretimer \ 4 % 2 == 0) bscol = 7
-    local rx = print("+", 80, ballmenuy, bscol)
-    print_score(3, ballscore, rx, ballmenuy, bscol)
-    local digits = 1
-    if (ballmult >= 10) digits = 2
-    if (ballmult >= 100) digits = 3
-    if (ballmult >= 1000) digits = 4
-    rx = print("x", 124 - (digits + 1) * 4, ballmenuy, bscol)
-    print(ballmult, rx, ballmenuy, bscol)
+    print_score(3, ballscore, 80, ballmenuy, bscol)
+    if ballmult ~= mb_last then
+      mb_last = ballmult
+      local m = ballmult
+      local digits = 1
+      if (m >= 10) digits = 2
+      if (m >= 100) digits = 3
+      if (m >= 1000) digits = 4
+      mb_x = 124 - (digits + 1) * 4
+      local k = 1
+      mb_b[k] = 120             -- 'x'
+      k += 1
+      local dv = 1000
+      local started = 0
+      while dv >= 1 do
+        local d = (m \ dv) % 10
+        if d > 0 or started == 1 or dv == 1 then
+          mb_b[k] = 48 + d
+          k += 1
+          started = 1
+        end
+        dv \= 10
+      end
+      mb_b[k] = 0
+    end
+    gt.print_buf(mb_b, 0, mb_x, ballmenuy, bscol)
 
     spr(68, 72, 112, 7, 2)
 
@@ -1342,5 +1383,9 @@ function _init()
   trailspr[7] = 26
 
   bake_sprites()
+  for c = 1, 7 do
+    bc_norm[c] = 128 + (c - 1) * 2
+    bc_blink[c] = 160 + (c - 1) * 2
+  end
   reset_game()
 end

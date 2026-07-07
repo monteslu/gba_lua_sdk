@@ -670,3 +670,80 @@ live:   txa
 next:   inx
         jmp     loop
 .endproc
+
+; ---------------------------------------------------------------------------
+; gt_balls_draw — one 16x16 QF_SPR per nonzero cell byte, positions from the
+; 16.16 fixed arrays' integer bytes, centered at (-8, -7) like the port's
+; draw_ball_spr. ~80 cycles per ball vs ~700 through flr + the spr() C path.
+;   bp_x/bp_y: fixed arrays; bp_fl reused as the cells byte array; bp_n count
+; ---------------------------------------------------------------------------
+.export _gt_balls_draw_z
+.import _gt_q, _gt_qhead, _gt_qtail, _gt_q_pump, _gt_qbank, _gt_draw_mode
+
+QF_SPRB = $55
+
+.segment "ZEROPAGE" : zeropage
+bq_c:   .res 1
+
+.segment "CODE"
+.proc _gt_balls_draw_z
+        stz     _gt_draw_mode
+        stz     bz_i
+loop:   lda     bz_i
+        cmp     _bp_n
+        bne     :+
+        rts
+:       tay
+        lda     (_bp_fl),y      ; cell byte (0 = skip)
+        bne     live
+        jmp     next
+live:   sta     bq_c
+        ; element byte offset of the INT part = i*4 + 2
+        tya
+        asl     a
+        asl     a
+        inc     a
+        inc     a
+        sta     bz_o
+slot:   lda     _gt_qhead
+        clc
+        adc     #8
+        cmp     _gt_qtail
+        bne     free
+        jsr     _gt_q_pump
+        bra     slot
+free:   ldx     _gt_qhead
+        lda     #QF_SPRB
+        sta     _gt_q+0,x
+        ldy     bz_o
+        lda     (_bp_x),y
+        sec
+        sbc     #8
+        sta     _gt_q+1,x       ; VX = int(x) - 8 (byte wrap; hw clips)
+        lda     (_bp_y),y
+        sec
+        sbc     #7
+        sta     _gt_q+2,x       ; VY = int(y) - 7
+        lda     bq_c
+        and     #$0F
+        asl     a
+        asl     a
+        asl     a
+        sta     _gt_q+3,x       ; GX
+        lda     bq_c
+        and     #$F0
+        lsr     a
+        sta     _gt_q+4,x       ; GY
+        lda     #16
+        sta     _gt_q+5,x
+        sta     _gt_q+6,x
+        lda     _gt_qbank
+        sta     _gt_q+7,x
+        txa
+        clc
+        adc     #8
+        sta     _gt_qhead
+        jsr     _gt_q_pump
+next:   inc     bz_i
+        jmp     loop
+.endproc

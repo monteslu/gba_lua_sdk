@@ -109,6 +109,13 @@ export const GT_MEMBERS = {
   balls_step: { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["array", false], ["array", false], ["array8", false], ["array8", false], ["int", false]], ret: "void", c: "gt_balls_step" },
   // drag pass on the same fixed arrays: v -= (v>>6)+(v>>8) per active ball
   balls_drag: { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["int", false]], ret: "void", c: "gt_balls_drag" },
+  // one 16x16 sprite per nonzero cell byte at (int(x)-8, int(y)-7)
+  balls_draw: { kind: "fn", params: [["array", false], ["array", false], ["array8", false], ["int", false]], ret: "void", c: "gt_balls_draw" },
+  // HUD meter bar: bg strip + value fill + highlight + deficit, staged in
+  // one asm call (px, py, v, m, c, c2, bg; v/m 0..100; bg >= 16 skips)
+  dbar: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_dbar", special: "dbar" },
+  // print a cached ASCII byte buffer (NUL-terminated) in one call
+  print_buf: { kind: "fn", params: [["array8", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "int", c: "gt_p8_print_buf" },
   // particle pool step: x += vx, y += vy, v *= 0.953 (v -= v>>5 + v>>6)
   // on every used slot; the pool needs fixed fields x, y, vx, vy
   parts_step: { kind: "fn", params: [["pool", false]], ret: "void", c: "gt_parts_step", special: "partsstep" },

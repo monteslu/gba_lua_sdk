@@ -707,6 +707,11 @@ export function emit(chunk, symbols, file, opts = {}) {
         const pr = expr(e.args[7], "int");
         return `gt_hit_scan(${A.cname}_x, ${A.cname}_y, ${A.cname}_${fw}, ${A.cname}_${fh}, ${A.cname}_used, ${A.cname}_hi, ${B.cname}_x, ${B.cname}_y, ${B.cname}_${fbw}, ${B.cname}_used, ${B.cname}_hi, ${bh}, ${sh}, ${pr})`;
       }
+      if (sig.special === "dbar") {
+        const names = ["db_px", "db_py", "db_v", "db_m", "db_c", "db_c2", "db_bg"];
+        const parts = e.args.map((a, i) => `${names[i]} = (unsigned char)(${expr(a, "int")})`);
+        return `(${parts.join(", ")}, gt_dbar_z())`;
+      }
       if (sig.special === "partsstep") {
         const pl = e.args[0].sym;
         return `gt_parts_step(${pl.cname}_x, ${pl.cname}_y, ${pl.cname}_vx, ${pl.cname}_vy, ${pl.cname}_used, ${pl.cname}_hi)`;
