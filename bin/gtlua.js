@@ -875,14 +875,25 @@ function build(entry, outPath, sheetPath, num8 = false) {
             // repair otherwise can't heal a hot edge whose callee is
             // squeezed out by cold code, e.g. celeste2's p_update stuck
             // across a bank from the movement core it calls ~40x/frame.)
+            // deepest-coldest first; rotate destinations so a full first
+            // choice doesn't wedge the whole eviction (RODATA overflows in
+            // particular follow the FN, so moving anything with a string
+            // pool relieves them — code size alone was blind to that)
+            const depthsE = hotDepth(result.callGraph);
             const cold = Object.entries(workPlacement)
-              .filter(([fn, b]) => b === best.target && !hot.has(fn) && !pinned.has(fn) && fn !== best.fn)
+              .filter(([fn, b]) => b === best.target && !pinned.has(fn) && fn !== best.fn)
               .map(([fn]) => fn)
-              .sort((a, b2) => (sizes.get(b2) ?? 0) - (sizes.get(a) ?? 0));
+              .sort((a, b2) => {
+                const da = depthsE.get(a) ?? 99, db = depthsE.get(b2) ?? 99;
+                if (da !== db) return db - da;
+                return (sizes.get(b2) ?? 0) - (sizes.get(a) ?? 0);
+              });
+            const dests = ["b2", "b1", "b0", "fixed"].filter((d) => d !== best.target);
             const evicted = [];
-            for (const evictee of cold.slice(0, 4)) {
+            for (let e = 0; e < Math.min(6, cold.length); e++) {
+              const evictee = cold[e];
               const evPrev = workPlacement[evictee];
-              workPlacement[evictee] = best.target === "b2" ? "b1" : "b2";
+              workPlacement[evictee] = dests[e % dests.length];
               evicted.push([evictee, evPrev]);
               relink = compileAndLink(workPlacement);
               if (relink.ok) {
