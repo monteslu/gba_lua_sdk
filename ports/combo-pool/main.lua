@@ -38,10 +38,6 @@ local traily = array(28)
 local ballidx = 0           -- total balls created (endgame stat)
 
 -- 8x8 broad-phase grid, 16px cells (original: grid[i][j] tables)
-local gridcnt = array(64)
-local gridmem = array(512)  -- 8 slots per cell
-local bgx = array(28)       -- per-frame collision-lookup cell coords
-local bgy = array(28)
 
 -- 1/sqrdist table for contact math: invsq[flr(d2*2)+1] ~= 1/d2 for the
 -- contact range d2 < 64. gt_fdiv is a 48-step software loop (~35K cycles,
@@ -393,34 +389,6 @@ end
 -- physics
 -- ---------------------------------------------------------------------
 
-function update_grid()
-  local k = 1
-  while k <= 64 do
-    gridcnt[k] = 0
-    k += 1
-  end
-  for i = 1, 28 do
-    if ballc[i] > 0 then
-      -- insert by flr(pos/16); wall clamps keep positions in range
-      local gx = ballx[i] \ 16 + 1
-      local gy = bally[i] \ 16 + 1
-      if (gy > 8) gy = 8
-      local cell = (gy - 1) * 8 + gx
-      local n = gridcnt[cell]
-      if n < 8 then
-        gridcnt[cell] = n + 1
-        gridmem[(cell - 1) * 8 + n + 1] = i
-      end
-      -- lookup neighborhood corner: flr(pos/16 + 0.5), cached per frame
-      -- (cells are 16px, balls move <4px/frame — stale by design, like
-      -- the cart's once-per-frame grid)
-      bgx[i] = (ballx[i] + 8) \ 16 + 1
-      bgy[i] = (bally[i] + 8) \ 16 + 1
-    end
-  end
-end
-
--- radial shove from a tier-7 merge
 function bomb(x, y, rad, strv)
   for i = 1, 28 do
     if ballc[i] > 0 then
@@ -576,37 +544,6 @@ function do_coll(i, j)
   end
 end
 
-function col_balls()
-  for i = 1, 28 do
-    if ballc[i] > 0 then
-      local gx = bgx[i]
-      local cy = bgy[i] - 1
-      local cylast = cy + 1
-      while cy <= cylast do
-        if cy > 0 and cy <= 8 then
-          local cx = gx - 1
-          local cxlast = cx + 1
-          while cx <= cxlast do
-            if cx > 0 and cx <= 8 then
-              local cell = (cy - 1) * 8 + cx
-              local n = gridcnt[cell]
-              local k = (cell - 1) * 8
-              local klast = k + n
-              while k < klast do
-                local j = gridmem[k + 1]
-                if (i > j) do_coll(i, j)
-                k += 1
-              end
-            end
-            cx += 1
-          end
-        end
-        cy += 1
-      end
-    end
-  end
-end
-
 -- ---------------------------------------------------------------------
 -- update
 -- ---------------------------------------------------------------------
@@ -689,8 +626,6 @@ function update_game()
     p.t -= 0.0333
     if (p.t <= 0) del(texts, p)
   end
-
-  update_grid()
 
   local curpress = 0
   if (btn(4)) curpress = 1
