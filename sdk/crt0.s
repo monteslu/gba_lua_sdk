@@ -10,6 +10,7 @@
 .export   __STARTUP__ : absolute = 1
 .import   __RAM_START__, __RAM_SIZE__
 .import   copydata, zerobss, initlib, donelib
+.import   _gt_nmi_hook
 
 .PC02                                 ; W65C02 opcode set (stz/bra/phx/...)
 
@@ -34,6 +35,14 @@ viaWakeup:
           ; Park the banking register at a known state. With a single 32 KB
           ; cart the active bank is fixed at boot; no flash bank shift needed.
           STZ     BankReg
+
+          ; The NMI hook must be dead BEFORE the $1FFF guard opens: zerobss
+          ; hasn't run yet, and on real power-on RAM the hook bytes are
+          ; garbage — one vblank in that window jumps through a trash
+          ; pointer. (A zero-filling emulator masks this; hardware and
+          ; random-fill cores do not.)
+          STZ     _gt_nmi_hook
+          STZ     _gt_nmi_hook+1
           STZ     $1FFF
 
           LDA     #%00000111          ; VIA DDRA: low 3 bits output (bank pins)
