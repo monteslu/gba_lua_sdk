@@ -1240,6 +1240,37 @@ void gt_pool_move(int *x, int *y, int *sx, int *sy, unsigned char *used,
 }
 #endif /* GT_POOLMV */
 
+#ifdef GT_CHUNKS
+/* 24px atlas-chunk grid renderer (gt_chunks.s) — see the asm header. */
+extern unsigned char *ck_grid, *ck_lut, *ck_lut2, *ck_props;
+extern unsigned char ck_w, ck_h, ck_stride, ck_x0, ck_y0;
+#pragma zpsym ("ck_grid")
+#pragma zpsym ("ck_lut")
+#pragma zpsym ("ck_lut2")
+#pragma zpsym ("ck_props")
+#pragma zpsym ("ck_w")
+#pragma zpsym ("ck_h")
+#pragma zpsym ("ck_stride")
+#pragma zpsym ("ck_x0")
+#pragma zpsym ("ck_y0")
+void gt_chunks_z(void);
+void gt_chunks_draw(int *grid, unsigned char *lut, unsigned char *lut2,
+                    unsigned char *props, int stride,
+                    int cx0, int cy0, int cx1, int cy1) {
+    if (cx1 < cx0 || cy1 < cy0) return;
+    ck_grid = (unsigned char *)(grid + cy0 * stride + cx0);
+    ck_lut = lut;
+    ck_lut2 = lut2;
+    ck_props = props;
+    ck_w = (unsigned char)(cx1 - cx0 + 1);
+    ck_h = (unsigned char)(cy1 - cy0 + 1);
+    ck_stride = (unsigned char)(stride - (cx1 - cx0 + 1));
+    ck_x0 = (unsigned char)(cx0 * 24 - gt_cam_x);
+    ck_y0 = (unsigned char)(cy0 * 24 - gt_cam_y);
+    gt_chunks_z();
+}
+#endif /* GT_CHUNKS */
+
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
 #define GT_LINE_DIAG line_diag_impl

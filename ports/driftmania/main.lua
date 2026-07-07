@@ -30,6 +30,10 @@ local cpdy = array(3)
 local cpl = array(3)
 local div3 = array(96)
 local cs_lut = array8(30)  -- (i*10)\3 — centiseconds for the race clock
+-- chunk-decode byte LUTs for the asm track renderer (road + decal+decb)
+local ckdl = array8(32)
+local ckdl2 = array8(32)
+local cprops = array8(48)
 local ckf = 0              -- race clock: frames 0-29
 local cks = 0              -- seconds 0-59
 local ckm = 0              -- minutes
@@ -1051,6 +1055,10 @@ function gd_init()
  for i = 0, 29 do
   cs_lut[i + 1] = (i * 10) \ 3
  end
+ for i = 1, 31 do
+  ckdl[i + 1] = ckd(i)
+  ckdl2[i + 1] = ckd(i + decb)
+ end
 end
 -- ==== GENERATED DATA END ====
 
@@ -1790,64 +1798,17 @@ function _draw()
   local cx1 = div3[((camxi + 127) >> 3) + 1]
   local cy0 = div3[(camyi >> 3) + 1]
   local cy1 = div3[((camyi + 127) >> 3) + 1]
+  -- the whole window renders in asm (gt_chunks.s): road + decal layers,
+  -- flat-run merging, atlas blits; props come back as a byte list
+  gt.chunks_draw(cgrid, ckdl, ckdl2, cprops, 30, cx0, cy0, cx1, cy1)
   pcount = 0
-  for cy = cy0, cy1 do
-    local rb = cy * 30
-    local wy = cy * 24
-    local runk = -1
-    local runx = 0
-    local runw = 0
-    for cx = cx0, cx1 do
-      local cg = cgrid[rb + cx + 1]
-      -- flat fill run merging: plain solid chunks extend the open run
-      local flatk = -1
-      if cg != 0 then
-        local r0 = cg & 31
-        if r0 != 0 and (cg >> 5) == 0 then
-          local k0 = ckd(r0)
-          if (k0 < 16) flatk = k0
-        end
-      end
-      if flatk != runk or flatk < 0 then
-        if (runk >= 0) rectfill(runx, wy, runx + runw - 1, wy + 23, runk)
-        runk = -1
-        if flatk >= 0 then
-          runk = flatk
-          runx = cx * 24
-          runw = 0
-        end
-      end
-      if (runk >= 0) runw += 24
-      if cg != 0 and flatk < 0 then
-        local wx = cx * 24
-        local r = cg & 31
-        if r != 0 then
-          local k = ckd(r)
-          if k >= 16 then
-            gt.gspr(((k - 16) & 7) * 24, ((k - 16) >> 3) * 24, 24, 24, wx, wy)
-          else
-            rectfill(wx, wy, wx + 23, wy + 23, k)
-          end
-        end
-        local d = (cg >> 5) & 31
-        if d != 0 then
-          local k2 = ckd(d + decb)
-          if k2 >= 16 then
-            gt.gspr(((k2 - 16) & 7) * 24, ((k2 - 16) >> 3) * 24, 24, 24, wx, wy)
-          else
-            rectfill(wx, wy, wx + 23, wy + 23, k2)
-          end
-        end
-        local p = cg >> 10
-        if p != 0 then
-          pcount += 1
-          plx[pcount] = wx
-          ply[pcount] = wy
-          plk[pcount] = ckd(p + propb)
-        end
-      end
-    end
-    if (runk >= 0) rectfill(runx, wy, runx + runw - 1, wy + 23, runk)
+  local pk = 1
+  while cprops[pk] > 0 do
+    pcount += 1
+    plk[pcount] = ckd(cprops[pk] + propb)
+    plx[pcount] = cprops[pk + 1] + camxi   -- engine emits screen x; back to world
+    ply[pcount] = cprops[pk + 2] + camyi
+    pk += 3
   end
 
   -- tire trails

@@ -98,6 +98,9 @@ void gt_balls_step(long *x, long *y, long *vx, long *vy, int *act,
                    unsigned char *flags, unsigned char *pairs, int n);
 void gt_pool_move(int *x, int *y, int *sx, int *sy, unsigned char *used,
                   int n, int mode);
+void gt_chunks_draw(int *grid, unsigned char *lut, unsigned char *lut2,
+                    unsigned char *props, int stride,
+                    int cx0, int cy0, int cx1, int cy1);
 void gt_chain_z(void);       /* plot the whole field (one CPU pass) */
 /* offscreen-GRAM background canvas (gt_bg.c) */
 void gt_bg_compose(int *map, int cols, int cx, int cy, int cw, int ch);

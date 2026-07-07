@@ -506,6 +506,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     ...(result.c.includes("gt_tiles_draw") ? ["-DGT_TILES"] : []),
     ...(result.c.includes("gt_balls_step") ? ["-DGT_BALLS"] : []),
     ...(result.c.includes("gt_pool_move") ? ["-DGT_POOLMV"] : []),
+    ...(result.c.includes("gt_chunks_draw") ? ["-DGT_CHUNKS"] : []),
     ...(usesAutocls ? ["-DGT_AUTOCLS"] : []),
     ...(usesPackedSheet ? ["-DGT_SHEET_PACKED"] : []),
   ];
@@ -548,6 +549,8 @@ function build(entry, outPath, sheetPath, num8 = false) {
   if (usesBalls) as(path.join(SDK, "gt_balls.s"), B("gt_balls.o"));
   const usesPoolmv = result.c.includes("gt_pool_move");
   if (usesPoolmv) as(path.join(SDK, "gt_poolmv.s"), B("gt_poolmv.o"));
+  const usesChunks = result.c.includes("gt_chunks_draw");
+  if (usesChunks) as(path.join(SDK, "gt_chunks.s"), B("gt_chunks.o"));
   as(path.join(SDK, "gt_print_asm.s"), B("gt_print_asm.o"));
   // banked tier gets the bank-0 segment build of the glyph run (scarce
   // fixed bank stays clear); the flat 32K tier keeps plain CODE
@@ -571,6 +574,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     ...(usesTiles ? [B("gt_tiles.o")] : []),
     ...(usesBalls ? [B("gt_balls.o")] : []),
     ...(usesPoolmv ? [B("gt_poolmv.o")] : []),
+    ...(usesChunks ? [B("gt_chunks.o")] : []),
     B("gt_print_asm.o"),
     B("sheet.o"),
   ];
