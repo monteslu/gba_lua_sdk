@@ -27,6 +27,10 @@ const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SDK = path.join(REPO, "sdk");
 
 const BANK_SIZE = 0x4000;
+// fixed-bank packing margin for the placement mover (see the ladder rung
+// that drops it): module-level because the mover helper sits outside the
+// build command's scope
+let fixedHeadroom = 768;
 const FLASH_SIZE = 0x200000;
 const BANK_MARGIN = 256;          // safety slack per bank (size estimates)
 
@@ -485,7 +489,7 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
       // game banks nothing downstream can relieve an overfilled fixed region
       // (cherry repeatedly failed 'RODATA over by ~650' from exactly this —
       // eight functions moved onto a 6KB estimate that was ~10% optimistic)
-      const headroom = target === "fixed" ? 768 : 0;
+      const headroom = target === "fixed" ? fixedHeadroom : 0;
       if (capacity[target] - estUsed(target) < sz + headroom) continue;
       if (process.env.GTLUA_DEBUG) console.error(`[juggle]   move ${n} (${sz}) ${bin} -> ${target}`);
       placement[n] = target;
@@ -740,6 +744,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
   // to the compact call form and start placement over.
   let midInline = true;
   let fnInline = true;
+  fixedHeadroom = 768;
   let workPlacement = placement;
   let rndInt = true;
   for (let attempt = 0; attempt < 48; attempt++) {
@@ -758,6 +763,15 @@ function build(entry, outPath, sheetPath, num8 = false) {
       as(B("gt_api.s"), B("gt_api.o"));
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: b2 relief undone (bank 2 is the tight bank)");
+    }
+    if (attempt === 18 && fixedHeadroom) {
+      // the conservative fixed-move margin protects most carts from
+      // overfilling the fixed region on light estimates, but some placements
+      // genuinely need to pack fixed to the byte — drop it before the more
+      // destructive rungs
+      fixedHeadroom = 0;
+      workPlacement = initialPlacement(result.callGraph);
+      console.error("bank placement tight: fixed-bank packing margin dropped");
     }
     if (attempt === 20 && fnInline) {
       fnInline = false;
