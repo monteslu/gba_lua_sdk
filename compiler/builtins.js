@@ -99,6 +99,8 @@ export const GT_MEMBERS = {
   flakes_mode: { kind: "fn", params: [["int", false], ["int", false]], ret: "void", c: "gt_flakes_mode" },
   chain_step_draw: { kind: "fn", params: [["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_chain_step_draw" },
   // the 4-piece 128x128 canvas window blit (scrolling composed maps)
+  // flakes draw through CPU pokes (1x1 fields, frame-tail only)
+  flakes_draw2_cpu: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_flakes_draw2_cpu" },
   canvas_view: { kind: "fn", params: [["int", false], ["int", false], ["int", true]], ret: "void", c: "gt_canvas_view" },
   // visible-window tile scan in asm: draws every flag&1 tile of
   // map[j0..j1][i0..i1] (byte tiles, row-major, lvlw wide) as an 8x8 sprite

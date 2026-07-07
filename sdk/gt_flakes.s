@@ -55,7 +55,9 @@ fd_cdx:  .res 2                 ; camdx8 (this call)
 fd_cdyl: .res 1                 ; camdy8 lo
 fd_cdyh: .res 1                 ; camdy8 hi
 fd_t:    .res 2                 ; scratch 16-bit
-fd_lo:   .res 1                 ; range draw: first index
+fd_lo:   .res 1
+fd_cpu:  .res 1               ; nonzero: poke pixels (CPU mode) instead of staging
+fd_ptr:  .res 2               ; CPU-poke pointer                 ; range draw: first index
 
 .segment "CODE"
 
@@ -64,6 +66,7 @@ fd_lo:   .res 1                 ; range draw: first index
 ; [first, first+count) — layered fields (clouds behind the map, snow in
 ; front) share the one state.
 _gt_flakes_draw2:
+        stz     fd_cpu
         sta     fd_cdyl
         stx     fd_cdyh
         ldy     #0
@@ -177,6 +180,27 @@ norm:   lda     _fl_rxl,y       ; per-flake respawn x
         bra     next
 vis:    ; on screen (0..127): stage a QF_RECT ring entry in place
         sta     fd_t            ; px
+        lda     fd_cpu
+        beq     slot
+        ; ---- CPU mode (caller entered it): poke the pixel directly.
+        ; vram = $4000 | (y << 7) | x; color un-inverts (ci is stored
+        ; pre-inverted for the blitter's colorfill register). 1x1 only —
+        ; the CPU entry point is gated to fields built with w = h = 1.
+        lda     _fl_yh,y
+        lsr     a               ; y>>1 -> high byte offset
+        ora     #$40
+        sta     fd_ptr+1
+        lda     #0
+        ror     a               ; (y&1) << 7
+        ora     fd_t
+        sta     fd_ptr
+        lda     _fl_ci,y
+        eor     #$FF
+        phy
+        ldy     #0
+        sta     (fd_ptr),y
+        ply
+        jmp     next
         ; claim a slot (full is measured-never; drain if so)
 slot:   lda     _gt_qhead
         clc
@@ -214,8 +238,42 @@ next:   cpy     fd_lo
         jmp     loop
 done:   rts
 
+; void __fastcall__ gt_flakes_draw2c(...) — draw2 but pixels poke through
+; CPU mode (the caller must have entered it). For 1x1 flake fields drawn
+; at the frame tail: ~35 cycles a flake vs ~130 through the ring + IRQ.
+.export _gt_flakes_draw2c
+_gt_flakes_draw2c:
+        ldy     #1
+        sty     fd_cpu
+        sta     fd_cdyl
+        stx     fd_cdyh
+        ldy     #0
+        lda     (c_sp),y
+        sta     fd_cdx
+        iny
+        lda     (c_sp),y
+        sta     fd_cdx+1
+        ldy     #2
+        lda     (c_sp),y
+        sta     fd_t
+        ldy     #4
+        lda     (c_sp),y
+        sta     fd_lo
+        clc
+        adc     fd_t
+        sta     fd_t
+        jsr     incsp2
+        jsr     incsp2
+        jsr     incsp2
+        ldy     fd_t
+        cpy     fd_lo
+        beq     :+
+        jmp     loop
+:       rts
+
 ; void __fastcall__ gt_flakes_draw(int camdx8, int camdy8) — all flakes
 _gt_flakes_draw:
+        stz     fd_cpu
         sta     fd_cdyl
         stx     fd_cdyh
         ldy     #0

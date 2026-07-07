@@ -1186,6 +1186,15 @@ extern unsigned char db_px, db_py, db_v, db_m, db_c, db_c2, db_bg;
 #pragma zpsym ("db_bg")
 void gt_dbar_z(void);
 
+/* flakes, CPU-poke draw: for 1x1 fields drawn at the frame TAIL — one
+ * mode drain (cheap there: the blitter has had the whole frame), then
+ * ~35 cycles a flake instead of ~130 through the ring + per-blit IRQ. */
+void gt_flakes_draw2c(int first, int count, int cdx8, int cdy8);
+void gt_flakes_draw2_cpu(int first, int count, int cdx8, int cdy8) {
+    enter_cpu_mode();
+    gt_flakes_draw2c(first, count, cdx8, cdy8);
+}
+
 /* follower chain: ease + draw in asm (gt_flakes.s). Coordinates are
  * screen-space (the caller's camera() applies before this). */
 void gt_chain_step_draw(int x, int y, int col) {

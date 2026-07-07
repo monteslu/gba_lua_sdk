@@ -91,6 +91,7 @@ void gt_flakes_draw(int camdx8, int camdy8);
 void gt_flakes_draw2(int first, int count, int camdx8, int camdy8);
 void gt_flakes_set(int i, int x, int y, int w, int h, int spd8, int col);
 void gt_flakes_mode(int i, int m);
+void gt_flakes_draw2_cpu(int first, int count, int cdx8, int cdy8);
 void gt_canvas_view(int dx, int dy, int opaque);
 void gt_bg_coln(unsigned char *cells, int px, int py, int n);
 extern unsigned char db_px, db_py, db_v, db_m, db_c, db_c2, db_bg;

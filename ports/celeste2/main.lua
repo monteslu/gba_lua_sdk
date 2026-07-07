@@ -1811,7 +1811,9 @@ function draw_snow()
   -- frame, x wraps at the edge (y wraps at 128 vs the old 132 — a 4px
   -- ambient nuance). ~0.3k vs ~23k for the compiled loop.
   camera()
-  gt.flakes_draw2(0, 26, (cam_draw_x - snow_cam_x) << 7, (cam_draw_y - snow_cam_y) << 7)
+  -- CPU-poke variant: snow is the LAST draw of the frame, so the one
+  -- mode drain lands where the blitter is already finishing anyway
+  gt.flakes_draw2_cpu(0, 26, (cam_draw_x - snow_cam_x) << 7, (cam_draw_y - snow_cam_y) << 7)
   snow_cam_x = cam_draw_x
   snow_cam_y = cam_draw_y
   camera(cam_draw_x, cam_draw_y)
