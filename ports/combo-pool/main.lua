@@ -289,8 +289,7 @@ local ballfl = array8(32)
 local bpairs = array8(64)
 
 function new_ball(xx, yy, cc)
-  local i = 1
-  while i <= 28 do
+  for i = 1, 28 do
     if ballc[i] == 0 then
       ballx[i] = xx
       bally[i] = yy
@@ -304,7 +303,6 @@ function new_ball(xx, yy, cc)
       ballidx += 1
       return i
     end
-    i += 1
   end
   return 0
 end
@@ -318,10 +316,8 @@ function new_text(xx, yy, val, nvx, nvy)
 end
 
 function reset_game()
-  local i = 1
-  while i <= 28 do
+  for i = 1, 28 do
     ballc[i] = 0
-    i += 1
   end
   ballidx = 0
 
@@ -377,7 +373,7 @@ function reset_game()
   -- six starter balls in the upper field; ballidx counts the color-1
   -- balls they are "worth" (2^tier), same as the cart
   local ballcount = 0
-  i = 0
+  local i = 0
   while i < 3 do
     local j = 0
     while j < 2 do
@@ -401,8 +397,7 @@ function update_grid()
     gridcnt[k] = 0
     k += 1
   end
-  local i = 1
-  while i <= 28 do
+  for i = 1, 28 do
     if ballc[i] > 0 then
       -- insert by flr(pos/16); wall clamps keep positions in range
       local gx = ballx[i] \ 16 + 1
@@ -420,14 +415,12 @@ function update_grid()
       bgx[i] = (ballx[i] + 8) \ 16 + 1
       bgy[i] = (bally[i] + 8) \ 16 + 1
     end
-    i += 1
   end
 end
 
 -- radial shove from a tier-7 merge
 function bomb(x, y, rad, strv)
-  local i = 1
-  while i <= 28 do
+  for i = 1, 28 do
     if ballc[i] > 0 then
       local dx = ballx[i] - x
       local dy = bally[i] - y
@@ -437,7 +430,6 @@ function bomb(x, y, rad, strv)
         ballvy[i] += dy * strv / dist
       end
     end
-    i += 1
   end
 end
 
@@ -583,8 +575,7 @@ function do_coll(i, j)
 end
 
 function col_balls()
-  local i = 1
-  while i <= 28 do
+  for i = 1, 28 do
     if ballc[i] > 0 then
       local gx = bgx[i]
       local cy = bgy[i] - 1
@@ -611,7 +602,6 @@ function col_balls()
         cy += 1
       end
     end
-    i += 1
   end
 end
 
@@ -767,8 +757,7 @@ function update_game()
       do_coll(bpairs[k], bpairs[k + 1])
       k += 2
     end
-    local i = 1
-    while i <= 28 do
+    for i = 1, 28 do
       if ballc[i] > 0 then
         if ballfl[i] == 1 then
           if balllm[i] <= 55 then
@@ -780,7 +769,6 @@ function update_game()
         end
         if (resetmult == 1) ballmul[i] = 1
       end
-      i += 1
     end
     s += 1
   end
@@ -789,8 +777,7 @@ function update_game()
   -- substep = 5/frame; we tick 5 per frame to match). Drag 0.98 becomes
   -- 1 - 1/64 - 1/256 = 0.98047 — shifts instead of a 16.16 multiply.
   lifecost10 = 0
-  local i = 1
-  while i <= 28 do
+  for i = 1, 28 do
     if ballc[i] > 0 then
       local bvx = ballvx[i]
       local bvy = ballvy[i]
@@ -799,7 +786,6 @@ function update_game()
       lifecost10 += ballcost10[ballc[i]]
       balllm[i] = max(0, balllm[i] - 5)
     end
-    i += 1
   end
 
   -- score HUD bookkeeping
@@ -1113,8 +1099,7 @@ function draw_game()
   end
 
   -- ball motion trails (approximates the cart's framebuffer smears)
-  local i = 1
-  while i <= 28 do
+  for i = 1, 28 do
     if ballc[i] > 0 then
       local txi = flr(trailx[i])
       local tyi = flr(traily[i])
@@ -1128,7 +1113,6 @@ function draw_game()
         traily[i] = bally[i]
       end
     end
-    i += 1
   end
 
   -- aim guide (cart: 5-pass boldline over the trail layer, under the map;
@@ -1141,8 +1125,7 @@ function draw_game()
   -- balls (baked composite: shadow + backdrop + drawball discs)
   local blinkon = 0
   if (gtime \ 8 % 2 == 0) blinkon = 1
-  i = 1
-  while i <= 28 do
+  for i = 1, 28 do
     if ballc[i] > 0 then
       local xi = flr(ballx[i])
       local yi = flr(bally[i])
@@ -1158,7 +1141,6 @@ function draw_game()
         print(ballc[i], xi - 1, yi - 2, 0)
       end
     end
-    i += 1
   end
 
   rectfill(0, 119, 127, 127, 0)
