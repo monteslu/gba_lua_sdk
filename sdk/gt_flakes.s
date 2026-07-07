@@ -18,7 +18,7 @@
 ; State is byte-split and owned here; gt_api.c's GT_FLAKES init fills it
 ; through the exports. Colors are stored PRE-INVERTED (ring format).
 ; ---------------------------------------------------------------------------
-.export _gt_flakes_draw
+.export _gt_flakes_draw, _gt_flakes_draw2
 .export _fl_n, _fl_xl, _fl_xh, _fl_yl, _fl_yh, _fl_ph
 .export _fl_spdl, _fl_spdh, _fl_adv, _fl_w, _fl_h, _fl_ci
 .export _fl_rxl, _fl_rxh, _fl_ry
@@ -28,7 +28,7 @@
 .importzp c_sp
 .PC02
 
-FL_MAX = 32
+FL_MAX = 48
 QF_RECT = $CD                   ; NMI|ENABLE|IRQ|COLORFILL|OPAQUE
 
 .segment "BSS"
@@ -55,12 +55,15 @@ fd_cdx:  .res 2                 ; camdx8 (this call)
 fd_cdyl: .res 1                 ; camdy8 lo
 fd_cdyh: .res 1                 ; camdy8 hi
 fd_t:    .res 2                 ; scratch 16-bit
+fd_lo:   .res 1                 ; range draw: first index
 
 .segment "CODE"
 
-; void __fastcall__ gt_flakes_draw(int camdx8, int camdy8)
-; camdy8 arrives in A/X, camdx8 on the C stack.
-.proc _gt_flakes_draw
+; void __fastcall__ gt_flakes_draw2(int first, int count, int camdx8, int camdy8)
+; camdy8 in A/X; stack (top first): camdx8, count, first. Draws flakes
+; [first, first+count) — layered fields (clouds behind the map, snow in
+; front) share the one state.
+_gt_flakes_draw2:
         sta     fd_cdyl
         stx     fd_cdyh
         ldy     #0
@@ -69,8 +72,20 @@ fd_t:    .res 2                 ; scratch 16-bit
         iny
         lda     (c_sp),y
         sta     fd_cdx+1
+        ldy     #2
+        lda     (c_sp),y        ; count lo
+        sta     fd_t
+        ldy     #4
+        lda     (c_sp),y        ; first lo
+        sta     fd_lo
+        clc
+        adc     fd_t
+        sta     fd_t            ; end = first + count
         jsr     incsp2
-        ldy     _fl_n
+        jsr     incsp2
+        jsr     incsp2
+        ldy     fd_t
+        cpy     fd_lo
         bne     loop
         rts
 loop:   dey
@@ -171,8 +186,25 @@ free:   ldx     _gt_qhead
         phy
         jsr     _gt_q_pump
         ply
-next:   cpy     #0
+next:   cpy     fd_lo
         beq     done
         jmp     loop
 done:   rts
-.endproc
+
+; void __fastcall__ gt_flakes_draw(int camdx8, int camdy8) — all flakes
+_gt_flakes_draw:
+        sta     fd_cdyl
+        stx     fd_cdyh
+        ldy     #0
+        lda     (c_sp),y
+        sta     fd_cdx
+        iny
+        lda     (c_sp),y
+        sta     fd_cdx+1
+        jsr     incsp2
+        stz     fd_lo
+        ldy     _fl_n
+        cpy     fd_lo
+        bne     jl
+        rts
+jl:     jmp     loop

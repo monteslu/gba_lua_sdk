@@ -89,6 +89,11 @@ export const GT_MEMBERS = {
   // pokes — ~60 cycles per flake vs ~350 for the Lua-loop + rectfill shape
   flakes_init: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_flakes_init" },
   flakes_draw: { kind: "fn", params: [["int", false], ["int", false]], ret: "void", c: "gt_flakes_draw" },
+  // layered range draw: (first, count, camdx8, camdy8) — clouds behind the
+  // map and snow in front share one engine
+  flakes_draw2: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_flakes_draw2" },
+  // manual slot setup for the non-snow layer: (i, x, y, w, h, spd8, col)
+  flakes_set: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_flakes_set" },
   // Offscreen-GRAM background canvas. The GameTank has 512 KB of GRAM (32
   // pages of 128x128); the SDK uses only page 0 (the sheet). A background
   // drawn as ONE big blit from a spare page costs the same as one 8x8 blit

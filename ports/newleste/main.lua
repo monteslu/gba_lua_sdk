@@ -1403,15 +1403,12 @@ function game_init()
   end
   for i = 1, 8 do dpt[i] = 0 end
   for i = 1, 12 do smspr[i] = -1 end
+  gt.flakes_init(42)
   for i = 1, 17 do
-    clx8[i] = flr(rnd(128) * 256)
-    cly[i] = flr(rnd(128))
-    clspd8[i] = 256 + flr(rnd(4) * 256)
     local w = 32 + flr(rnd(32))
-    clw[i] = w
-    clh[i] = flr(16 - w * 0.1875)
+    gt.flakes_set(24 + i, flr(rnd(128)), flr(rnd(112)), w + 1,
+                  flr(16 - w * 0.1875) + 1, 256 + flr(rnd(4) * 256), 1)
   end
-  gt.flakes_init(25)
   load_level(1)
 end
 
@@ -1571,15 +1568,7 @@ function _draw()
   -- the camera speed per frame instead of a long subtract per cloud
   camera()
   local cams8 = flr(cam_spdx * 256)
-  for i = 1, 17 do
-    clx8[i] += clspd8[i] - cams8
-    local x = clx8[i] \ 256
-    rectfill(x, cly[i], x + clw[i], cly[i] + clh[i], 1)
-    if x > 128 then
-      clx8[i] = -clw[i] * 256
-      cly[i] = flr(rnd(120))
-    end
-  end
+  gt.flakes_draw2(25, 17, cams8, 0)
 
   camera(draw_x, draw_y)
 
@@ -1670,7 +1659,7 @@ function _draw()
 
   -- snow particles (screen space) — 8.8 ints + the snowsin LUT: was a real
   -- sin() + gt_minf + six long-array hits per flake per frame
-  gt.flakes_draw(cams8, flr(cam_spdy * 256))
+  gt.flakes_draw2(0, 25, cams8, flr(cam_spdy * 256))
 
   -- dead particles (world space)
   camera(draw_x, draw_y)

@@ -1005,7 +1005,7 @@ extern unsigned char fl_spdl[], fl_spdh[], fl_adv[], fl_w[], fl_h[], fl_ci[];
 extern unsigned char fl_rxl[], fl_rxh[], fl_ry[];
 extern signed char fl_sinl[];
 extern unsigned char fl_sinh[];
-#define GT_FLAKES_MAX 32
+#define GT_FLAKES_MAX 48
 
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
@@ -1049,12 +1049,49 @@ void GT_FL_INIT(int n) {
         fl_ry[i]  = 1;                        /* and rerolls its row */
     }
 }
+/* manual slot setup for the cloud layer: pixel x/y, blit w/h, 8.8 speed,
+ * p8 color. No wobble (phase and adv stay zero), keeps its row, respawns
+ * at -w when it exits right... by setting respawn-x = -(w<<8). Call after
+ * flakes_init has set fl_n high enough (init count covers ALL layers). */
+#ifdef GT_BANKED
+#pragma code-name ("B2CODE")
+#define GT_FL_SET gt_flakes_set_impl
+#else
+#define GT_FL_SET gt_flakes_set
+#endif
+void GT_FL_SET(int i, int x, int y, int w, int h, int spd8, int col) {
+    int v;
+    if (i < 0 || i >= GT_FLAKES_MAX) return;
+    v = x << 8;
+    fl_xl[i] = (unsigned char)v;
+    fl_xh[i] = (unsigned char)((unsigned int)v >> 8);
+    v = y << 8;
+    fl_yl[i] = (unsigned char)v;
+    fl_yh[i] = (unsigned char)(((unsigned int)v >> 8) & 127);
+    fl_ph[i] = 0;
+    fl_spdl[i] = (unsigned char)spd8;
+    fl_spdh[i] = (unsigned char)((unsigned int)spd8 >> 8);
+    fl_adv[i] = 0;
+    fl_w[i] = (unsigned char)w;
+    fl_h[i] = (unsigned char)h;
+    fl_ci[i] = (unsigned char)(p8pal[col & 15] ^ 0xFF);
+    v = (-w) << 8;
+    fl_rxl[i] = (unsigned char)v;
+    fl_rxh[i] = (unsigned char)((unsigned int)v >> 8);
+    fl_ry[i] = 0;
+}
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
 void gt_flakes_init(int n) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(2);
     gt_flakes_init_impl(n);
+    gt_bank(saved_bank);
+}
+void gt_flakes_set(int i, int x, int y, int w, int h, int spd8, int col) {
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(2);
+    gt_flakes_set_impl(i, x, y, w, h, spd8, col);
     gt_bank(saved_bank);
 }
 #endif
