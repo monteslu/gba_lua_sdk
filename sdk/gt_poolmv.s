@@ -599,3 +599,192 @@ next:   dex
         ldx     cd_sum+1
         rts
 .endproc
+
+; ---------------------------------------------------------------------------
+; gt.trail_stamp — combo-pool's ball motion trails in one walk. Per slot
+; with act[i] != 0 (int array, stride 2, low byte = tier 1..7):
+;   px = int(x[i]); py = int(y[i])            (fixed arrays)
+;   if |px - tx[i]| + |py - ty[i]| >= 2: stage an 8x8 of sprs[tier-1]
+;   at (tx-3, ty-3) with edge clip; if pe_nudge: tx[i]=px, ty[i]=py
+; tx/ty/sprs are BYTE arrays. ~60 cycles a slot vs ~250 compiled.
+; Reuses pm_x(x) pm_y(y) pm_sx(tx) pm_sy(ty) pe_type(act) pe_desc(sprs)
+; pe_nudge(update flag) pm_n.
+; ---------------------------------------------------------------------------
+.export _gt_trail_z
+
+.segment "ZEROPAGE" : zeropage
+tz_px:  .res 1
+tz_py:  .res 1
+tz_c:   .res 1
+
+.segment "CODE"
+.proc _gt_trail_z
+        stz     _gt_draw_mode
+        stz     pm_i
+@loop:  lda     pm_i
+        cmp     _pm_n
+        bne     :+
+        rts
+:       asl     a
+        tay
+        lda     (_pe_type),y    ; act low byte
+        bne     :+
+        jmp     @next
+:       ; cell = sprs[tier-1]
+        dec     a
+        phy
+        tay
+        lda     (_pe_desc),y
+        sta     tz_c
+        ply
+        ; px/py = int parts of the fixed positions
+.ifdef GT_NUM8
+        iny                     ; hi byte of the 8.8 int
+        lda     (_pm_x),y
+        sta     tz_px
+        lda     (_pm_y),y
+        sta     tz_py
+        dey
+.else
+        ; 16.16: int lo at element*2 + 2 -> recompute offset i*4+2
+        lda     pm_i
+        asl     a
+        asl     a
+        inc     a
+        inc     a
+        tay
+        lda     (_pm_x),y
+        sta     tz_px
+        lda     (_pm_y),y
+        sta     tz_py
+.endif
+        ; moved? |px - tx| + |py - ty| >= 2
+        ldy     pm_i
+        lda     tz_px
+        sec
+        sbc     (_pm_sx),y
+        bcs     :+
+        eor     #$FF
+        inc     a
+:       sta     pe_f            ; |dx| (scratch)
+        lda     tz_py
+        sec
+        sbc     (_pm_sy),y
+        bcs     :+
+        eor     #$FF
+        inc     a
+:       clc
+        adc     pe_f
+        cmp     #2
+        bcs     :+
+        jmp     @upd            ; not moved enough: no stamp
+:       ; ---- stamp 8x8 at (tx-3, ty-3) with edge clip ----
+        stz     pe_gxo
+        stz     pe_gyo
+        lda     #8
+        sta     pe_w
+        sta     pe_h
+        lda     (_pm_sx),y
+        sec
+        sbc     #3
+        bcs     @xin            ; >= 0
+        ; left overhang: ov = 3 - tx (tx 0..2)
+        eor     #$FF
+        inc     a               ; ov
+        cmp     #8
+        bcc     :+
+        jmp     @upd            ; fully off (can't: ov<=3) safety
+:
+        sta     pe_gxo
+        lda     #8
+        sec
+        sbc     pe_gxo
+        sta     pe_w
+        lda     #0
+        bra     @xs
+@xin:
+@xs:    sta     pe_vx
+        ; right trim: if vx + 8 > 128, w = 128 - vx
+        clc
+        adc     pe_w
+        cmp     #129
+        bcc     @ydo
+        lda     #128
+        sec
+        sbc     pe_vx
+        sta     pe_w
+@ydo:   lda     (_pm_sy),y
+        sec
+        sbc     #3
+        bcs     @yin
+        eor     #$FF
+        inc     a
+        sta     pe_gyo
+        lda     #8
+        sec
+        sbc     pe_gyo
+        sta     pe_h
+        lda     #0
+        bra     @ys
+@yin:
+@ys:    sta     pe_vy
+        lda     pe_vy
+        clc
+        adc     pe_h
+        cmp     #129
+        bcc     @stage
+        lda     #128
+        sec
+        sbc     pe_vy
+        sta     pe_h
+@stage: ; ring entry
+@slot:  lda     _gt_qhead
+        clc
+        adc     #8
+        cmp     _gt_qtail
+        bne     @free
+        jsr     _gt_q_pump
+        bra     @slot
+@free:  ldx     _gt_qhead
+        lda     #QF_SPR2
+        sta     _gt_q+0,x
+        lda     pe_vx
+        sta     _gt_q+1,x
+        lda     pe_vy
+        sta     _gt_q+2,x
+        lda     tz_c
+        and     #$0F
+        asl     a
+        asl     a
+        asl     a
+        clc
+        adc     pe_gxo
+        sta     _gt_q+3,x
+        lda     tz_c
+        and     #$F0
+        lsr     a
+        clc
+        adc     pe_gyo
+        sta     _gt_q+4,x
+        lda     pe_w
+        sta     _gt_q+5,x
+        lda     pe_h
+        sta     _gt_q+6,x
+        lda     _gt_qbank
+        sta     _gt_q+7,x
+        txa
+        clc
+        adc     #8
+        sta     _gt_qhead
+        jsr     _gt_q_pump
+@upd:   ; update the anchors on flagged frames
+        lda     _pe_nudge
+        beq     @next
+        ldy     pm_i
+        lda     tz_px
+        sta     (_pm_sx),y
+        lda     tz_py
+        sta     (_pm_sy),y
+@next:  inc     pm_i
+        jmp     @loop
+.endproc

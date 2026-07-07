@@ -32,8 +32,8 @@ local ballmul = array8(28)  -- combo multiplier 1..8
 local balllm = array8(28)   -- "lastmult" cooldown, 60 -> 0
 -- trail stamps in whole pixels: they only feed flr()'d draws, and int
 -- arrays skip the 32-bit compare/copy tax the fixed versions paid
-local trailx = array(28)
-local traily = array(28)
+local trailx = array8(28)
+local traily = array8(28)
 
 local ballidx = 0           -- total balls created (endgame stat)
 
@@ -1031,15 +1031,26 @@ function draw_game()
   -- static field: composed sheet strips (top border, 13 woven lattice
   -- rows, bottom border) — 9 wide blits instead of ~90 primitives.
   -- Fully opaque, so no cls() is needed in game mode.
-  spr(208, 0, 0, 16, 1)
-  spr(224, 0, 8, 16, 2)
-  spr(224, 0, 24, 16, 2)
-  spr(224, 0, 40, 16, 2)
-  spr(224, 0, 56, 16, 2)
-  spr(224, 0, 72, 16, 2)
-  spr(224, 0, 88, 16, 2)
-  spr(224, 0, 104, 16, 1)
-  spr(192, 0, 112, 16, 1)
+  -- pre-split at 8 cells: 64px spans ride the asm fast path directly,
+  -- skipping the C wide-sprite splitter (~440 cycles per 16-wide call)
+  spr(208, 0, 0, 8, 1)
+  spr(216, 64, 0, 8, 1)
+  spr(224, 0, 8, 8, 2)
+  spr(232, 64, 8, 8, 2)
+  spr(224, 0, 24, 8, 2)
+  spr(232, 64, 24, 8, 2)
+  spr(224, 0, 40, 8, 2)
+  spr(232, 64, 40, 8, 2)
+  spr(224, 0, 56, 8, 2)
+  spr(232, 64, 56, 8, 2)
+  spr(224, 0, 72, 8, 2)
+  spr(232, 64, 72, 8, 2)
+  spr(224, 0, 88, 8, 2)
+  spr(232, 64, 88, 8, 2)
+  spr(224, 0, 104, 8, 1)
+  spr(232, 64, 104, 8, 1)
+  spr(192, 0, 112, 8, 1)
+  spr(200, 64, 112, 8, 1)
 
   -- sudden-death flicker (cart tints its persistent trail noise red)
   if suddendeath == 1 then
@@ -1052,22 +1063,10 @@ function draw_game()
     end
   end
 
-  -- ball motion trails (approximates the cart's framebuffer smears)
-  for i = 1, 28 do
-    if ballc[i] > 0 then
-      local txi = trailx[i]
-      local tyi = traily[i]
-      local mvx = flr(ballx[i]) - txi
-      local mvy = flr(bally[i]) - tyi
-      if abs(mvx) + abs(mvy) >= 2 then
-        spr(trailspr[ballc[i]], txi - 3, tyi - 3)
-      end
-      if gtime % 2 == 0 then
-        trailx[i] = flr(ballx[i])
-        traily[i] = flr(bally[i])
-      end
-    end
-  end
+  -- ball motion trails, one asm walk (stamp + anchor update)
+  local tupd = 0
+  if (gtime % 2 == 0) tupd = 1
+  gt.trail_stamp(ballc, ballx, bally, trailx, traily, trailspr, 28, tupd)
 
   -- aim guide (cart: 5-pass boldline over the trail layer, under the map;
   -- the strips are opaque so it draws over the lattice in the same color)

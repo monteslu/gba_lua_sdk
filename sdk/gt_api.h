@@ -107,6 +107,8 @@ void gt_tiles_draw(unsigned char *map, unsigned char *flags, int lvlw,
 #endif
 void gt_balls_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, int *act,
                    unsigned char *flags, unsigned char *pairs, int n);
+void gt_trail_stamp(int *act, GTFIX *x, GTFIX *y, unsigned char *tx,
+                    unsigned char *ty, const unsigned char *sprs, int n, int upd);
 int gt_cost_decay(int *act, unsigned char *lm, const unsigned char *cost, int n);
 void gt_pool_anim(unsigned char *frame, unsigned char *spd, unsigned char *maxf, unsigned char *used, int n);
 void gt_pool_edraw(int *x, int *y, unsigned char *ani, unsigned char *type,

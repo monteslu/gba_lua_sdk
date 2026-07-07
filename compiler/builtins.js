@@ -130,6 +130,8 @@ export const GT_MEMBERS = {
   // bulk animation: gt.pool_anim(pool, "frame", "spd", "maxf") — frame +=
   // spd per used slot, reset to 16 when frame > maxf (16ths-frames)
   // life-cost sum + cooldown decay: sum(cost[act[i]-1]) + lm[i]=max(0,lm[i]-5)
+  // ball motion trails: stamp sprs[act[i]-1] at (tx-3,ty-3) when moved >= 2px
+  trail_stamp: { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["array8", false], ["array8", false], ["array8", false], ["int", false], ["int", false]], ret: "void", c: "gt_trail_stamp" },
   cost_decay: { kind: "fn", params: [["array", false], ["array8", false], ["array8", false], ["int", false]], ret: "int", c: "gt_cost_decay" },
   pool_anim: { kind: "fn", params: [["pool", false], ["str", false], ["str", false], ["str", false]], ret: "void", c: "gt_pool_anim", special: "poolanim" },
   // full enemy sprite pass: cell from per-type desc + anim frame + flash,

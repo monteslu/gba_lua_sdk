@@ -1320,6 +1320,32 @@ void gt_pool_move(int *x, int *y, int *sx, int *sy, unsigned char *used,
     gt_poolmv_z();
 }
 
+extern unsigned char *pe_ani, *pe_type, *pe_flash, *pe_shake;
+extern const unsigned char *pe_desc;
+extern unsigned char pe_nudge;
+#pragma zpsym ("pe_ani")
+#pragma zpsym ("pe_type")
+#pragma zpsym ("pe_flash")
+#pragma zpsym ("pe_shake")
+#pragma zpsym ("pe_desc")
+#pragma zpsym ("pe_nudge")
+
+/* ball motion trails in one walk (gt_poolmv.s). */
+void gt_trail_z(void);
+void gt_trail_stamp(int *act, GTFIX *x, GTFIX *y, unsigned char *tx,
+                    unsigned char *ty, const unsigned char *sprs,
+                    int n, int upd) {
+    pe_type = (unsigned char *)act;
+    pm_x = (unsigned char *)x;
+    pm_y = (unsigned char *)y;
+    pm_sx = tx;
+    pm_sy = ty;
+    pe_desc = sprs;
+    pm_n = (unsigned char)n;
+    pe_nudge = (unsigned char)upd;
+    gt_trail_z();
+}
+
 /* life-cost sum + cooldown decay in one walk (gt_poolmv.s). */
 int gt_cost_decay_z(void);
 int gt_cost_decay(int *act, unsigned char *lm, const unsigned char *cost, int n) {
@@ -1345,15 +1371,6 @@ void gt_pool_anim(unsigned char *frame, unsigned char *spd,
 
 /* full enemy sprite pass (gt_poolmv.s): cell from (aniframe,type,flash)
  * via a per-type descriptor, shake nudge, edge clip, stage. Byte fields. */
-extern unsigned char *pe_ani, *pe_type, *pe_flash, *pe_shake;
-extern const unsigned char *pe_desc;
-extern unsigned char pe_nudge;
-#pragma zpsym ("pe_ani")
-#pragma zpsym ("pe_type")
-#pragma zpsym ("pe_flash")
-#pragma zpsym ("pe_shake")
-#pragma zpsym ("pe_desc")
-#pragma zpsym ("pe_nudge")
 void gt_pool_edraw_z(void);
 void gt_pool_edraw(int *x, int *y, unsigned char *ani, unsigned char *type,
                    unsigned char *flash, unsigned char *shake,
