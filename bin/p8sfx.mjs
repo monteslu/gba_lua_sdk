@@ -113,6 +113,12 @@ function convertOne(e) {
     if (n.vol > 0) waveCount[n.wave] = (waveCount[n.wave] ?? 0) + 1;
   }
   const wave = +Object.entries(waveCount).sort((a, b) => b[1] - a[1])[0][0];
+  let volSum = 0, volN = 0;
+  for (let k = 0; k <= last; k++) {
+    const n = e.notes[k];
+    if (n.vol > 0) { volSum += n.vol; volN++; }
+  }
+  const vol = Math.min(112, Math.round((volSum / Math.max(volN, 1)) / 7 * 127));
   const steps = [];
   let acc = 0;
   for (let k = 0; k <= last; k++) {
@@ -122,13 +128,13 @@ function convertOne(e) {
     acc -= dur;
     if (dur < 1) { continue; } // sub-frame note: fold into the accumulator
     if (dur > 255) dur = 255;
-    const note = n.vol > 0 ? n.pitch + 36 : 0;
+    const note = n.vol > 0 ? (n.wave === 6 ? 21 + (n.pitch >> 1) : n.pitch + 36) : 0;
     const prev = steps[steps.length - 1];
     if (prev && prev.note === note) prev.dur = Math.min(255, prev.dur + dur);
     else steps.push({ note, dur });
   }
   if (!steps.length) return null;
-  return { instr: WAVE_TO_INSTR[wave] ?? 7, steps };
+  return { instr: WAVE_TO_INSTR[wave] ?? 7, vol, steps };
 }
 
 const argv = process.argv.slice(2);
@@ -161,11 +167,12 @@ const offsets = [];
 for (let i = 0; i < n; i++) {
   const c = converted[i];
   offsets.push(off);
-  if (!c) { bodies.push(Buffer.from([0, 0])); off += 2; continue; }
-  const b = Buffer.alloc(2 + c.steps.length * 2);
+  if (!c) { bodies.push(Buffer.from([0, 0, 0])); off += 3; continue; }
+  const b = Buffer.alloc(3 + c.steps.length * 2);
   b[0] = c.instr;
   b[1] = c.steps.length;
-  c.steps.forEach((s, k) => { b[2 + k * 2] = s.note; b[3 + k * 2] = s.dur; });
+  b[2] = c.vol;
+  c.steps.forEach((s, k) => { b[3 + k * 2] = s.note; b[4 + k * 2] = s.dur; });
   bodies.push(b);
   off += b.length;
 }

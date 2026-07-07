@@ -6,21 +6,17 @@
 #include "gametank.h"
 #include "gt_api.h"
 
-/* FLASH2M builds (GT_BANKED, passed by bin/gtlua.js with GT_FW_BANK): the
- * 4 KB firmware blob is the SDK's biggest RODATA and overflows the fixed
- * bank, so it rides in BANK 2 with the sheet — read exactly once, by a
- * FIXED-BANK upload helper that maps bank 2 around the copy loop (the
- * helper must be fixed code: banked code can't survive its own bank being
- * swapped out from under the program counter).
- *
- * GT_FW_BANK (0, or 1 when the ladder relocates) homes the LIVE audio unit
- * — this file's code, gt_pitch_table, and the gt_music sequencer + its
- * tables/blobs — everything the per-note path reads. Keeping those in ONE
- * bank is a correctness invariant: the sequencer once lived in bank 2 while
- * the pitch table sat in bank 0, and every gt_sfx() note read its frequency
- * pair from whatever bank-2 bytes happened to sit at the table's address. */
+/* FLASH2M builds: the ENTIRE audio unit — firmware blob, this file's code,
+ * gt_pitch_table, and the gt_music sequencer with its tables and converted
+ * sfx/music blobs — owns PRIVATE BANK 3. Game code never places there, so
+ * audio data stops competing with port code in the placement Tetris (cherry
+ * wedged for hours on exactly that), and everything the per-note path reads
+ * lives under one mapping. That one-bank rule is a correctness invariant:
+ * the sequencer once lived in bank 2 while the pitch table sat in bank 0,
+ * and every gt_sfx() note read its frequency pair from whatever bank-2
+ * bytes happened to sit at the table's address. */
 #ifdef GT_BANKED
-#pragma rodata-name ("B2RODATA")
+#pragma rodata-name ("B3RODATA")
 #endif
 #include "gt_acp_fw.h"
 #ifdef GT_BANKED
@@ -41,11 +37,7 @@
 /* 108 MIDI notes, 2 bytes each (MSB, LSB) — from the MIT gametank_sdk.
  * Non-static: gt_music.c (sfx/music) reads the same table via `extern`. */
 #ifdef GT_BANKED
-#if GT_FW_BANK == 1
-#pragma rodata-name ("B1RODATA")
-#else
-#pragma rodata-name ("B0RODATA")
-#endif
+#pragma rodata-name ("B3RODATA")
 #endif
 const unsigned char gt_pitch_table[216] = {
     0x00,0x4D,0x00,0x51,0x00,0x56,0x00,0x5B,0x00,0x61,0x00,0x66,0x00,0x6C,0x00,0x73,0x00,0x7A,0x00,0x81,0x00,0x89,0x00,0x91,
@@ -65,16 +57,12 @@ const unsigned char gt_pitch_table[216] = {
 #define FEEDBACK_AMT 0x04
 static unsigned char audio_ready = 0;
 
-/* FLASH2M: the audio bodies + pitch table ride in bank 0 with the firmware;
+/* FLASH2M: the audio bodies ride in bank 3 with the firmware + tables;
  * fixed stubs bank-switch (a note trigger is a few calls per frame at most).
  * gt_cur_bank lives in gt_bank.s. */
 #ifdef GT_BANKED
 extern unsigned char gt_cur_bank;
-#if GT_FW_BANK == 1
-#pragma code-name ("B1CODE")
-#else
-#pragma code-name ("B0CODE")
-#endif
+#pragma code-name ("B3CODE")
 #define GT_AUDIO_INIT gt_audio_init_impl
 #define GT_NOTE gt_note_impl
 #define GT_NOTEOFF gt_noteoff_impl
@@ -89,28 +77,13 @@ static void gt_noteoff_impl(int ch);
 #ifdef GT_BANKED
 static
 #endif
-#ifdef GT_BANKED
-/* fixed-bank so it keeps executing while bank 2 is mapped for the read */
-#pragma code-name (push, "CODE")
-static void gt_fw_upload(void) {
-    unsigned int i;
-    unsigned char saved = gt_cur_bank;
-    gt_bank(2);
-    for (i = 0; i < 4096; ++i) aram[i] = gt_acp_fw[i];
-    gt_bank(saved);
-}
-#pragma code-name (pop)
-#endif
-
 void GT_AUDIO_INIT(void) {
     unsigned int i;
     unsigned char op;
     *audio_rate = 0x7F;
-#ifdef GT_BANKED
-    gt_fw_upload();
-#else
+    /* banked: this impl runs under bank 3 (its wrapper mapped it), and the
+     * blob is B3RODATA — same bank, plain read */
     for (i = 0; i < 4096; ++i) aram[i] = gt_acp_fw[i];
-#endif
     AUDIO_PARAMS[0] = 0;
     *audio_reset = 0;
     *audio_rate = 255;
@@ -166,19 +139,19 @@ void GT_NOTEOFF(int ch) {
 #pragma code-name ("CODE")
 void gt_audio_init(void) {
     unsigned char saved_bank = gt_cur_bank;
-    gt_bank(GT_FW_BANK);
+    gt_bank(3);
     gt_audio_init_impl();
     gt_bank(saved_bank);
 }
 void gt_note(int ch, int note, int vol) {
     unsigned char saved_bank = gt_cur_bank;
-    gt_bank(GT_FW_BANK);
+    gt_bank(3);
     gt_note_impl(ch, note, vol);
     gt_bank(saved_bank);
 }
 void gt_noteoff(int ch) {
     unsigned char saved_bank = gt_cur_bank;
-    gt_bank(GT_FW_BANK);
+    gt_bank(3);
     gt_noteoff_impl(ch);
     gt_bank(saved_bank);
 }

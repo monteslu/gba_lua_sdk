@@ -480,8 +480,13 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
       if (!targets.length) continue;
       const target = targets[0];
       // fit-check the roomiest target, but keep scanning smaller candidates
-      // rather than giving up: a too-big function is not a reason to wedge
-      if (capacity[target] - estUsed(target) < sz) continue;
+      // rather than giving up: a too-big function is not a reason to wedge.
+      // FIXED gets a safety margin: the estimates run light, and unlike the
+      // game banks nothing downstream can relieve an overfilled fixed region
+      // (cherry repeatedly failed 'RODATA over by ~650' from exactly this —
+      // eight functions moved onto a 6KB estimate that was ~10% optimistic)
+      const headroom = target === "fixed" ? 768 : 0;
+      if (capacity[target] - estUsed(target) < sz + headroom) continue;
       if (process.env.GTLUA_DEBUG) console.error(`[juggle]   move ${n} (${sz}) ${bin} -> ${target}`);
       placement[n] = target;
       bins[target].push(n);
@@ -696,7 +701,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
   // ship silent. Recompile it banked: the blob rides in bank 2 (with the
   // sheet) and gt_audio_init() maps that bank in before the ARAM upload.
   if (usesAudio) {
-    run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_FW_BANK=0",
+    run(tc.cc65, [...CFLAGS, "-DGT_BANKED",
                   "-o", B("gt_audio.s"), path.join(SDK, "gt_audio.c")]);
     as(B("gt_audio.s"), B("gt_audio.o"));
   }
@@ -721,7 +726,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
   // sfx/song tables — compile the zero-authoring layer out (~700 bytes)
   const noBuiltinSfx = result.c.includes("gt_sfx_bank(") ? ["-DGT_NO_BUILTIN_SFX"] : [];
   if (usesMusic) {
-    run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_FW_BANK=0", ...noBuiltinSfx,
+    run(tc.cc65, [...CFLAGS, "-DGT_BANKED", ...noBuiltinSfx,
                   "-o", B("gt_music.s"), path.join(SDK, "gt_music.c")]);
     as(B("gt_music.s"), B("gt_music.o"));
     as(path.join(SDK, "gt_music_stubs.s"), B("gt_music_stubs.o"));
@@ -736,7 +741,6 @@ function build(entry, outPath, sheetPath, num8 = false) {
   let midInline = true;
   let fnInline = true;
   let workPlacement = placement;
-  let fwB1 = false;
   let rndInt = true;
   for (let attempt = 0; attempt < 48; attempt++) {
     // size-relief ladder: 0-7 everything on -> 8-15 function inlining off
@@ -760,22 +764,8 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: retrying with function inlining off");
     }
-    if (attempt === 4 && usesAudio && !fwB1 && (overBins.has("b0") || overBins.has("fixed"))) {
-      // the 4KB ACP firmware defaults to bank 0; carts whose update loop
-      // owns bank 0 need it in bank 1 instead
-      fwB1 = true;
-      run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_FW_BANK=1",
-                    "-o", B("gt_audio.s"), path.join(SDK, "gt_audio.c")]);
-      as(B("gt_audio.s"), B("gt_audio.o"));
-      if (usesMusic) {
-        run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_FW_BANK=1", ...noBuiltinSfx,
-                      "-o", B("gt_music.s"), path.join(SDK, "gt_music.c")]);
-        as(B("gt_music.s"), B("gt_music.o"));
-        as(path.join(SDK, "gt_music_stubs.s"), B("gt_music_stubs.o"), ["-D", "GT_FW_B1"]);
-      }
-      workPlacement = initialPlacement(result.callGraph);
-      console.error("bank placement tight: audio firmware to bank 1");
-    }
+    // (the old attempt-4 firmware-relocation rung is gone: the whole audio
+    // unit owns private bank 3 now, out of the placement fight entirely)
     if (attempt === 8 && !apiDefs.includes("-DGT_INPUT_B2") &&
         (overBins.has("b0") || overBins.has("fixed")) && !overBins.has("b2")) {
       // which bank the SDK input block fits in is per-cart: b0-heavy carts
@@ -814,7 +804,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
       console.error("bank placement tight: retrying with all inlining off");
     }
     const compileAndLink = (placementNow) => {
-      result = compileLua(entry, { banked: true, placement: placementNow, midInline, inliner: fnInline, num8, rndInt, fwBank: fwB1 ? 1 : 0 });
+      result = compileLua(entry, { banked: true, placement: placementNow, midInline, inliner: fnInline, num8, rndInt });
       writeFileSync(B(`${name}.c`), result.c);
       cc(B(`${name}.c`), B(`${name}.s`));
       as(B(`${name}.s`), B(`${name}.o`));
@@ -942,14 +932,15 @@ function build(entry, outPath, sheetPath, num8 = false) {
   // 5. lay the four 16 KB pieces into the 2 MB flash image:
   //    bank n at n*0x4000, the fixed bank last (offset 0x1FC000)
   const pieces = readFileSync(linked);
-  if (pieces.length !== 4 * BANK_SIZE) {
+  if (pieces.length !== 5 * BANK_SIZE) {
     fail(`unexpected banked link output size ${pieces.length}`);
   }
   const img = Buffer.alloc(FLASH_SIZE, 0xff);
   img.set(pieces.subarray(0 * BANK_SIZE, 1 * BANK_SIZE), 0x000000);
   img.set(pieces.subarray(1 * BANK_SIZE, 2 * BANK_SIZE), 0x004000);
   img.set(pieces.subarray(2 * BANK_SIZE, 3 * BANK_SIZE), 0x008000);
-  img.set(pieces.subarray(3 * BANK_SIZE, 4 * BANK_SIZE), FLASH_SIZE - BANK_SIZE);
+  img.set(pieces.subarray(3 * BANK_SIZE, 4 * BANK_SIZE), 0x00C000);
+  img.set(pieces.subarray(4 * BANK_SIZE, 5 * BANK_SIZE), FLASH_SIZE - BANK_SIZE);
   writeFileSync(gtr, img);
 
   // save the placement the successful link ACTUALLY used — the ladder rungs

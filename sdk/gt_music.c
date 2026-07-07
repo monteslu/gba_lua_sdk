@@ -43,11 +43,11 @@
 #define NUM_FM_OPS   16
 
 /* FLASH2M banked build (-DGT_BANKED, passed by bin/gtlua.js): this whole unit
- * — the ~2.4 KB sequencer code AND its instrument/sfx/song tables — is exiled
- * from the always-mapped FIXED bank into THE FIRMWARE'S game bank (GT_FW_BANK,
- * same as gt_audio.c), exactly like gt_math. The public entry points are
- * renamed with an _impl suffix; fixed-bank far-call stubs (gt_music_stubs.s)
- * own the plain names and bank-switch there around each call.
+ * — the ~2.4 KB sequencer code AND its instrument/sfx/song tables — lives in
+ * PRIVATE BANK 3 with the rest of the audio unit (see gt_audio.c). The public
+ * entry points are renamed with an _impl suffix; fixed-bank far-call stubs
+ * (gt_music_stubs.s) own the plain names and bank-switch there around each
+ * call.
  *
  * The sequencer MUST share the firmware's bank: set_note() reads
  * gt_pitch_table, which gt_audio.c homes next to the firmware blob. The old
@@ -62,13 +62,8 @@
  * at the fixed-bank stub, not the banked impl (which would be unreachable
  * when another bank is mapped). */
 #ifdef GT_BANKED
-#if GT_FW_BANK == 1
-#pragma code-name ("B1CODE")
-#pragma rodata-name ("B1RODATA")
-#else
-#pragma code-name ("B0CODE")
-#pragma rodata-name ("B0RODATA")
-#endif
+#pragma code-name ("B3CODE")
+#pragma rodata-name ("B3RODATA")
 #define GT_MB(name) name##_impl
 #else
 #define GT_MB(name) name
@@ -453,6 +448,12 @@ void gt_music_bank(const unsigned char *bank) { mus_bank = bank; }
 
 /* start bank sfx `id` on channel `ch`; returns its total frame count (0 if
  * the id is empty/out of range — the channel just stays silent) */
+static void scale_carrier(unsigned char ch, unsigned char vol) {
+    unsigned char op = (unsigned char)((ch << 2) + 3);
+    env_initial[op] = (unsigned char)(((unsigned int)env_initial[op] * vol) >> 7);
+    env_sustain[op] = (unsigned char)(((unsigned int)env_sustain[op] * vol) >> 7);
+}
+
 static unsigned int start_bank_sfx(unsigned char id, unsigned char ch) {
     unsigned int off, total;
     unsigned char count, i;
@@ -461,8 +462,9 @@ static unsigned int start_bank_sfx(unsigned char id, unsigned char ch) {
     off = (unsigned int)sfx_bank[1 + id * 2] | ((unsigned int)sfx_bank[2 + id * 2] << 8);
     count = sfx_bank[off + 1];
     if (!count) return 0;
-    steps = (const SfxStep *)(sfx_bank + off + 2);
+    steps = (const SfxStep *)(sfx_bank + off + 3);
     apply_instrument(ch, sfx_bank[off] >= GT_NUM_INSTR ? 0 : sfx_bank[off]);
+    scale_carrier(ch, sfx_bank[off + 2]);
     sfx_instr[ch] = sfx_bank[off];
     sfx_step[ch] = steps;
     sfx_end[ch]  = steps + count;
@@ -524,8 +526,9 @@ void gt_sfx(int n, int ch) {
                          | ((unsigned int)sfx_bank[2 + n * 2] << 8);
         unsigned char count = sfx_bank[off + 1];
         if (count) {
-            gt_sfx_run((const SfxStep *)(sfx_bank + off + 2), count,
+            gt_sfx_run((const SfxStep *)(sfx_bank + off + 3), count,
                        sfx_bank[off], c);
+            scale_carrier(c, sfx_bank[off + 2]);
             return;
         }
     }

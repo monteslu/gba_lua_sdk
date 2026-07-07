@@ -1365,12 +1365,12 @@ export function emit(chunk, symbols, file, opts = {}) {
           walk2(fn.node?.body);
         }
         const rbanks = new Set(readers.map((r) => bankOf(r)));
-        if (sfxConsumed && banked) rbanks.add(opts.fwBank === 1 ? "b1" : "b0");
+        if (sfxConsumed && banked) rbanks.add("b3");
         if (banked && rbanks.size > 1 && [...rbanks].filter((b) => b !== "fixed").length > 1) {
           throw new Error(`hexdata '${name}' is read from functions in different banks (${[...rbanks].join(", ")}) — banked blobs need a single home; wrap the reads in one function`);
         }
         const home = banked ? ([...rbanks].find((b) => b !== "fixed") ?? "fixed") : "fixed";
-        const seg = { b0: "B0RODATA", b1: "B1RODATA", b2: "B2RODATA" }[home];
+        const seg = { b0: "B0RODATA", b1: "B1RODATA", b2: "B2RODATA", b3: "B3RODATA" }[home];
         const rows = [];
         for (let k = 0; k < g.hexdata.length; k += 16) {
           rows.push("    " + g.hexdata.slice(k, k + 16).map((b) => "0x" + b.toString(16).padStart(2, "0")).join(", "));
