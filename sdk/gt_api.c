@@ -946,12 +946,15 @@ void gt_p8_pset_z(void) {
  * stored directly (star_row 0..127) and the sub-pixel accumulator (star_frac,
  * 16ths) carries into it during move(). Everything is a byte -> the whole loop
  * is 8-bit indexed, no cc65 asrax4/16-bit-pointer math per star. */
-static unsigned char star_x[GT_STARS_MAX];   /* column 0..127 */
-static unsigned char star_row[GT_STARS_MAX]; /* pixel row 0..127 */
-static unsigned char star_frac[GT_STARS_MAX];/* sub-row, 0..15 (16ths) */
-static unsigned char star_s[GT_STARS_MAX];   /* speed 8..31 (16ths/frame) */
-static unsigned char star_col[GT_STARS_MAX]; /* precomputed colour byte */
-static unsigned char star_n;
+/* non-static: the per-frame loops live in gt_stars.s */
+unsigned char star_x[GT_STARS_MAX];   /* column 0..127 */
+unsigned char star_row[GT_STARS_MAX]; /* pixel row 0..127 */
+unsigned char star_frac[GT_STARS_MAX];/* sub-row, 0..15 (16ths) */
+unsigned char star_s[GT_STARS_MAX];   /* speed 8..31 (16ths/frame) */
+unsigned char star_col[GT_STARS_MAX]; /* precomputed colour byte */
+unsigned char star_n;
+void __fastcall__ gt_sf_adv_z(unsigned char mode);
+void gt_sf_draw_z(void);
 
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
@@ -983,27 +986,9 @@ void GT_SF_INIT(int n) {
     }
 }
 
-/* advance the field. `step` is the 16ths added per star this frame; the caller
- * passes it once, so the per-star loop is a plain byte add + carry. */
-static void starfield_advance(unsigned char step_shift, unsigned char dbl) {
-    unsigned char i, f, r, adv;
-    for (i = 0; i < star_n; ++i) {
-        adv = star_s[i];
-        if (dbl) adv <<= 1;
-        else if (step_shift) adv = (adv >> 2) + (adv >> 3); /* ~0.375x drift */
-        f = star_frac[i] + adv;
-        r = star_row[i] + (f >> 4);
-        f &= 15;
-        if (r > 127) r -= 128;
-        star_frac[i] = f;
-        star_row[i]  = r;
-    }
-}
-
+/* the per-star loops moved to gt_stars.s (~86 -> ~30 cycles a star) */
 void GT_SF_MOVE(int mode) {
-    if (mode == 2)      starfield_advance(0, 1);
-    else if (mode == 1) starfield_advance(0, 0);
-    else                starfield_advance(1, 0);
+    gt_sf_adv_z(mode == 2 ? 2 : mode == 1 ? 1 : 0);
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
@@ -1032,11 +1017,8 @@ static void gt_starfield_draw_impl(void);
 static
 #endif
 void GT_SF_DRAW(void) {
-    unsigned char i;
     enter_cpu_mode();
-    for (i = 0; i < star_n; ++i) {
-        vram_row[star_row[i]][star_x[i]] = star_col[i];
-    }
+    gt_sf_draw_z();
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
