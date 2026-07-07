@@ -1214,6 +1214,32 @@ void gt_balls_step(long *x, long *y, long *vx, long *vy, int *act,
 }
 #endif /* GT_BALLS */
 
+#ifdef GT_POOLMV
+/* bulk pool move (gt_poolmv.s): x += sx / y += sy over used slots, with
+ * optional particle damping (v -= v>>3 + v>>5). */
+extern unsigned char *pm_x, *pm_y, *pm_sx, *pm_sy, *pm_used;
+extern unsigned char pm_n, pm_mode;
+#pragma zpsym ("pm_x")
+#pragma zpsym ("pm_y")
+#pragma zpsym ("pm_sx")
+#pragma zpsym ("pm_sy")
+#pragma zpsym ("pm_used")
+#pragma zpsym ("pm_n")
+#pragma zpsym ("pm_mode")
+void gt_poolmv_z(void);
+void gt_pool_move(int *x, int *y, int *sx, int *sy, unsigned char *used,
+                  int n, int mode) {
+    pm_x = (unsigned char *)x;
+    pm_y = (unsigned char *)y;
+    pm_sx = (unsigned char *)sx;
+    pm_sy = (unsigned char *)sy;
+    pm_used = used;
+    pm_n = (unsigned char)n;
+    pm_mode = (unsigned char)mode;
+    gt_poolmv_z();
+}
+#endif /* GT_POOLMV */
+
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
 #define GT_LINE_DIAG line_diag_impl

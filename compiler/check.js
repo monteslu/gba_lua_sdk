@@ -648,6 +648,20 @@ export function check(chunk, file) {
       call.args.forEach((a, i) => {
         // an "array" param wants a bare array-global name passed by pointer —
         // arrays aren't values, so don't type-check it as a number.
+        if (params[i] && params[i][0] === "pool") {
+          const sym = a.kind === "name" ? lookup(a.name) : null;
+          if (!sym || sym.kind !== "pool") {
+            err(a, `${name}() argument ${i + 1} must be a pool`);
+          } else {
+            for (const f of ["x", "y", "sx", "sy"]) {
+              const fl = sym.fields.get(f);
+              if (!fl) err(a, `${name}() pool needs an int field '${f}'`);
+              else if (fl.kind !== "int" || fl.forceByte) err(a, `${name}() pool field '${f}' must be a 16-bit int`);
+            }
+            a.sym = sym;
+          }
+          return;
+        }
         if (params[i] && (params[i][0] === "array" || params[i][0] === "array8")) {
           const want8 = params[i][0] === "array8";
           const sym = a.kind === "name" ? lookup(a.name) : null;

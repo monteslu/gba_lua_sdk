@@ -887,17 +887,15 @@ function update_game()
  if shipy<0 then shipy=0 end
  if shipy>120 then shipy=120 end
 
- -- move the bullets
+ -- move the bullets/ebuls in bulk (asm pool integrate); the loops keep
+ -- only their lifetime checks
+ gt.pool_move(buls, 0)
  for b in all(buls) do
-  b.x+=b.sx
-  b.y+=b.sy
   if b.y<-128 then del(buls,b) end
  end
 
- -- move the ebuls
+ gt.pool_move(ebuls, 0)
  for eb in all(ebuls) do
-  eb.x+=eb.sx
-  eb.y+=eb.sy
   eb.af+=1
   if eb.y>2048 or eb.x<-128 or eb.x>2048 or eb.y<-128 then
    del(ebuls,eb)
@@ -1324,17 +1322,15 @@ function draw_game()
     circfill(p2.x\16,p2.y\16,r2,rampc[ci])
    end
   end
-  p2.x+=p2.sx
-  p2.y+=p2.sy
-  -- damping: v*27/32 = 0.84375 (original 0.85), int-only
-  p2.sx-=(p2.sx\8)+(p2.sx\32)
-  p2.sy-=(p2.sy\8)+(p2.sy\32)
   p2.age+=1
   if p2.age>p2.maxage then
    -- size2 is byte-wide: guard the decrement instead of testing <0
    if p2.size2>0 then p2.size2-=1 else del(parts,p2) end
   end
  end
+ -- bulk move + damp AFTER the draw (original order: draw old pos, then
+ -- integrate) — the asm pass replaces the per-particle x/y/damp lines
+ gt.pool_move(parts, 1)
 
  -- drawing ebuls
  for eb in all(ebuls) do

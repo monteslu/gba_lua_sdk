@@ -677,6 +677,11 @@ export function emit(chunk, symbols, file, opts = {}) {
         return `(0x100 | (${argAt(e, 0, "int", "0")} & 0xFF))`;
       }
       if (sig.isValue) return sig.c;
+      if (sig.special === "poolmove") {
+        const pl = e.args[0].sym;
+        const mode = expr(e.args[1], "int");
+        return `gt_pool_move(${pl.cname}_x, ${pl.cname}_y, ${pl.cname}_sx, ${pl.cname}_sy, ${pl.cname}_used, ${pl.cname}_hi, ${mode})`;
+      }
       return `${sig.c}(${sig.params.map((p, i) => argAt(e, i, p[0], defaultFor(callee.field, i))).join(", ")})`;
     }
 
@@ -777,6 +782,11 @@ export function emit(chunk, symbols, file, opts = {}) {
         return `gt_p8_print_int(${expr(e.args[0], "int")}, ${x}, ${y}, ${c})`;
       }
       return `gt_p8_print_num(${expr(e.args[0], "fixed")}, ${x}, ${y}, ${c})`;
+    }
+    if (b.special === "poolmove") {
+      const pl = e.args[0].sym;
+      const mode = expr(e.args[1], "int");
+      return `gt_pool_move(${pl.cname}_x, ${pl.cname}_y, ${pl.cname}_sx, ${pl.cname}_sy, ${pl.cname}_used, ${pl.cname}_hi, ${mode})`;
     }
     if (b.special === "add") return emitAdd(e);
     if (b.special === "del") {
