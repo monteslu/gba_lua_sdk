@@ -508,6 +508,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     ...(result.c.includes("gt_pool_move") ? ["-DGT_POOLMV"] : []),
     ...(result.c.includes("gt_chunks_draw") ? ["-DGT_CHUNKS"] : []),
     ...(result.c.includes("gt_hit_scan") ? ["-DGT_HITS"] : []),
+    ...(result.c.includes("gt_bg_compose") ? ["-DGT_BG_COMPOSE_ON"] : []),
     ...(usesAutocls ? ["-DGT_AUTOCLS"] : []),
     ...(usesPackedSheet ? ["-DGT_SHEET_PACKED"] : []),
   ];
@@ -532,7 +533,10 @@ function build(entry, outPath, sheetPath, num8 = false) {
   cc(path.join(SDK, "gt_api.c"), B("gt_api.s"), apiDefs);
   cc(path.join(SDK, "gt_fixed.c"), B("gt_fixed.s"));
   cc(path.join(SDK, "gt_math.c"), B("gt_math.s"));
-  if (usesBg) cc(path.join(SDK, "gt_bg.c"), B("gt_bg.s"), usesAtlas ? ["-DGT_BG_ATLAS"] : []);
+  if (usesBg) cc(path.join(SDK, "gt_bg.c"), B("gt_bg.s"), [
+    ...(usesAtlas ? ["-DGT_BG_ATLAS"] : []),
+    ...(result.c.includes("gt_bg_compose(") ? ["-DGT_BG_COMPOSE_ON"] : []),
+  ]);
   if (usesAudio) cc(path.join(SDK, "gt_audio.c"), B("gt_audio.s"));
   if (usesMusic) cc(path.join(SDK, "gt_music.c"), B("gt_music.s"));
   cc(B("sheet.c"), B("sheet.s"));
@@ -649,6 +653,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
   if (usesBg) {
     run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_SHEET_BANK=2",
                   ...(usesAtlas ? ["-DGT_BG_ATLAS"] : []),
+                  ...(result.c.includes("gt_bg_compose(") ? ["-DGT_BG_COMPOSE_ON"] : []),
                   "-o", B("gt_bg.s"), path.join(SDK, "gt_bg.c")]);
     as(B("gt_bg.s"), B("gt_bg.o"));
   }

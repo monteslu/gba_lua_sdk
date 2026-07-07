@@ -41,7 +41,9 @@ extern const unsigned char *gt_sheet_ptr;   /* packed 4bpp sheet, or NULL */
 #ifdef GT_BANKED
 extern unsigned char gt_cur_bank;           /* current $8000 bank (gt_bank.s) */
 /* the decode bodies, exiled to bank 2 (B2CODE) with the sheet; see below */
+#ifdef GT_BG_COMPOSE_ON
 void gt_bg_compose_impl(int *map, int cols, int cx, int cy, int cw, int ch);
+#endif
 void gt_bg_tile_impl(int t, int px, int py);
 #endif
 
@@ -126,6 +128,7 @@ static void bg_enter_write_q(unsigned char quad) {
  * sheet (segment B2CODE) — mapped exactly when it reads the sheet, no
  * mid-routine re-bank. A tiny fixed-bank stub (gt_bg_compose, below) switches
  * to bank 2, calls this _impl, and restores the caller's bank. */
+#ifdef GT_BG_COMPOSE_ON
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
 #define GT_BG_COMPOSE gt_bg_compose_impl
@@ -196,9 +199,11 @@ void GT_BG_COMPOSE(int *map, int cols, int cx, int cy, int cw, int ch) {
     }
     bg_restore_draw_state();          /* hand the blitter back in normal state */
 }
+#endif /* GT_BG_COMPOSE_ON */
 
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
+#ifdef GT_BG_COMPOSE_ON
 /* Fixed-bank stub: map bank 2 (sheet + the _impl body live there together),
  * run the decode, restore the caller's bank. gt_bank only remaps $8000-$BFFF;
  * the args on the C-stack (RAM) and A/X/sreg survive the switch. */
@@ -223,6 +228,8 @@ void gt_bg_compose(int *map, int cols, int cx, int cy, int cw, int ch) {
  * synchronously here (drain, program, wait). It's one blit/frame, so the drain
  * cost is negligible and it can't fill-flicker (it runs to completion before
  * the frame's sprites, which draw on top). */
+#endif /* GT_BG_COMPOSE_ON */
+
 void gt_bg_draw(int sx, int sy) {
     bg_drain();
     /* exactly a normal opaque frame blit to THIS frame's draw page (derived
