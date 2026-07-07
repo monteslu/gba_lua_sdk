@@ -811,11 +811,24 @@ end
 -- ---------------------------------------------------------------------
 
 -- P8 score format: score is points/100, shown as (score*100) .. "0"
-function print_score(v, x, y, c)
-  local iv = flr(v)
-  local fr = flr((v - iv) * 100 + 0.5)
-  iv += fr \ 100
-  fr %= 100
+-- per-slot split cache: scores change on merges, not per frame, but the
+-- flr/*100/\100 split chain was running for every displayed score every
+-- frame (~1.5k cycles each through the long helpers)
+local ps_v = array(3, -1.0)
+local ps_iv = array(3)
+local ps_fr = array(3)
+
+function print_score(sl, v, x, y, c)
+  if v ~= ps_v[sl] then
+    ps_v[sl] = v
+    local niv = flr(v)
+    local nfr = flr((v - niv) * 100 + 0.5)
+    niv += nfr \ 100
+    ps_fr[sl] = nfr % 100
+    ps_iv[sl] = niv
+  end
+  local iv = ps_iv[sl]
+  local fr = ps_fr[sl]
   local rx = x
   if iv > 0 then
     rx = print(iv, rx, y, c)
@@ -1086,10 +1099,10 @@ function draw_game()
 
     local maxcol = 13
     if (newmaxtimer > 0 and newmaxtimer \ 4 % 2 == 0) maxcol = 7
-    print_score(maxballscore, 5, 115, maxcol)
+    print_score(1, maxballscore, 5, 115, maxcol)
     local scorecol = 13
     if (newscoretimer > 0 and newscoretimer \ 4 % 2 == 0) scorecol = 7
-    print_score(score, 5, 121, scorecol)
+    print_score(2, score, 5, 121, scorecol)
 
     local a2 = newballappear * newballappear
     local ballmenuy = 130 - (a2 * 12) \ 100
@@ -1097,7 +1110,7 @@ function draw_game()
     local bscol = 13
     if (newballscoretimer > 0 and newballscoretimer \ 4 % 2 == 0) bscol = 7
     local rx = print("+", 80, ballmenuy, bscol)
-    print_score(ballscore, rx, ballmenuy, bscol)
+    print_score(3, ballscore, rx, ballmenuy, bscol)
     local digits = 1
     if (ballmult >= 10) digits = 2
     if (ballmult >= 100) digits = 3
@@ -1172,11 +1185,11 @@ function draw_game()
         if (menuselect == 3) print("hard", rx, gy + 6, 7)
       end
       local rx = print("final score: ", gx + 5, gy + 18, 6)
-      print_score(score, rx, gy + 18, 6)
+      print_score(2, score, rx, gy + 18, 6)
       rx = print("max ball: ", gx + 5, gy + 24, 6)
-      print_score(maxballscore, rx, gy + 24, 6)
+      print_score(1, maxballscore, rx, gy + 24, 6)
       rx = print("last ball: ", gx + 5, gy + 30, 6)
-      print_score(ballscore, rx, gy + 30, 6)
+      print_score(3, ballscore, rx, gy + 30, 6)
       rx = print("max multiplyer: ", gx + 5, gy + 36, 6)
       rx = print(maxmult, rx, gy + 36, 6)
       print("x", rx, gy + 36, 6)
