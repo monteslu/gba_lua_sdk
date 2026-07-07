@@ -1356,16 +1356,23 @@ void gt_pool_edraw(int *x, int *y, unsigned char *ani, unsigned char *type,
 /* bulk 8x8 sprite pass (gt_poolmv.s): used slots with a nonzero cell byte
  * blit at (x>>4, y>>4). */
 extern unsigned char *pm_cells;
+extern unsigned char pm_ox, pm_oy;
 #pragma zpsym ("pm_cells")
+#pragma zpsym ("pm_ox")
+#pragma zpsym ("pm_oy")
 void gt_pool_sprs_z(void);
 void gt_pool_sprs(int *x, int *y, unsigned char *used, unsigned char *cells,
-                  int n) {
+                  int n, int ox, int oy) {
+    pm_ox = (unsigned char)ox;
+    pm_oy = (unsigned char)oy;
+    {
     pm_x = (unsigned char *)x;
     pm_y = (unsigned char *)y;
     pm_used = used;
     pm_cells = cells;
     pm_n = (unsigned char)n;
     gt_pool_sprs_z();
+    }
 }
 #endif /* GT_POOLMV */
 

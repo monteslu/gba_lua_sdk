@@ -98,7 +98,7 @@ local bossoff = array(4)  -- boss ani frame offsets {0,4,8,4}
 -- in PORT_NOTES.md — overflowing add()s drop silently)
 local enemies = pool(40, "type,wait,anispd,mission,flash,shake,subphase,cel,cw,ch,maxani")
 local buls = pool(28, "spr,dmg,colw")
-local ebuls = pool(48, "af")
+local ebuls = pool(48, "af,cel")
 local parts = pool(56, "age,size2,maxage,blue,spark")
 local shwaves = pool(12, "r,tr,col,speed")
 local pickups = pool(8)
@@ -434,7 +434,7 @@ end
 
 function fire(fx,fy,ang,spd16)
  sfx(29, 3)                     -- enemy shot
- add(ebuls,{x=fx,y=fy,sx=flr(sin(ang)*spd16),sy=flr(cos(ang)*spd16),af=0})
+ add(ebuls,{x=fx,y=fy,sx=flr(sin(ang)*spd16),sy=flr(cos(ang)*spd16),af=0,cel=32})
 end
 
 function firespread(fx,fy,num,spd16,base)
@@ -917,7 +917,11 @@ function update_game()
 
  gt.pool_move(ebuls, 0)
  for eb in all(ebuls) do
-  eb.af+=1
+  local af2=eb.af+1
+  eb.af=af2
+  local f2=(af2\2)%4
+  if (f2==3) f2=1
+  eb.cel=32+f2
   if eb.y>2048 or eb.x<-128 or eb.x>2048 or eb.y<-128 then
    del(ebuls,eb)
   end
@@ -1294,10 +1298,8 @@ function draw_game()
   end
  end
 
- -- drawing bullets
- for b in all(buls) do
-  spr(b.spr,b.x\16,b.y\16)
- end
+ -- drawing bullets (bulk pass; spr is already the sheet cell)
+ gt.pool_sprs(buls, "spr")
 
  if muzzle>0 then
   circfill(shipx+3,shipy-2,muzzle,7)
@@ -1349,12 +1351,9 @@ function draw_game()
  -- integrate) — the asm pass replaces the per-particle x/y/damp lines
  gt.pool_move(parts, 1)
 
- -- drawing ebuls
- for eb in all(ebuls) do
-  local f2=(eb.af\2)%4
-  if f2==3 then f2=1 end
-  spr(32+f2,eb.x\16-2,eb.y\16-2)
- end
+ -- drawing ebuls (cel computed in update where af already ticks; the
+ -- 2px sprite centering rides the bulk pass's offset args)
+ gt.pool_sprs(ebuls, "cel", 2, 2)
 
  -- floats
  for fl in all(floats) do

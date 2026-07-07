@@ -113,7 +113,7 @@ void gt_balls_draw(long *x, long *y, unsigned char *cells, int n);
 void gt_parts_step(long *x, long *y, long *vx, long *vy, unsigned char *u,
                    int n);
 void gt_pool_sprs(int *x, int *y, unsigned char *used, unsigned char *cells,
-                  int n);
+                  int n, int ox, int oy);
 void gt_hit_scan(int *ax, int *ay, unsigned char *aw, unsigned char *ah,
                  unsigned char *au, int an,
                  int *bx, int *by, unsigned char *bw, unsigned char *bu,

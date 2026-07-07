@@ -22,6 +22,8 @@ _pm_mode: .res 1
 pm_i:     .res 1
 pm_o:     .res 1                ; element byte offset (i*2)
 pm_t:     .res 2
+_pm_ox:   .res 1                ; pool_sprs: pixel offset subtracted from x
+_pm_oy:   .res 1                ;            and y (sprite centering)
 
 .segment "CODE"
 
@@ -151,7 +153,8 @@ pm_e:   .res 2
 ; pixel convention). ~80 cycles per sprite vs ~570 through spr()'s zp call.
 ;   reuses pm_x/pm_y/pm_used/pm_n; pm_cells = cell byte array.
 ; ---------------------------------------------------------------------------
-.export _gt_pool_sprs_z, _pm_cells
+.export _gt_pool_sprs_z
+.export _pm_ox, _pm_oy, _pm_cells
 .import _gt_q, _gt_qhead, _gt_qtail, _gt_q_pump, _gt_qbank, _gt_draw_mode
 
 QF_SPR2 = $55
@@ -196,7 +199,9 @@ loop:   lda     pm_i
         ror     a
         lsr     pm_t+1
         ror     a
-        sta     pm_t            ; px
+        sec
+        sbc     _pm_ox
+        sta     pm_t            ; px (minus the centering offset)
         dey
         ; y>>4
         lda     (_pm_y),y
@@ -213,7 +218,9 @@ loop:   lda     pm_i
         ror     a
         lsr     pm_d+1
         ror     a
-        sta     pm_d            ; py
+        sec
+        sbc     _pm_oy
+        sta     pm_d            ; py (minus the centering offset)
         ; stage
 slot:   lda     _gt_qhead
         clc

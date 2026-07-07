@@ -729,7 +729,9 @@ export function emit(chunk, symbols, file, opts = {}) {
       if (sig.special === "poolsprs") {
         const pl = e.args[0].sym;
         const fld = e.args[1].value;
-        return `gt_pool_sprs(${pl.cname}_x, ${pl.cname}_y, ${pl.cname}_used, ${pl.cname}_${fld}, ${pl.cname}_hi)`;
+        const ox = e.args[2] ? expr(e.args[2], "int") : "0";
+        const oy = e.args[3] ? expr(e.args[3], "int") : "0";
+        return `gt_pool_sprs(${pl.cname}_x, ${pl.cname}_y, ${pl.cname}_used, ${pl.cname}_${fld}, ${pl.cname}_hi, ${ox}, ${oy})`;
       }
       if (sig.special === "poolmove") {
         const pl = e.args[0].sym;
