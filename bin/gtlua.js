@@ -504,12 +504,12 @@ function build(entry, outPath, sheetPath, num8 = false) {
   const name = path.basename(entry, path.extname(entry));
   const gtr = outPath ?? path.join(projDir, `${name}.gtr`);
 
-  const CFLAGS = ["-t", "none", "-Osr", "--cpu", "65c02", "--codesize", "500",
+  const CFLAGS = ["-t", "none", "-Osr", "--cpu", "65c02", "--codesize", "500", "-g",
                   "--static-locals", "-I", SDK];
   // --num8: fixed becomes 8.8-in-an-int everywhere — the game C and every
   // SDK unit must agree on the width, so the define rides the shared CFLAGS
   if (num8) CFLAGS.push("-DGT_NUM8");
-  const AFLAGS = ["--cpu", "W65C02"];
+  const AFLAGS = ["--cpu", "W65C02", "-g"];   /* -g: symbols reach the ld65 dbgfile */
   if (tc.asminc && existsSync(tc.asminc)) AFLAGS.push("-I", tc.asminc);
   // compile C then run the gtlua peephole pass over cc65's assembly output
   // (tail-call fusion + dead reload elimination — see compiler/peephole.js)
@@ -552,10 +552,11 @@ function build(entry, outPath, sheetPath, num8 = false) {
   // that doesn't need it just steals bank-2 space from the game's own code.
   const usesBg = result.c.includes("gt_bg_compose(") || result.c.includes("gt_bg_draw(") ||
     result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(") ||
-    result.c.includes("gt_gspr(");
+    result.c.includes("gt_bg_coln(") || result.c.includes("gt_gspr(");
   // atlas builders (bg_clear/bg_tile) carry a second bank-2 decode body —
   // only compile + reserve for it when the game actually stamps tiles
-  const usesAtlas = result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(");
+  const usesAtlas = result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(") ||
+    result.c.includes("gt_bg_coln(");
   writeFileSync(B(`${name}.c`), result.c);
   writeFileSync(B("sheet.c"), makeSheetC(sheetPath, false));
 
@@ -624,7 +625,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     "-C", path.join(SDK, "gametank.cfg"),
     "-o", gtr,
     "-m", B(`${name}.map`),
-    "-Ln", B(`${name}.lbl`),
+    "-Ln", B(`${name}.lbl`), "--dbgfile", B(`${name}.dbg`),
     ...baseObjs, B(`${name}.o`),
     tc.lib,
   ]);
@@ -814,7 +815,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
         "-C", path.join(SDK, "gametank_flash2m.cfg"),
         "-o", B(`${name}.banks`),
         "-m", B(`${name}.map`),
-        "-Ln", B(`${name}.lbl`),
+        "-Ln", B(`${name}.lbl`), "--dbgfile", B(`${name}.dbg`),
         ...baseObjs.map((o) => o.endsWith("gt_print_asm.o") ? B("gt_print_asm_b.o") : o),
       B("gt_bank.o"), B("gt_math_stubs.o"),
         ...(usesMusic ? [B("gt_music_stubs.o")] : []),

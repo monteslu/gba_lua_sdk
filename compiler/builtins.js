@@ -152,6 +152,8 @@ export const GT_MEMBERS = {
   bg_clear: { kind: "fn", params: [], ret: "void", c: "gt_bg_clear" },
   bg_tile: { kind: "fn", params: [["int", false], ["int", false], ["int", false]],
     ret: "void", c: "gt_bg_tile" },
+  // stamp a vertical run of cells with one GRAM mode dance (ring columns)
+  bg_coln: { kind: "fn", params: [["array8", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_bg_coln" },
   gspr: { kind: "fn", params: [
     ["int", false], ["int", false], ["int", false], ["int", false],
     ["coord", false], ["coord", false]], ret: "void", c: "gt_gspr" },

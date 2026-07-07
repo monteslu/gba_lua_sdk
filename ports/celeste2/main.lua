@@ -1711,6 +1711,8 @@ end
 local cvl = 0
 local cvr = -1
 
+local colbuf = array8(16)
+
 function compose_col(ci)
   local lx = (ci * 8) & 511
   local cx = lx & 255
@@ -1722,27 +1724,32 @@ function compose_col(ci)
     if t > 0 and t < 128 then
       if ((fl[t + 1] & 1) == 1) cell = t
     end
-    gt.bg_tile(cell, cx, cy + j * 8)
+    colbuf[j + 1] = cell
   end
+  gt.bg_coln(colbuf, cx, cy, 16)
 end
 
 function draw_tiles()
   local i0 = mid(0, camera_x \ 8, lvl_w - 1)
   local i1 = mid(0, (camera_x + 128) \ 8, lvl_w - 1)
+  -- compose 2 columns past each edge: dash/jump jitter inside +-16px
+  -- stops re-composing the same edge columns every direction change
+  local e0 = mid(0, i0 - 2, lvl_w - 1)
+  local e1 = mid(0, i1 + 2, lvl_w - 1)
   if cvr < 0 then
-    local ci = i0
-    while ci <= i1 do
+    local ci = e0
+    while ci <= e1 do
       compose_col(ci)
       ci += 1
     end
-    cvl = i0
-    cvr = i1
+    cvl = e0
+    cvr = e1
   end
-  while cvr < i1 do
+  while cvr < e1 do
     cvr += 1
     compose_col(cvr)
   end
-  while cvl > i0 do
+  while cvl > e0 do
     cvl -= 1
     compose_col(cvl)
   end
@@ -1980,7 +1987,9 @@ function _update()
     end
 
   else
-    cls(lvl_bg)
+    -- no cls: the opaque ring-canvas blit repaints the full screen, and
+    -- the cls fill was ALSO what gt_bg's compose drain sat waiting on —
+    -- 16k queued pixels ahead of every GRAM write when a column composed
 
     shake = max(0, shake - 1)
     infade = min(infade + 1, 60)

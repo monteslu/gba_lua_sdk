@@ -279,13 +279,13 @@ void gt_bg_clear(void) {
 #else
 #define GT_BG_TILE gt_bg_tile
 #endif
+extern unsigned char p8pal[16];
 void GT_BG_TILE(int t, int px, int py) {
     unsigned char py2, b, k, quad, lx, sy0;
-    unsigned char lut[16];
+    const unsigned char *lut = p8pal;   /* pal-aware, no per-stamp rebuild */
     const unsigned char *sheet = gt_sheet_ptr;
     if (!sheet) return;
     if (t < 0 || t > 255) return;
-    for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
     quad = (unsigned char)((((py >> 7) & 1) << 1) | ((px >> 7) & 1));
     bg_enter_write_q(quad);
     lx  = (unsigned char)(px & 0x7F);
@@ -316,8 +316,65 @@ void GT_BG_TILE(int t, int px, int py) {
     bg_restore_draw_state();
 }
 
+/* stamp a COLUMN of n cells (one mode dance total — per-stamp enter/
+ * restore was ~1.2k cycles each, 19k for a 16-row ring column). The
+ * column must stay inside one 128px quadrant vertically. cells[i] = 0
+ * clears that cell to color 0. */
+#ifdef GT_BANKED
+#define GT_BG_COLN gt_bg_coln_impl
+#else
+#define GT_BG_COLN gt_bg_coln
+#endif
+#ifdef GT_BANKED
+static
+#endif
+void GT_BG_COLN(unsigned char *cells, int px, int py, int n) {
+    unsigned char py2, b, k, quad, lx, sy0, t, i;
+    const unsigned char *lut = p8pal;
+    const unsigned char *sheet = gt_sheet_ptr;
+    if (!sheet) return;
+    quad = (unsigned char)((((py >> 7) & 1) << 1) | ((px >> 7) & 1));
+    bg_enter_write_q(quad);
+    lx = (unsigned char)(px & 0x7F);
+    for (i = 0; i < n; ++i, py += 8) {
+        t = cells[i];
+        if (t == 0) {
+            b = lut[0];
+            for (py2 = 0; py2 < 8; ++py2) {
+                unsigned char *dp =
+                    vram + (((unsigned int)((py + py2) & 0x7F) << 7) | lx);
+                for (k = 0; k < 8; ++k) *dp++ = b;
+            }
+            continue;
+        }
+        sy0 = (unsigned char)(((t >> 4) & 15) << 3);
+        for (py2 = 0; py2 < 8; ++py2) {
+            const unsigned char *sp =
+                sheet + (((unsigned int)(sy0 + py2) << 6) | (unsigned int)((t & 15) << 2));
+            unsigned char *dp =
+                vram + (((unsigned int)((py + py2) & 0x7F) << 7) | lx);
+            for (k = 0; k < 4; ++k) {
+                b = *sp++;
+                *dp++ = lut[b & 15];
+                *dp++ = lut[b >> 4];
+            }
+        }
+    }
+    bg_restore_draw_state();
+}
+
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
+void gt_bg_coln(unsigned char *cells, int px, int py, int n) {
+    unsigned char saved_bank = gt_cur_bank;
+    if (!gt_sheet_ptr) return;
+    gt_bank(GT_SHEET_BANK);
+    gt_bg_coln_impl(cells, px, py, n);
+    gt_bank(saved_bank);
+}
+#endif
+
+#ifdef GT_BANKED
 /* fixed-bank stub, same pattern as gt_bg_compose */
 void gt_bg_tile(int t, int px, int py) {
     unsigned char saved_bank = gt_cur_bank;
