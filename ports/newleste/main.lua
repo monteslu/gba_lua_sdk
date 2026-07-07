@@ -44,8 +44,11 @@ local full_restart = 0
 local has_dashed = 0
 
 local frames = 0
-local seconds = 0
-local minutes = 0
+local sec1 = 0
+local sec10 = 0
+local min1 = 0
+local min10 = 0
+local hrs = 0
 local time_ticking = 1
 local deaths = 0
 local max_djump = 1
@@ -1389,8 +1392,11 @@ function game_init()
   max_djump = 1
   deaths = 0
   frames = 0
-  seconds = 0
-  minutes = 0
+  sec1 = 0
+  sec10 = 0
+  min1 = 0
+  min10 = 0
+  hrs = 0
   time_ticking = 1
   berry_count = 0
   full_restart = 0
@@ -1433,12 +1439,28 @@ end
 function _update()
 
   frames += 1
-  if time_ticking == 1 then
-    seconds += frames \ 30
-    minutes += seconds \ 60
-    seconds %= 60
+  if frames >= 30 then
+    frames = 0
+    if time_ticking == 1 then
+      sec1 += 1
+      if sec1 >= 10 then
+        sec1 = 0
+        sec10 += 1
+        if sec10 >= 6 then
+          sec10 = 0
+          min1 += 1
+          if min1 >= 10 then
+            min1 = 0
+            min10 += 1
+            if min10 >= 6 then
+              min10 = 0
+              hrs += 1
+            end
+          end
+        end
+      end
+    end
   end
-  frames %= 30
 
   sfx_timer = max(sfx_timer - 1)
 
@@ -1491,14 +1513,13 @@ end
 -- ---------------------------------------------------------------------
 function draw_time(x, y)
   rectfill(x, y, x + 32, y + 6, 0)
-  local mm = minutes % 60
-  print(minutes \ 60, x + 1, y + 1, 7)
+  print(hrs, x + 1, y + 1, 7)
   print(":", x + 5, y + 1, 7)
-  print(mm \ 10, x + 9, y + 1, 7)
-  print(mm % 10, x + 13, y + 1, 7)
+  print(min10, x + 9, y + 1, 7)
+  print(min1, x + 13, y + 1, 7)
   print(":", x + 17, y + 1, 7)
-  print(seconds \ 10, x + 21, y + 1, 7)
-  print(seconds % 10, x + 25, y + 1, 7)
+  print(sec10, x + 21, y + 1, 7)
+  print(sec1, x + 25, y + 1, 7)
 end
 
 function draw_lifeup(i)
