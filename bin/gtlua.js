@@ -544,7 +544,8 @@ function build(entry, outPath, sheetPath, num8 = false) {
   as(path.join(SDK, "crt0.s"), B("crt0.o"));
   as(path.join(SDK, "vectors.s"), B("vectors.o"));
   as(path.join(SDK, "interrupt.s"), B("interrupt.o"));
-  as(path.join(SDK, "gt_blitq.s"), B("gt_blitq.o"));
+  as(path.join(SDK, "gt_blitq.s"), B("gt_blitq.o"),
+     result.c.includes("gt_dbar_z") ? ["-D", "GT_DBAR"] : []);
   as(path.join(SDK, num8 ? "gt_fixed8_asm.s" : "gt_fixed_asm.s"), B("gt_fixed_asm.o"));
   const usesFlakes = result.c.includes("gt_flakes") || result.c.includes("gt_chain");
   if (usesFlakes) as(path.join(SDK, "gt_flakes.s"), B("gt_flakes.o"));

@@ -545,6 +545,7 @@ _irq_int:
         STZ _gt_draw_busy
         RTI
 
+.ifdef GT_DBAR
 ; ---------------------------------------------------------------------------
 ; gt_dbar_z — the HUD stamina/life bar: up to four small fills staged raw.
 ;   pe = px + (v*77 >> 8), pe2 = px + (m*77 >> 8)   (v,m are 0..100 ints)
@@ -691,3 +692,4 @@ nobg:   ; value fill: px..pe (w = pe-px+1), 3 tall, c2
         jsr     dbfill
 done:   rts
 .endproc
+.endif ; GT_DBAR
