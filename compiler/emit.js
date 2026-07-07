@@ -449,6 +449,16 @@ export function emit(chunk, symbols, file, opts = {}) {
     }
   }
 
+  // provably 0..255: narrowed u8 loop counters, 0..255 int literals, and
+  // array8 element reads. Conservative — anything else compares wide.
+  function byteish(e) {
+    if (!e) return false;
+    if (e.kind === "number" && e.isInt) return e.value >= 0 && e.value <= 255;
+    if (e.kind === "name") return narrowedVars.has(e.name);
+    if (e.kind === "index") return !!e.arraySym?.elemBytes;
+    return false;
+  }
+
   function binop(e, want) {
     const { op } = e;
     const k = e.tk; // result kind from the checker
@@ -458,6 +468,13 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (["<", ">", "<=", ">=", "==", "~="].includes(op)) {
       const ck = e.cmpKind ?? "int";
       const c = op === "~=" ? "!=" : op;
+      // BYTE COMPARES: a var<=var int comparison goes through cc65's
+      // tosicmp at ~127 cycles (measured; the constant form is ~15). When
+      // both sides are provably 0..255 — narrowed loop counters, byte
+      // constants, array8 reads — compare as unsigned char: lda/cmp.
+      if (ck === "int" && byteish(e.left) && byteish(e.right)) {
+        return `((unsigned char)${expr(e.left, "int")} ${c} (unsigned char)${expr(e.right, "int")})`;
+      }
       return `(${expr(e.left, ck)} ${c} ${expr(e.right, ck)})`;
     }
 
@@ -754,6 +771,10 @@ export function emit(chunk, symbols, file, opts = {}) {
       if (e.printKind === "str") {
         const esc = String(e.args[0].value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
         return `gt_p8_print("${esc}", ${x}, ${y}, ${c})`;
+      }
+      // int-typed values skip the fixed widening + long digit path
+      if (e.args[0].tk === "int") {
+        return `gt_p8_print_int(${expr(e.args[0], "int")}, ${x}, ${y}, ${c})`;
       }
       return `gt_p8_print_num(${expr(e.args[0], "fixed")}, ${x}, ${y}, ${c})`;
     }

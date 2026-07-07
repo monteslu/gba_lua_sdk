@@ -114,6 +114,7 @@ int gt_p8_print_num(int v, int x, int y, int c);
 #else
 int gt_p8_print_num(long v, int x, int y, int c);
 #endif
+int gt_p8_print_int(int v, int x, int y, int c);
 void gt_sheet_load(const unsigned char *packed);
 void gt_sheet_load_packed(const unsigned char *p, unsigned int plen); /* packbits */
 void gt_sheet_init(void);   /* generated per-build: loads the sheet or no-op */

@@ -364,6 +364,35 @@ int GT_PRINT(const char *str, int x, int y, int c) {
     return x + gt_cam_x;
 }
 
+/* print an INT without the fixed marshalling: print(v) with an int-typed
+ * argument used to widen to long, shift 16, and run the long digit path —
+ * ~600 cycles of pure conversion per call, every HUD frame. */
+#ifdef GT_BANKED
+#define GT_PRINT_INT gt_p8_print_int_impl
+static int gt_p8_print_int_impl(int v, int x, int y, int c);
+#else
+#define GT_PRINT_INT gt_p8_print_int
+#endif
+#ifdef GT_BANKED
+static
+#endif
+int GT_PRINT_INT(int v, int x, int y, int c) {
+    char buf[8];
+    char *p = buf + 7;
+    unsigned int uv;
+    unsigned char neg = 0;
+    *p = 0;
+    if (v < 0) { neg = 1; uv = (unsigned int)(-v); } else uv = (unsigned int)v;
+    do {
+        unsigned int q = uv / 10;
+        --p;
+        *p = (char)('0' + (unsigned char)(uv - ((q << 3) + (q << 1))));
+        uv = q;
+    } while (uv);
+    if (neg) { --p; *p = '-'; }
+    return GT_PRINT(p, x, y, c);
+}
+
 /* print a fixed number: integer part (P8 prints integers bare) */
 #ifdef GT_BANKED
 #define GT_PRINT_NUM gt_p8_print_num_impl
@@ -427,6 +456,14 @@ int gt_p8_print_num(long v, int x, int y, int c) {
     int r;
     gt_bank(0);
     r = gt_p8_print_num_impl(v, x, y, c);
+    gt_bank(saved_bank);
+    return r;
+}
+int gt_p8_print_int(int v, int x, int y, int c) {
+    unsigned char saved_bank = gt_cur_bank;
+    int r;
+    gt_bank(0);
+    r = gt_p8_print_int_impl(v, x, y, c);
     gt_bank(saved_bank);
     return r;
 }

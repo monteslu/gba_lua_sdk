@@ -30,8 +30,10 @@ local ballvy = array(28, 0.0)
 local ballc = array(28)     -- color/tier 1..7, 0 = free slot
 local ballmul = array(28)   -- combo multiplier 1..8
 local balllm = array(28)    -- "lastmult" cooldown, 60 -> 0
-local trailx = array(28, 0.0)  -- stamped trail position (port addition)
-local traily = array(28, 0.0)
+-- trail stamps in whole pixels: they only feed flr()'d draws, and int
+-- arrays skip the 32-bit compare/copy tax the fixed versions paid
+local trailx = array(28)
+local traily = array(28)
 
 local ballidx = 0           -- total balls created (endgame stat)
 
@@ -298,8 +300,8 @@ function new_ball(xx, yy, cc)
       ballc[i] = cc
       ballmul[i] = 1
       balllm[i] = 0
-      trailx[i] = xx
-      traily[i] = yy
+      trailx[i] = flr(xx)
+      traily[i] = flr(yy)
       ballidx += 1
       return i
     end
@@ -1101,16 +1103,16 @@ function draw_game()
   -- ball motion trails (approximates the cart's framebuffer smears)
   for i = 1, 28 do
     if ballc[i] > 0 then
-      local txi = flr(trailx[i])
-      local tyi = flr(traily[i])
+      local txi = trailx[i]
+      local tyi = traily[i]
       local mvx = flr(ballx[i]) - txi
       local mvy = flr(bally[i]) - tyi
       if abs(mvx) + abs(mvy) >= 2 then
         spr(trailspr[ballc[i]], txi - 3, tyi - 3)
       end
       if gtime % 2 == 0 then
-        trailx[i] = ballx[i]
-        traily[i] = bally[i]
+        trailx[i] = flr(ballx[i])
+        traily[i] = flr(bally[i])
       end
     end
   end
