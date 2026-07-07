@@ -1358,7 +1358,7 @@ export function emit(chunk, symbols, file, opts = {}) {
             if (sfxConsumed || !node || typeof node !== "object") return;
             if (Array.isArray(node)) { for (const x of node) walk2(x); return; }
             if (node.kind === "call" &&
-                (node.callee?.name === "sfx_bank" || node.callee?.name === "gt.sfx_bank") &&
+                (node.callee?.name === "sfx_bank" || node.callee?.name === "gt.sfx_bank" || node.callee?.name === "music_bank" || node.callee?.name === "gt.music_bank") &&
                 node.args?.some((a) => a?.kind === "name" && a.name === name)) { sfxConsumed = true; return; }
             for (const [k, v] of Object.entries(node)) if (!WALK_SKIP.has(k)) walk2(v);
           };

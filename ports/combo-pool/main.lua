@@ -113,6 +113,9 @@ local lifes10 = array(4)    -- per-difficulty life budget x10
 -- real pitches/waveforms/timing from the original cart's __sfx__ section,
 -- played by the SDK's FM runtime (sfx() checks the registered bank first)
 local p8sfx = hexdata("122500270045007d009300d30011014d018701a901ad01b101b501b901d101d501f70117020000030e241034112411341124113433241034112411341124115e1134115e11031b2408000834090008240900083409300824080009340800092408301a2408000834090008241134092410000934080009240800093011000a30212822322234223c214111401143113e114022041f3c043e0440043e044005410440044104430441054004430441043e0540043c08400443053e04410445044005430447044004450443053e04410440044305041e27082b082909000827092e082909000827082b09290827092e082b09290827092908000827092908000927082b11281129082b092908270929082b09041d27082b082909000830092e082b0900082e08330935082e0933082e0930082e0930082b0829092e1900092b0830082e0900112e082b0930082e09051c3008371135083a093c08300933083508330937083a0933083a1135113308350937083c0937113a08300835093a083309350837093a0835090510331035113a113f11431141113f113a113f1046113a11351137113a113f19370903012b0a030129070301410700014321000b2a012b012c012f0132013b01480133012f012c012b0100014f3b03103701390336013802360135013703380237013803300138033c0138033302380b000f3c0a3f0a430a460b480a4b0a4d153c0a3f0b430a460a480b4b0a4d0a3c0b0008401e431e481e4d1e401e431e481e4d1e")
+-- converted __music__ patterns: 0-3 = the level tune (loops), 5 = death
+-- sting (self-loops), 10 = sudden-death alarm (self-loops)
+local p8music = hexdata("0b0105ffffff0006ffffff0007ffffff0208ffffff0001ffffff0303ffffff00ffffffff00ffffffff00ffffffff00ffffffff0304ffffff")
 
 -- ---------------------------------------------------------------------
 -- audio driver: gt.note sequences stand in for the cart's sfx tracker
@@ -325,6 +328,7 @@ function reset_game()
   intromenu = 0
   lastselect = 30
 
+  music(-1)
   death = 0
   suddendeath = 0
   victory = 0
@@ -538,7 +542,10 @@ function update_mainmenu()
   end
 
   if (gtime == 0) playfx(13)
-  if (gtime == 60) playfx(14)
+  if gtime == 60 then
+    playfx(14)
+    music(0)
+  end
 
   -- marching-ball advance (the cart computes animtime*10 % 136 per ball
   -- per frame; a wrapped accumulator needs no division)
@@ -723,7 +730,10 @@ function update_game()
   lstam += max(-1, min(1, pstam - lstam))
 
   if finish == 1 and victory == 1 then
-    if (finishtimer == 30) playfx(17)
+    if finishtimer == 30 then
+      music(-1)
+      playfx(17)
+    end
   end
 
   -- life bar / sudden death
@@ -732,15 +742,18 @@ function update_game()
     local r2 = ratio * ratio
     plife = 100 - (r2 * ratio) * 100
     if plife < 0 then
+      if (suddendeath == 0) music(10)   -- alarm in
       suddendeath = 1
       finish = 1
       if finishtimer >= 120 then
+        music(5)                         -- death sting
         suddendeath = 0
         finishtimer = 0
         death = 1
       end
     else
       if finishtimer < 120 then
+        if (suddendeath == 1) music(-1)  -- recovered
         suddendeath = 0
         finish = 0
         finishtimer = 0
@@ -1297,6 +1310,7 @@ function _init()
   trailspr[7] = 26
 
   sfx_bank(p8sfx)
+  music_bank(p8music)
 
   bake_sprites()
   for c = 1, 7 do

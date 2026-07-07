@@ -21,10 +21,10 @@
 .PC02
 .import gt_bank_raw, gt_cur_bank
 .import _gt_music_tick_impl, _gt_music_run_init_impl
-.import _gt_sfx_impl, _gt_music_impl, _gt_sfx_bank_impl
+.import _gt_sfx_impl, _gt_music_impl, _gt_sfx_bank_impl, _gt_music_bank_impl
 .import _gt_sfx_run_impl, _gt_music_play_impl, _gt_music_stop_impl
 .export _gt_music_tick, _gt_music_run_init
-.export _gt_sfx, _gt_music, _gt_sfx_bank
+.export _gt_sfx, _gt_music, _gt_sfx_bank, _gt_music_bank
 .export _gt_sfx_run, _gt_music_play, _gt_music_stop
 
 GT_MUSIC_BANK = 2
@@ -59,6 +59,7 @@ label:
         GT_MUSIC_STUB _gt_music_run_init, _gt_music_run_init_impl
         GT_MUSIC_STUB _gt_sfx,            _gt_sfx_impl
         GT_MUSIC_STUB _gt_sfx_bank,       _gt_sfx_bank_impl
+        GT_MUSIC_STUB _gt_music_bank,     _gt_music_bank_impl
         GT_MUSIC_STUB _gt_music,          _gt_music_impl
         GT_MUSIC_STUB _gt_sfx_run,        _gt_sfx_run_impl
         GT_MUSIC_STUB _gt_music_play,     _gt_music_play_impl

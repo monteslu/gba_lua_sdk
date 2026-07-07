@@ -57,6 +57,7 @@ void gt_music_tick(void);   /* called once per frame by gt_endframe() */
 /* PICO-8-shaped entry points (what the compiler emits for sfx()/music()) */
 void gt_sfx(int n, int ch);     /* ch < 0 = auto-assign a channel */
 void gt_sfx_bank(const unsigned char *bank); /* converted PICO-8 sfx (p8sfx.mjs) */
+void gt_music_bank(const unsigned char *bank); /* converted __music__ patterns */
 void gt_music(int n, int loop); /* n < 0 = stop */
 
 /* lower-level: run an explicit step list / event list (for user-defined data) */

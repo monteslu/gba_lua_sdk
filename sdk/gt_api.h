@@ -155,6 +155,7 @@ void gt_music_init(void);
 void gt_music_tick(void);
 void gt_sfx(int n, int ch);
 void gt_sfx_bank(const unsigned char *bank);
+void gt_music_bank(const unsigned char *bank);
 void gt_music(int n, int loop);
 void gt_p8_spr(int n, int x, int y, int w, int h, int flip);
 

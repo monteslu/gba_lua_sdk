@@ -33,6 +33,7 @@ export const BUILTINS = {
   // `audio` pulls in gt_audio_init()+gt_music.o at build time.
   sfx:   { params: [["int", false], ["int", true]], ret: "void", c: "gt_sfx", audio: true },
   sfx_bank: { params: [["array8", false]], ret: "void", c: "gt_sfx_bank", audio: true },
+  music_bank: { params: [["array8", false]], ret: "void", c: "gt_music_bank", audio: true },
   // `loop` is a truthy flag (default on): music(0) loops, music(0,false) plays once.
   music: { params: [["int", false], ["flip", true]], ret: "void", c: "gt_music", audio: true },
 

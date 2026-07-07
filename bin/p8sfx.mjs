@@ -65,6 +65,41 @@ function parseP8Text(text) {
   return sfx;
 }
 
+// __music__: 64 patterns x 4 channel bytes. Binary: bit7 of bytes 0/1/2
+// carries the loop-start/loop-end/stop flag, bit6 = channel disabled,
+// bits 0-5 = sfx id. Text: "FF AABBCCDD" with the flags already gathered.
+function parseMusicBin(buf) {
+  const pats = [];
+  for (let n = 0; n < 64; n++) {
+    const b = buf.subarray(0x3100 + n * 4, 0x3100 + n * 4 + 4);
+    pats.push({
+      flags: (b[0] >> 7) | ((b[1] >> 7) << 1) | ((b[2] >> 7) << 2),
+      ch: [...b].map((x) => (x & 0x40 ? 0xff : x & 0x3f)),
+    });
+  }
+  return pats;
+}
+
+function parseMusicText(text) {
+  const m = text.split("__music__")[1];
+  const pats = [];
+  if (m) {
+    for (const line of m.split("\n")) {
+      const t = line.trim();
+      if (!/^[0-9a-f]{2} [0-9a-f]{8}$/.test(t)) continue;
+      const flags = parseInt(t.slice(0, 2), 16);
+      const ch = [];
+      for (let i = 0; i < 4; i++) {
+        const x = parseInt(t.slice(3 + i * 2, 5 + i * 2), 16);
+        ch.push(x & 0x40 ? 0xff : x & 0x3f);
+      }
+      pats.push({ flags, ch });
+    }
+  }
+  while (pats.length < 64) pats.push({ flags: 0, ch: [0xff, 0xff, 0xff, 0xff] });
+  return pats;
+}
+
 function convertOne(e) {
   // trailing silence trims; leading/mid rests keep timing
   let last = -1;
@@ -96,14 +131,25 @@ function convertOne(e) {
   return { instr: WAVE_TO_INSTR[wave] ?? 7, steps };
 }
 
-const [, , input, onlyArg] = process.argv;
-if (!input) { console.error("usage: p8sfx.mjs <cart.bin|cart.p8> [only,ids,csv]"); process.exit(1); }
+const argv = process.argv.slice(2);
+const wantMusic = argv.includes("--music");
+const [input, onlyArg] = argv.filter((a) => a !== "--music");
+if (!input) { console.error("usage: p8sfx.mjs <cart.bin|cart.p8> [only,ids,csv] [--music]"); process.exit(1); }
 const only = onlyArg ? new Set(onlyArg.split(",").map(Number)) : null;
 const raw = readFileSync(input);
 const sfx = input.endsWith(".p8") || input.endsWith(".lua")
   ? parseP8Text(raw.toString("latin1"))
   : parseCartBin(raw);
 
+const isText = input.endsWith(".p8") || input.endsWith(".lua");
+let music = null;
+if (wantMusic) {
+  music = isText ? parseMusicText(raw.toString("latin1")) : parseMusicBin(raw);
+  let lastPat = -1;
+  music.forEach((p, i) => { if (p.ch.some((c) => c !== 0xff)) lastPat = i; });
+  music = music.slice(0, lastPat + 1);
+  if (only) for (const p of music) for (const c of p.ch) if (c !== 0xff) only.add(c);
+}
 const converted = sfx.map((e, i) => (only && !only.has(i) ? null : convertOne(e)));
 const lastUsed = converted.reduce((m, c, i) => (c ? i : m), -1);
 const n = lastUsed + 1;
@@ -135,3 +181,17 @@ converted.slice(0, n).forEach((c, i) => {
   console.error(`--   sfx ${i}: ${c.steps.length} steps, instr ${inm}, first notes ${c.steps.slice(0, 5).map((s) => s.note + "x" + s.dur).join(" ")}`);
 });
 console.log(blob.toString("hex"));
+if (music) {
+  const mb = Buffer.alloc(1 + music.length * 5);
+  mb[0] = music.length;
+  music.forEach((p, i) => {
+    mb[1 + i * 5] = p.flags;
+    for (let c = 0; c < 4; c++) mb[2 + i * 5 + c] = p.ch[c];
+  });
+  console.error(`-- music: ${music.length} patterns, ${mb.length} bytes`);
+  music.forEach((p, i) => {
+    if (p.ch.some((c) => c !== 0xff))
+      console.error(`--   pat ${i}: flags ${p.flags} ch ${p.ch.map((c) => (c === 0xff ? "--" : c)).join(",")}`);
+  });
+  console.log(mb.toString("hex"));
+}

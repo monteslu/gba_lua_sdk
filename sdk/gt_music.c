@@ -64,6 +64,7 @@
 #define gt_music_tick GT_MB(gt_music_tick)
 #define gt_sfx        GT_MB(gt_sfx)
 #define gt_sfx_bank   GT_MB(gt_sfx_bank)
+#define gt_music_bank GT_MB(gt_music_bank)
 #define gt_music      GT_MB(gt_music)
 #define gt_sfx_run    GT_MB(gt_sfx_run)
 #define gt_music_play GT_MB(gt_music_play)
@@ -122,6 +123,15 @@ static unsigned char song_loop;                /* 1 = loop at end */
 static unsigned char song_playing;
 
 static unsigned char audio_on;                 /* gt_audio_init() ran? */
+
+/* --- pattern-music layer (converted PICO-8 __music__; bodies below) --- */
+static const unsigned char *mus_bank;
+static unsigned char mus_active;
+static unsigned char mus_pat;
+static unsigned char mus_first;
+static unsigned char mus_loop;
+static unsigned int  mus_left;
+static void advance_pattern(void);
 
 /* upload one instrument's per-op envelope + transpose to a channel's 4 ops */
 static void apply_instrument(unsigned char ch, unsigned char idx) {
@@ -228,6 +238,10 @@ void gt_music_stop(void) {
     if (!audio_on) return;
     song_playing = 0;
     song_cursor = 0;
+    if (mus_active) {
+        mus_active = 0;
+        for (i = 0; i < NUM_FM_CH; ++i) sfx_step[i] = 0;
+    }
     for (i = 0; i < NUM_FM_OPS; ++i) { amps[i] = 0; aram[AMPLITUDE + i] = 128; }
     note_held_mask = 0;
     music_ch_mask = 15;
@@ -268,6 +282,12 @@ void gt_music_tick(void) {
 
     /* 1. sound effects */
     for (ch = 0; ch < NUM_FM_CH; ++ch) tick_sfx(ch);
+
+    /* 1b. pattern music: advance when the longest line has played out */
+    if (mus_active) {
+        if (mus_left > 1) --mus_left;
+        else advance_pattern();
+    }
 
     /* 2. envelope advance for every operator whose channel holds a note.
      * (upstream: amps -= decay, clamped at sustain via the sign trick.) */
@@ -403,6 +423,73 @@ static const unsigned char *sfx_bank = 0;
 
 void gt_sfx_bank(const unsigned char *bank) { sfx_bank = bank; }
 
+/* converted PICO-8 music bank (bin/p8sfx.mjs --music): u8 n; n x 5 bytes
+ * { flags, ch0..ch3 } — flags bit0 = loop start, bit1 = loop end, bit2 =
+ * stop-after; chN = an sfx-bank id or 0xFF for a silent channel. A pattern
+ * plays its channels' converted sfx simultaneously through the normal
+ * per-channel step machinery and advances when the longest one ends —
+ * PICO-8's music IS 4-channel sfx playback, so the engine mirrors that. */
+void gt_music_bank(const unsigned char *bank) { mus_bank = bank; }
+
+/* start bank sfx `id` on channel `ch`; returns its total frame count (0 if
+ * the id is empty/out of range — the channel just stays silent) */
+static unsigned int start_bank_sfx(unsigned char id, unsigned char ch) {
+    unsigned int off, total;
+    unsigned char count, i;
+    const SfxStep *steps;
+    if (!sfx_bank || id >= sfx_bank[0]) return 0;
+    off = (unsigned int)sfx_bank[1 + id * 2] | ((unsigned int)sfx_bank[2 + id * 2] << 8);
+    count = sfx_bank[off + 1];
+    if (!count) return 0;
+    steps = (const SfxStep *)(sfx_bank + off + 2);
+    apply_instrument(ch, sfx_bank[off] >= GT_NUM_INSTR ? 0 : sfx_bank[off]);
+    sfx_instr[ch] = sfx_bank[off];
+    sfx_step[ch] = steps;
+    sfx_end[ch]  = steps + count;
+    sfx_left[ch] = 0;
+    total = 0;
+    for (i = 0; i < count; ++i) total += steps[i].dur ? steps[i].dur : 1;
+    return total;
+}
+
+static void start_pattern(unsigned char p) {
+    const unsigned char *e;
+    unsigned char c;
+    unsigned int t, longest = 0;
+    if (!mus_bank || p >= mus_bank[0]) { mus_active = 0; return; }
+    e = mus_bank + 1 + p * 5;
+    for (c = 0; c < 4; ++c) {
+        if (e[1 + c] == 0xFF) continue;
+        t = start_bank_sfx(e[1 + c], c);
+        if (t > longest) longest = t;
+    }
+    if (!longest) { mus_active = 0; return; }  /* empty pattern: stop */
+    mus_pat = p;
+    mus_left = longest;
+    mus_active = 1;
+    *audio_nmi = 1;
+}
+
+/* the current pattern finished: honor its flags, else fall through */
+static void advance_pattern(void) {
+    const unsigned char *e = mus_bank + 1 + mus_pat * 5;
+    unsigned char p;
+    if (e[0] & 4) { mus_active = 0; return; }          /* stop-after */
+    if (e[0] & 2) {                                     /* loop end */
+        p = mus_pat;
+        while (p > 0 && !(mus_bank[1 + p * 5] & 1)) --p; /* nearest loop start */
+        start_pattern(p);
+        return;
+    }
+    p = (unsigned char)(mus_pat + 1);
+    if (p >= mus_bank[0]) {
+        if (mus_loop) start_pattern(mus_first);
+        else mus_active = 0;
+        return;
+    }
+    start_pattern(p);
+}
+
 void gt_sfx(int n, int ch) {
     const BuiltinSfx *b;
     unsigned char c;
@@ -460,6 +547,12 @@ void gt_music(int n, int loop) {
     const BuiltinSong *s;
     if (!audio_on) return;
     if (n < 0) { gt_music_stop(); return; }
+    if (mus_bank) {
+        mus_first = (unsigned char)n;
+        mus_loop = (unsigned char)(loop ? 1 : 0);
+        start_pattern((unsigned char)n);
+        return;
+    }
     if (n >= GT_NUM_BUILTIN_SONG) return;
     s = &builtin_song[n];
     gt_music_play(s->events, s->count, s->instr4, (unsigned char)(loop ? 1 : 0));
