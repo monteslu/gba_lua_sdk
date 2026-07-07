@@ -1142,19 +1142,8 @@ void gt_flakes_mode(int i, int m) {
 }
 
 /* the 4-piece 128x128 canvas window (gt_flakes.s asm): newleste's map */
-extern unsigned char cv_dy, cv_fl;
-extern int cv_dx;
-#pragma zpsym ("cv_dx")
-#pragma zpsym ("cv_dy")
-#pragma zpsym ("cv_fl")
-void gt_canvas_view_z(void);
-void gt_canvas_view(int dx, int dy, int opaque) {
-    cv_dx = dx;
-    cv_dy = (unsigned char)dy;
-    cv_fl = (opaque == 1) ? 0xD7 : 0x57; /* omitted optional arrives as -1 */
-    gt_draw_mode = MODE_NONE;
-    gt_canvas_view_z();
-}
+/* (gt_canvas_view moved below — outside the GT_FLAKES region) */
+
 
 /* the HUD stamina/life bar in one asm call (gt_flakes.s): args ride zp
  * bytes, the emitter writes them directly — no stack marshalling. */
@@ -1186,6 +1175,23 @@ void gt_chain_step_draw(int x, int y, int col) {
     gt_chain_z();
 }
 #endif /* GT_FLAKES */
+
+/* canvas window blit (gt_canvas.s) — independent of the flake fields */
+#ifdef GT_CANVAS
+extern unsigned char cv_dy, cv_fl;
+extern int cv_dx;
+#pragma zpsym ("cv_dx")
+#pragma zpsym ("cv_dy")
+#pragma zpsym ("cv_fl")
+void gt_canvas_view_z(void);
+void gt_canvas_view(int dx, int dy, int opaque) {
+    cv_dx = dx;
+    cv_dy = (unsigned char)dy;
+    cv_fl = (opaque == 1) ? 0xD7 : 0x57; /* omitted optional arrives as -1 */
+    gt_draw_mode = MODE_NONE;
+    gt_canvas_view_z();
+}
+#endif /* GT_CANVAS */
 
 #ifdef GT_TILES
 /* visible-window tile scan in asm (gt_tiles.s): stages QF_SPR entries for

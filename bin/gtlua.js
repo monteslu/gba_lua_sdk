@@ -543,6 +543,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
   const apiDefs = [
     ...(usesStarfield ? ["-DGT_STARFIELD"] : []),
     ...(result.c.includes("gt_flakes") || result.c.includes("gt_chain") ? ["-DGT_FLAKES"] : []),
+    ...(result.c.includes("gt_canvas_view(") ? ["-DGT_CANVAS"] : []),
     ...(result.c.includes("gt_tiles_draw") ? ["-DGT_TILES"] : []),
     ...(result.c.includes("gt_balls_step") ? ["-DGT_BALLS"] : []),
     ...(result.c.includes("gt_pool_move") ? ["-DGT_POOLMV"] : []),
@@ -589,8 +590,10 @@ function build(entry, outPath, sheetPath, num8 = false) {
      result.c.includes("gt_dbar_z") ? ["-D", "GT_DBAR"] : []);
   as(path.join(SDK, num8 ? "gt_fixed8_asm.s" : "gt_fixed_asm.s"), B("gt_fixed_asm.o"));
   const usesFlakes = result.c.includes("gt_flakes") || result.c.includes("gt_chain");
+  const usesCanvas = result.c.includes("gt_canvas_view(");
   if (usesFlakes) as(path.join(SDK, "gt_flakes.s"), B("gt_flakes.o"));
   if (usesStarfield) as(path.join(SDK, "gt_stars.s"), B("gt_stars.o"));
+  if (usesCanvas) as(path.join(SDK, "gt_canvas.s"), B("gt_canvas.o"));
   as(path.join(SDK, "gt_circ.s"), B("gt_circ.o"));
   const usesTiles = result.c.includes("gt_tiles_draw");
   if (usesTiles) as(path.join(SDK, "gt_tiles.s"), B("gt_tiles.o"));
@@ -623,6 +626,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     ...(usesMusic ? [B("gt_music.o")] : []),
     ...(usesFlakes ? [B("gt_flakes.o")] : []),
     ...(usesStarfield ? [B("gt_stars.o")] : []),
+    ...(usesCanvas ? [B("gt_canvas.o")] : []),
     B("gt_circ.o"),
     ...(usesTiles ? [B("gt_tiles.o")] : []),
     ...(usesBalls ? [B("gt_balls.o")] : []),
