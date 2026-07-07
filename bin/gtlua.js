@@ -289,7 +289,7 @@ function layoutScore(placement, callGraph, hot) {
     const cb = placement[caller] ?? "fixed";
     for (const cee of callees) {
       const eb = placement[cee] ?? "fixed";
-      if (eb !== "fixed" && eb !== cb) score += hot.has(caller) ? 10 : 1;
+      if (eb !== "fixed" && eb !== cb) score += (hot.has(caller) ? 10 : 1) + (hot.has(cee) ? 10 : 0);
     }
   }
   return score;
@@ -302,7 +302,8 @@ function stubbedEdges(placement, callGraph, hot) {
     for (const cee of callees) {
       const eb = placement[cee] ?? "fixed";
       if (eb !== "fixed" && eb !== cb) {
-        edges.push({ caller, callee: cee, w: hot.has(caller) ? 10 : 1 });
+        edges.push({ caller, callee: cee,
+          w: (hot.has(caller) ? 10 : 1) + (hot.has(cee) ? 10 : 0) });
       }
     }
   }
@@ -812,7 +813,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
       if (bestScore >= 10) {
         const attempted = new Set();
         let dirty = false;
-        for (let round = 0; round < 10; round++) {
+        for (let round = 0; round < 40; round++) {
           const edges = stubbedEdges(workPlacement, result.callGraph, hot)
             .filter((e) => e.w >= 10 && !attempted.has(`${e.caller}>${e.callee}`));
           if (!edges.length) break;
@@ -835,11 +836,34 @@ function build(entry, outPath, sheetPath, num8 = false) {
           }
           if (!best) continue;
           workPlacement[best.fn] = best.target;
-          const relink = compileAndLink(workPlacement);
+          let relink = compileAndLink(workPlacement);
+          if (!relink.ok) {
+            // make room: the target bank is full — evict its biggest COLD
+            // resident to the roomiest other bank and retry once. (The
+            // repair otherwise can't heal a hot edge whose callee is
+            // squeezed out by cold code, e.g. celeste2's p_update stuck
+            // across a bank from the movement core it calls ~40x/frame.)
+            const cold = Object.entries(workPlacement)
+              .filter(([fn, b]) => b === best.target && !hot.has(fn) && !pinned.has(fn) && fn !== best.fn)
+              .map(([fn]) => fn)
+              .sort((a, b2) => (sizes.get(b2) ?? 0) - (sizes.get(a) ?? 0));
+            const evicted = [];
+            for (const evictee of cold.slice(0, 4)) {
+              const evPrev = workPlacement[evictee];
+              workPlacement[evictee] = best.target === "b2" ? "b1" : "b2";
+              evicted.push([evictee, evPrev]);
+              relink = compileAndLink(workPlacement);
+              if (relink.ok) {
+                if (process.env.GTLUA_DEBUG) console.error(`[repair]   evicted ${evicted.map(([f]) => f).join(", ")} from ${best.target}`);
+                break;
+              }
+            }
+            if (!relink.ok) for (const [fn, b] of evicted.reverse()) workPlacement[fn] = b;
+          }
           if (relink.ok) {
-            bestScore = best.cand;
+            bestScore = layoutScore(workPlacement, result.callGraph, hot);
             dirty = false;
-            if (process.env.GTLUA_DEBUG) console.error(`[repair] ${best.fn} -> ${best.target} (score ${best.cand})`);
+            if (process.env.GTLUA_DEBUG) console.error(`[repair] ${best.fn} -> ${best.target} (score ${bestScore})`);
           } else {
             workPlacement[best.fn] = best.prev;
             dirty = true;
