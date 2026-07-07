@@ -1320,6 +1320,16 @@ void gt_pool_move(int *x, int *y, int *sx, int *sy, unsigned char *used,
     gt_poolmv_z();
 }
 
+/* life-cost sum + cooldown decay in one walk (gt_poolmv.s). */
+int gt_cost_decay_z(void);
+int gt_cost_decay(int *act, unsigned char *lm, const unsigned char *cost, int n) {
+    pm_x = (unsigned char *)act;
+    pm_sx = lm;
+    pm_sy = (unsigned char *)cost;
+    pm_n = (unsigned char)n;
+    return gt_cost_decay_z();
+}
+
 /* bulk animation pass (gt_poolmv.s): frame += spd, reset past max.
  * BYTE fields only (the pool narrows small fields to bytes). */
 void gt_poolan_z(void);

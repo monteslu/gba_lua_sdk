@@ -551,3 +551,51 @@ free:   ldx     _gt_qhead
 next:   inc     pm_i
         jmp     loop
 .endproc
+
+; ---------------------------------------------------------------------------
+; gt.cost_decay — combo-pool's per-frame life-cost sum + combo-cooldown
+; decay in one walk:  for every slot with act[i] != 0:
+;   sum += cost[act[i] - 1];  lm[i] = max(0, lm[i] - 5)
+; act is an INT array (stride 2, low byte tested — the ball color/tier),
+; lm and cost are BYTE arrays. Returns the sum (int in A/X). ~30 cycles a
+; slot against ~350 through the compiled loop.
+; Reuses pm_x (act), pm_sx (lm), pm_sy (cost), pm_n.
+; ---------------------------------------------------------------------------
+.export _gt_cost_decay_z
+
+.segment "ZEROPAGE" : zeropage
+cd_sum: .res 2
+
+.segment "CODE"
+.proc _gt_cost_decay_z
+        stz     cd_sum
+        stz     cd_sum+1
+        ldx     _pm_n
+        dex
+loop:   txa
+        asl     a
+        tay
+        lda     (_pm_x),y       ; act low byte (tier 1..7, 0 = free)
+        beq     next
+        dec     a               ; tier - 1
+        tay
+        lda     (_pm_sy),y      ; cost[tier-1]
+        clc
+        adc     cd_sum
+        sta     cd_sum
+        bcc     :+
+        inc     cd_sum+1
+:       txa
+        tay
+        lda     (_pm_sx),y      ; lm[i]
+        sec
+        sbc     #5
+        bcs     :+
+        lda     #0
+:       sta     (_pm_sx),y
+next:   dex
+        bpl     loop
+        lda     cd_sum
+        ldx     cd_sum+1
+        rts
+.endproc

@@ -105,7 +105,7 @@ local bpal = array8(7)      -- ball body color
 local bpal2 = array8(7)     -- highlight color
 local bpal3 = array8(7)     -- rim color
 local ballvalue = array8(7) -- score value per merge
-local ballcost10 = array(7) -- life cost x10
+local ballcost10 = array8(7)-- life cost x10 (max 40: fits a byte)
 local lifes10 = array(4)    -- per-difficulty life budget x10
 
 -- audio: tiny per-channel sequencer approximating the cart's sfx
@@ -700,13 +700,8 @@ function update_game()
   -- substep = 5/frame; we tick 5 per frame to match). Drag 0.98 becomes
   -- 1 - 1/64 - 1/256 = 0.98047 — shifts instead of a 16.16 multiply.
   gt.balls_drag(ballvx, ballvy, ballc, 28)
-  lifecost10 = 0
-  for i = 1, 28 do
-    if ballc[i] > 0 then
-      lifecost10 += ballcost10[ballc[i]]
-      balllm[i] = max(0, balllm[i] - 5)
-    end
-  end
+  -- life-cost sum + combo-cooldown decay, one asm walk (gt.cost_decay)
+  lifecost10 = gt.cost_decay(ballc, balllm, ballcost10, 28)
 
   -- score HUD bookkeeping
   if (maxballscore < ballscore) newmaxtimer = 60

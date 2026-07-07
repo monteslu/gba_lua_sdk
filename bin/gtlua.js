@@ -546,7 +546,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     ...(result.c.includes("gt_canvas_view(") ? ["-DGT_CANVAS"] : []),
     ...(result.c.includes("gt_tiles_draw") ? ["-DGT_TILES"] : []),
     ...(result.c.includes("gt_balls_step") ? ["-DGT_BALLS"] : []),
-    ...(result.c.includes("gt_pool_move") ? ["-DGT_POOLMV"] : []),
+    ...((result.c.includes("gt_pool_move") || result.c.includes("gt_cost_decay") || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs")) ? ["-DGT_POOLMV"] : []),
     ...(result.c.includes("gt_chunks_draw") ? ["-DGT_CHUNKS"] : []),
     ...(result.c.includes("gt_hit_scan") ? ["-DGT_HITS"] : []),
     ...(result.c.includes("gt_bg_compose") ? ["-DGT_BG_COMPOSE_ON"] : []),
@@ -599,7 +599,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
   if (usesTiles) as(path.join(SDK, "gt_tiles.s"), B("gt_tiles.o"));
   const usesBalls = result.c.includes("gt_balls_step");
   if (usesBalls) as(path.join(SDK, "gt_balls.s"), B("gt_balls.o"), num8 ? ["-D", "GT_NUM8"] : []);
-  const usesPoolmv = result.c.includes("gt_pool_move");
+  const usesPoolmv = (result.c.includes("gt_pool_move") || result.c.includes("gt_cost_decay") || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs"));
   if (usesPoolmv) as(path.join(SDK, "gt_poolmv.s"), B("gt_poolmv.o"));
   const usesChunks = result.c.includes("gt_chunks_draw");
   if (usesChunks) as(path.join(SDK, "gt_chunks.s"), B("gt_chunks.o"));
