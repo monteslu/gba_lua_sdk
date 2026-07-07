@@ -1856,9 +1856,13 @@ function p_draw()
   local i = 1
   while i <= 5 do
     -- x0.65625 (3 shift terms) stands in for /1.5 (a ~1.3k-cycle divide
-    -- per segment); the scarf drift difference is ~1.6% of a pixel
+    -- per segment); the scarf drift difference is ~1.6% of a pixel.
+    -- sin lands in a local first so the multiply's operands are plain
+    -- values and ride the zp fixed-multiply instead of the cdecl stack.
+    local i4 = i * 0.25
+    local sw = sin(i4 + tnow)
     scarf_x[i] += (lx - scarf_x[i] - p_facing) * 0.65625
-    scarf_y[i] += ((ly - scarf_y[i]) + sin(i * 0.25 + tnow) * i * 0.25) / 2
+    scarf_y[i] += ((ly - scarf_y[i]) + sw * i4) / 2
     scarf_x[i] = lx + mid(-1.5, scarf_x[i] - lx, 1.5)
     scarf_y[i] = ly + mid(-1.5, scarf_y[i] - ly, 1.5)
     rectfill(scarf_x[i], scarf_y[i], scarf_x[i], scarf_y[i], 10)
