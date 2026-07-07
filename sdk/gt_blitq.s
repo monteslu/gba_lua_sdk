@@ -303,54 +303,76 @@ _gt_p8_rectfill_z:
         STA _draw_color
 @cinv:  EOR #$FF
         STA _gt_ent+7
-        BRA @cam
+        JMP @cam                ; (the clip block below pushed @cam far)
 @ckeep: LDA _draw_color
         BRA @cinv
 
-@cam:   ; ---- x0 - cam_x: must land in 0..127 ----
+@cam:   ; ---- x0 - cam_x, edge-clipped in place. Partially-offscreen fills
+        ; used to punt to the C slow path (bank round-trip + full clip,
+        ; ~1.7k a call — the celeste2 scarf paid it ~5x a frame); now each
+        ; edge clamps here and only swapped coords or 128+ spans punt. ----
         SEC
         LDA _gt_a0
         SBC _gt_cam_x
         STA rf_x0
         LDA _gt_a0+1
         SBC _gt_cam_x+1
-        BNE @slow               ; <0 or >255
-        LDA rf_x0
-        BMI @slow               ; 128..255
-        ; ---- y0 - cam_y ----
+        BEQ @x0in
+        BPL @offj               ; x0 >= 256: fully right-off
+        STZ rf_x0               ; x0 < 0: clamp to the left edge
+        BRA @y0
+@offj:  JMP @off
+@x0in:  LDA rf_x0
+        BPL @y0
+        BRA @offj               ; 128..255: fully right-off
+@y0:    ; ---- y0 - cam_y ----
         SEC
         LDA _gt_a1
         SBC _gt_cam_y
         STA rf_y0
         LDA _gt_a1+1
         SBC _gt_cam_y+1
-        BNE @slow
-        LDA rf_y0
-        BMI @slow
-        ; ---- x1 - cam_x ----
+        BEQ @y0in
+        BPL @offj               ; y0 >= 256: below
+        STZ rf_y0               ; y0 < 0: clamp to the top
+        BRA @x1
+@y0in:  LDA rf_y0
+        BPL @x1
+        BRA @offj
+@x1:    ; ---- x1 - cam_x ----
         SEC
         LDA _gt_a2
         SBC _gt_cam_x
         STA rf_x1
         LDA _gt_a2+1
         SBC _gt_cam_x+1
-        BNE @slow
-        LDA rf_x1
-        BMI @slow
-        ; ---- y1 - cam_y (kept in A) ----
+        BEQ @x1in
+        BMI @off                ; x1 < 0: fully left-off
+        LDA #$7F
+        STA rf_x1               ; x1 > 255: clamp to the right edge
+        BRA @y1
+@x1in:  LDA rf_x1
+        BPL @y1
+        LDA #$7F                ; 128..255: clamp
+        STA rf_x1
+@y1:    ; ---- y1 - cam_y (result in A) ----
         SEC
         LDA _gt_a3
         SBC _gt_cam_y
         TAX
         LDA _gt_a3+1
         SBC _gt_cam_y+1
-        BNE @slow
-        TXA
-        BMI @slow
-        ; ---- height = y1 - y0 + 1 (ordered, < 128) ----
+        BEQ @y1in
+        BMI @off                ; y1 < 0: above
+        LDX #$7F                ; y1 > 255: clamp to the bottom
+@y1in:  TXA
+        BPL @hcalc
+        LDA #$7F                ; 128..255: clamp
+@hcalc: ; ---- height = y1 - y0 + 1 (reject if ordered wrong post-clip) ----
         SEC
         SBC rf_y0
-        BCC @slow               ; y1 < y0
+        BCC @slow               ; y1 < y0: swapped corners -> the C path
+                                ; (P8 rectfill accepts either corner order)
         CMP #$7F
         BCS @slow               ; span 128 needs the split path
         INC A
@@ -359,7 +381,7 @@ _gt_p8_rectfill_z:
         LDA rf_x1
         SEC
         SBC rf_x0
-        BCC @slow
+        BCC @slow               ; swapped: the C path handles it
         CMP #$7F
         BCS @slow
         INC A
@@ -376,6 +398,7 @@ _gt_p8_rectfill_z:
         STZ _gt_draw_mode       ; MODE_NONE: flags register now queue-owned
         JMP _gt_q_push
 @slow:  JMP _gt_p8_rectfill_slow
+@off:   RTS                     ; fully offscreen: no entry
 
 ; ---------------------------------------------------------------------------
 ; gt_p8_spr_z: the hot per-entity draw call, fully in asm.

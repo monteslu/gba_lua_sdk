@@ -1770,11 +1770,22 @@ function draw_tiles()
     cvl = e0
     cvr = e1
   end
-  while cvr < e1 do
+  -- budget ONE column per frame toward the hysteresis edges (a dash moves
+  -- 8px/frame = exactly one column, so the budget always keeps pace); the
+  -- while-burst below only fires if something outruns it, for correctness
+  if cvr < e1 then
     cvr += 1
     compose_col(cvr)
   end
-  while cvl > e0 do
+  while cvr < i1 do
+    cvr += 1
+    compose_col(cvr)
+  end
+  if cvl > e0 then
+    cvl -= 1
+    compose_col(cvl)
+  end
+  while cvl > i0 do
     cvl -= 1
     compose_col(cvl)
   end
@@ -1853,24 +1864,26 @@ function p_draw()
   local lx = p_x - p_facing + 0.0
   local ly = p_y - 3 + 0.0
   local tnow = time()
-  local i = 1
-  while i <= 5 do
+  for i = 1, 5 do
     -- x0.65625 (3 shift terms) stands in for /1.5 (a ~1.3k-cycle divide
-    -- per segment); the scarf drift difference is ~1.6% of a pixel.
-    -- sin lands in a local first so the multiply's operands are plain
-    -- values and ride the zp fixed-multiply instead of the cdecl stack.
+    -- per segment; ~1.6% drift on a decorative trail). Each segment reads
+    -- its arrays ONCE into locals and writes ONCE — the read-modify-write
+    -- form touched scarf_x[i] five times per segment through the array
+    -- indexing helpers.
     local i4 = i * 0.25
     local sw = sin(i4 + tnow)
-    scarf_x[i] += (lx - scarf_x[i] - p_facing) * 0.65625
-    scarf_y[i] += ((ly - scarf_y[i]) + sw * i4) / 2
-    scarf_x[i] = lx + mid(-1.5, scarf_x[i] - lx, 1.5)
-    scarf_y[i] = ly + mid(-1.5, scarf_y[i] - ly, 1.5)
-    rectfill(scarf_x[i], scarf_y[i], scarf_x[i], scarf_y[i], 10)
-    rectfill((scarf_x[i] + lx) / 2, (scarf_y[i] + ly) / 2,
-             (scarf_x[i] + lx) / 2, (scarf_y[i] + ly) / 2, 10)
-    lx = scarf_x[i]
-    ly = scarf_y[i]
-    i += 1
+    local sx = scarf_x[i]
+    local sy = scarf_y[i]
+    sx += (lx - sx - p_facing) * 0.65625
+    sy += ((ly - sy) + sw * i4) / 2
+    sx = lx + mid(-1.5, sx - lx, 1.5)
+    sy = ly + mid(-1.5, sy - ly, 1.5)
+    scarf_x[i] = sx
+    scarf_y[i] = sy
+    pset(sx, sy, 10)
+    pset((sx + lx) / 2, (sy + ly) / 2, 10)
+    lx = sx
+    ly = sy
   end
 
   -- grapple rope: only the retract flash remains (firing states removed)
