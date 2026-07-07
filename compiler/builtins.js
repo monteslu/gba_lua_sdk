@@ -98,6 +98,8 @@ export const GT_MEMBERS = {
   // round dots r=2,2,1,1,1 in the given color — all in asm (gt_flakes.s)
   flakes_mode: { kind: "fn", params: [["int", false], ["int", false]], ret: "void", c: "gt_flakes_mode" },
   chain_step_draw: { kind: "fn", params: [["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_chain_step_draw" },
+  // the 4-piece 128x128 canvas window blit (scrolling composed maps)
+  canvas_view: { kind: "fn", params: [["int", false], ["int", false]], ret: "void", c: "gt_canvas_view" },
   // visible-window tile scan in asm: draws every flag&1 tile of
   // map[j0..j1][i0..i1] (byte tiles, row-major, lvlw wide) as an 8x8 sprite
   tiles_draw: { kind: "fn", params: [["array8", false], ["array8", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_tiles_draw" },

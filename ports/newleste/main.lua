@@ -1577,17 +1577,8 @@ function _draw()
   -- compose_level). Two x-pieces (the 256px canvas strip boundary) x two
   -- 64-tall halves (the blitter's W/H are 7-bit): 4 blits total, colorkey-
   -- transparent over the clouds exactly like the old per-tile spr() pass.
-  local coff = draw_x & 255
-  local crow = (draw_x \ 256) * 128 + draw_y
-  local w0 = 256 - coff
-  if (w0 > 127) w0 = 127
-  gt.gspr(coff, crow, w0, 64, draw_x, draw_y)
-  gt.gspr(coff, crow + 64, w0, 64, draw_x, draw_y + 64)
-  local wx1 = draw_x + w0
-  local coff1 = wx1 & 255
-  local crow1 = (wx1 \ 256) * 128 + draw_y
-  gt.gspr(coff1, crow1, 128 - w0, 64, wx1, draw_y)
-  gt.gspr(coff1, crow1 + 64, 128 - w0, 64, wx1, draw_y + 64)
+  -- the whole 4-piece wrap-split runs in asm (gt_canvas_view)
+  gt.canvas_view(draw_x, draw_y)
 
   -- layer 1: level entities
   for i = 1, ffn do

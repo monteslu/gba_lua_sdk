@@ -1145,6 +1145,19 @@ void gt_flakes_mode(int i, int m) {
     if (i >= 0 && i < GT_FLAKES_MAX) fl_ry[i] = (unsigned char)m;
 }
 
+/* the 4-piece 128x128 canvas window (gt_flakes.s asm): newleste's map */
+extern unsigned char cv_dy;
+extern int cv_dx;
+#pragma zpsym ("cv_dx")
+#pragma zpsym ("cv_dy")
+void gt_canvas_view_z(void);
+void gt_canvas_view(int dx, int dy) {
+    cv_dx = dx;
+    cv_dy = (unsigned char)dy;
+    gt_draw_mode = MODE_NONE;
+    gt_canvas_view_z();
+}
+
 /* follower chain: ease + draw in asm (gt_flakes.s). Coordinates are
  * screen-space (the caller's camera() applies before this). */
 void gt_chain_step_draw(int x, int y, int col) {

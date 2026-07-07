@@ -438,3 +438,143 @@ d1:     lda     _ch_y,y
         bne     d1
         rts
 .endproc
+
+; ---------------------------------------------------------------------------
+; gt_canvas_view — the 4-piece 128x128 canvas window blit (newleste's map):
+; the 256px canvas strip splits at most once in x (two pieces of <=127) and
+; always twice in y (the blitter's 7-bit height), colorkey-transparent.
+; Replaces ~7k of Lua wrap math + four 6-arg gspr calls with ~1.5k.
+;   cv_dx (16-bit world x), cv_dy (byte world y) — the screen origin is the
+;   camera itself, so VX/VY are 0/64; canvas rows: crow = (dx>>8)*128 + dy.
+; ---------------------------------------------------------------------------
+.export _gt_canvas_view_z, _cv_dx, _cv_dy
+.import _gt_qbank
+
+QF_COPYV = $57
+
+.segment "ZEROPAGE" : zeropage
+_cv_dx:  .res 2
+_cv_dy:  .res 1
+cv_coff: .res 1                 ; dx & 255
+cv_crow: .res 1                 ; (dx>>8)*128 + dy
+cv_w0:   .res 1
+cv_t:    .res 1
+
+.segment "CODE"
+
+; stage one QF_COPY: A=GX X=GY, cv_t=W, Y=VX; VY passed in cv_crow? use
+; explicit: helper args via zp cv2_*
+.segment "ZEROPAGE" : zeropage
+cv_gx:  .res 1
+cv_gy:  .res 1
+cv_w:   .res 1
+cv_vx:  .res 1
+cv_vy:  .res 1
+
+.segment "CODE"
+.proc cvpiece
+        lda     cv_w
+        beq     done
+slot:   lda     _gt_qhead
+        clc
+        adc     #8
+        cmp     _gt_qtail
+        bne     free
+        jsr     _gt_q_pump
+        bra     slot
+free:   ldx     _gt_qhead
+        lda     #QF_COPYV
+        sta     _gt_q+0,x
+        lda     cv_vx
+        sta     _gt_q+1,x
+        lda     cv_vy
+        sta     _gt_q+2,x
+        lda     cv_gx
+        sta     _gt_q+3,x
+        lda     cv_gy
+        sta     _gt_q+4,x
+        lda     cv_w
+        sta     _gt_q+5,x
+        lda     #64
+        sta     _gt_q+6,x
+        lda     _gt_qbank
+        ora     #1              ; BG_GROUP
+        sta     _gt_q+7,x
+        txa
+        clc
+        adc     #8
+        sta     _gt_qhead
+        jsr     _gt_q_pump
+done:   rts
+.endproc
+
+.proc _gt_canvas_view_z
+        lda     _cv_dx
+        sta     cv_coff
+        ; crow = (dx>>8)*128 + dy  (dx>>8 is 0/1 for a 2-strip canvas)
+        lda     _cv_dx+1
+        lsr     a               ; bit0 -> carry
+        lda     #0
+        ror     a               ; A = 0 or 128
+        clc
+        adc     _cv_dy
+        sta     cv_crow
+        ; w0 = 256 - coff, capped 127
+        lda     #0
+        sec
+        sbc     cv_coff         ; 256-coff (mod 256; coff=0 -> 0 = full 256)
+        beq     full
+        cmp     #127
+        bcc     :+
+full:   lda     #127
+:       sta     cv_w0
+        ; piece A: (coff, crow, w0, 64) at (0,0); B at (0,64) crow+64
+        lda     cv_coff
+        sta     cv_gx
+        lda     cv_crow
+        sta     cv_gy
+        lda     cv_w0
+        sta     cv_w
+        stz     cv_vx
+        stz     cv_vy
+        jsr     cvpiece
+        lda     cv_crow
+        clc
+        adc     #64
+        sta     cv_gy
+        lda     #64
+        sta     cv_vy
+        jsr     cvpiece
+        ; pieces C/D: remaining width at VX=w0
+        lda     #128
+        sec
+        sbc     cv_w0
+        beq     doneall         ; w0 == 128?? (can't: capped 127) safety
+        sta     cv_w
+        ; wx1 = dx + w0 -> coff1 / crow1
+        lda     _cv_dx
+        clc
+        adc     cv_w0
+        sta     cv_gx           ; coff1 (low byte)
+        lda     _cv_dx+1
+        adc     #0
+        lsr     a
+        lda     #0
+        ror     a
+        clc
+        adc     _cv_dy
+        sta     cv_gy           ; crow1
+        lda     cv_w0
+        sta     cv_vx
+        stz     cv_vy
+        jsr     cvpiece
+        lda     cv_gy
+        clc
+        adc     #64
+        sta     cv_gy
+        lda     #64
+        sta     cv_vy
+        jsr     cvpiece
+doneall:
+        rts
+.endproc
