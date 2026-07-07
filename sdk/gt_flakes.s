@@ -447,7 +447,7 @@ d1:     lda     _ch_y,y
 ;   cv_dx (16-bit world x), cv_dy (byte world y) — the screen origin is the
 ;   camera itself, so VX/VY are 0/64; canvas rows: crow = (dx>>8)*128 + dy.
 ; ---------------------------------------------------------------------------
-.export _gt_canvas_view_z, _cv_dx, _cv_dy
+.export _gt_canvas_view_z, _cv_dx, _cv_dy, _cv_fl
 .import _gt_qbank
 
 QF_COPYV = $57
@@ -455,6 +455,7 @@ QF_COPYV = $57
 .segment "ZEROPAGE" : zeropage
 _cv_dx:  .res 2
 _cv_dy:  .res 1
+_cv_fl:  .res 1                 ; entry flags: $57 colorkey, $D7 opaque
 cv_coff: .res 1                 ; dx & 255
 cv_crow: .res 1                 ; (dx>>8)*128 + dy
 cv_w0:   .res 1
@@ -483,7 +484,7 @@ slot:   lda     _gt_qhead
         jsr     _gt_q_pump
         bra     slot
 free:   ldx     _gt_qhead
-        lda     #QF_COPYV
+        lda     _cv_fl
         sta     _gt_q+0,x
         lda     cv_vx
         sta     _gt_q+1,x

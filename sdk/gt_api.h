@@ -91,7 +91,7 @@ void gt_flakes_draw(int camdx8, int camdy8);
 void gt_flakes_draw2(int first, int count, int camdx8, int camdy8);
 void gt_flakes_set(int i, int x, int y, int w, int h, int spd8, int col);
 void gt_flakes_mode(int i, int m);
-void gt_canvas_view(int dx, int dy);
+void gt_canvas_view(int dx, int dy, int opaque);
 extern unsigned char db_px, db_py, db_v, db_m, db_c, db_c2, db_bg;
 void gt_dbar_z(void);
 void gt_chain_step_draw(int x, int y, int col);

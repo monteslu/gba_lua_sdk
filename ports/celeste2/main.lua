@@ -1728,6 +1728,7 @@ function draw_checkpoint(i, j)
 end
 
 function build_specials()
+  cvr = -1
   -- once per level: collect the non-flag&1 drawable tiles the asm scan
   -- skips (13 checkpoint, 36/37 edges, 46), with 36/37 resolved to their
   -- final cell here since neighbors are static
@@ -1755,17 +1756,56 @@ function build_specials()
   end
 end
 
+-- ring-canvas tile renderer: levels are 16 tiles tall and scroll only in
+-- x, so the 512x128 logical canvas holds a 64-column ring of composed
+-- tiles. Columns stamp once as the camera reaches them (16 bg_tile
+-- writes) and the whole visible window draws as ONE wrapped 4-piece
+-- blit — the per-frame tiles_draw scan of ~220 dense cells measured
+-- 40k cycles a frame in real play.
+local cvl = 0
+local cvr = -1
+
+function compose_col(ci)
+  local lx = (ci * 8) & 511
+  local cx = lx & 255
+  local cy = 0
+  if (lx >= 256) cy = 128
+  for j = 0, 15 do
+    local t = map[rowoff[j + 1] + ci + 1]
+    local cell = 0
+    if t > 0 and t < 128 then
+      if ((fl[t + 1] & 1) == 1) cell = t
+    end
+    gt.bg_tile(cell, cx, cy + j * 8)
+  end
+end
+
 function draw_tiles()
   local i0 = mid(0, camera_x \ 8, lvl_w - 1)
   local i1 = mid(0, (camera_x + 128) \ 8, lvl_w - 1)
-  local j0 = mid(0, camera_y \ 8, lvl_h - 1)
-  local j1 = mid(0, (camera_y + 128) \ 8, lvl_h - 1)
-  gt.tiles_draw(map, fl, lvl_w, i0, i1, j0, j1)
+  if cvr < 0 then
+    local ci = i0
+    while ci <= i1 do
+      compose_col(ci)
+      ci += 1
+    end
+    cvl = i0
+    cvr = i1
+  end
+  while cvr < i1 do
+    cvr += 1
+    compose_col(cvr)
+  end
+  while cvl > i0 do
+    cvl -= 1
+    compose_col(cvl)
+  end
+  gt.canvas_view(camera_x & 511, 0, 1)
   local k = 1
   while k <= spn do
     local i = spi[k]
     local j = spj[k]
-    if i >= i0 and i <= i1 and j >= j0 and j <= j1 then
+    if i >= i0 and i <= i1 then
       if spt[k] == 13 then
         draw_checkpoint(i, j)
       else

@@ -284,11 +284,23 @@ void GT_BG_TILE(int t, int px, int py) {
     unsigned char lut[16];
     const unsigned char *sheet = gt_sheet_ptr;
     if (!sheet) return;
-    if (t <= 0 || t > 255) return;
+    if (t < 0 || t > 255) return;
     for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
     quad = (unsigned char)((((py >> 7) & 1) << 1) | ((px >> 7) & 1));
     bg_enter_write_q(quad);
     lx  = (unsigned char)(px & 0x7F);
+    if (t == 0) {
+        /* tile 0 = clear the cell to color 0: ring-canvas users stamp air
+         * over stale columns (the old skip left garbage on screen) */
+        b = lut[0];
+        for (py2 = 0; py2 < 8; ++py2) {
+            unsigned char *dp =
+                vram + (((unsigned int)((py + py2) & 0x7F) << 7) | lx);
+            for (k = 0; k < 8; ++k) *dp++ = b;
+        }
+        bg_restore_draw_state();
+        return;
+    }
     sy0 = (unsigned char)(((t >> 4) & 15) << 3);
     for (py2 = 0; py2 < 8; ++py2) {
         const unsigned char *sp =
@@ -310,6 +322,7 @@ void GT_BG_TILE(int t, int px, int py) {
 void gt_bg_tile(int t, int px, int py) {
     unsigned char saved_bank = gt_cur_bank;
     if (!gt_sheet_ptr) return;
+    /* (t==0 clears the cell; the impl handles it) */
     gt_bank(GT_SHEET_BANK);
     gt_bg_tile_impl(t, px, py);
     gt_bank(saved_bank);
