@@ -648,13 +648,16 @@ export function check(chunk, file) {
       call.args.forEach((a, i) => {
         // an "array" param wants a bare array-global name passed by pointer —
         // arrays aren't values, so don't type-check it as a number.
-        if (params[i] && params[i][0] === "array") {
+        if (params[i] && (params[i][0] === "array" || params[i][0] === "array8")) {
+          const want8 = params[i][0] === "array8";
           const sym = a.kind === "name" ? lookup(a.name) : null;
           if (!sym || sym.kind !== "array") {
-            err(a, `${name}() argument ${i + 1} must be an array (declared with array(n))`);
-          } else if (sym.elemBytes) {
+            err(a, `${name}() argument ${i + 1} must be an array (declared with ${want8 ? "array8(n)" : "array(n)"})`);
+          } else if (!want8 && sym.elemBytes) {
             err(a, `${name}() argument ${i + 1} must be a 16-bit array(n) — array8 ` +
                    `elements are single bytes and the runtime reads int pairs`);
+          } else if (want8 && !sym.elemBytes) {
+            err(a, `${name}() argument ${i + 1} must be an array8(n) — this runtime reads single bytes`);
           } else {
             a.sym = sym;   // annotate for the emitter
           }

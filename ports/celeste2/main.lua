@@ -116,6 +116,12 @@ local gp_y = 0
 local gp_live = 0
 
 -- map: 2 tiles per int, row-major; tail doubles as LZ staging at load
+-- special tiles (animated checkpoints, neighbor-dependent edges) are drawn
+-- from this list on top of the asm tile scan; built once per level
+local spn = 0
+local spt = array8(24)
+local spi = array8(24)
+local spj = array8(24)
 -- tiles unpacked to one byte each at load (was 2-per-int + shift/mask
 -- unpacking in bget on EVERY read — the draw scan and collision both eat
 -- that). Same RAM, direct u8 reads.
@@ -708,6 +714,7 @@ function load_level(n)
   ld_dat(n)
   lz_unpack()
   load_meta(n)
+  build_specials()
   if lvl_title > 0 then
     level_intro = 60
   end
@@ -1712,42 +1719,52 @@ function draw_checkpoint(i, j)
   end
 end
 
-function draw_tiles()
-  local i0 = mid(0, camera_x \ 8, lvl_w - 1)
-  local i1 = mid(0, (camera_x + 128) \ 8, lvl_w - 1)
-  local j0 = mid(0, camera_y \ 8, lvl_h - 1)
-  local j1 = mid(0, (camera_y + 128) \ 8, lvl_h - 1)
-  local j = j0
-  while j <= j1 do
+function build_specials()
+  -- once per level: collect the non-flag&1 drawable tiles the asm scan
+  -- skips (13 checkpoint, 36/37 edges, 46), with 36/37 resolved to their
+  -- final cell here since neighbors are static
+  spn = 0
+  local j = 0
+  while j < lvl_h do
     local rowb = j * lvl_w
-    local i = i0
-    while i <= i1 do
+    local i = 0
+    while i < lvl_w do
       local t = bget(rowb + i)
-      if t ~= 0 and t < 128 then
-        local f = fl[t + 1]
-        if (f & 1) ~= 0 then
-          spr(t, i * 8, j * 8)
-        elseif t == 36 then
-          if tile_osolid(mget(i, j + 1)) == 1 then
-            spr(36, i * 8, j * 8)
-          else
-            spr(164, i * 8, j * 8)
-          end
-        elseif t == 37 then
-          if tile_osolid(mget(i - 1, j)) == 1 then
-            spr(165, i * 8, j * 8)
-          else
-            spr(37, i * 8, j * 8)
-          end
-        elseif t == 46 then
-          spr(46, i * 8, j * 8)
-        elseif t == 13 then
-          draw_checkpoint(i, j)
+      if t == 13 or t == 36 or t == 37 or t == 46 then
+        if spn < 24 then
+          spn += 1
+          local cell = t
+          if t == 36 and tile_osolid(mget(i, j + 1)) == 0 then cell = 164 end
+          if t == 37 and tile_osolid(mget(i - 1, j)) == 1 then cell = 165 end
+          spt[spn] = cell
+          spi[spn] = i
+          spj[spn] = j
         end
       end
       i += 1
     end
     j += 1
+  end
+end
+
+function draw_tiles()
+  local i0 = mid(0, camera_x \ 8, lvl_w - 1)
+  local i1 = mid(0, (camera_x + 128) \ 8, lvl_w - 1)
+  local j0 = mid(0, camera_y \ 8, lvl_h - 1)
+  local j1 = mid(0, (camera_y + 128) \ 8, lvl_h - 1)
+  gt.tiles_draw(map, fl, lvl_w, i0, i1, j0, j1)
+  local k = 1
+  while k <= spn do
+    local i = spi[k]
+    local j = spj[k]
+    if i >= i0 and i <= i1 and j >= j0 and j <= j1 then
+      if spt[k] == 13 then
+        draw_checkpoint(i, j)
+      else
+        spr(spt[k], i * 8, j * 8)
+      end
+    end
+    k += 1
   end
 end
 

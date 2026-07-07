@@ -97,6 +97,9 @@ export const GT_MEMBERS = {
   // follower chain (hair/tails): eases 5 segments toward (x,y), draws p8
   // round dots r=2,2,1,1,1 in the given color — all in asm (gt_flakes.s)
   chain_step_draw: { kind: "fn", params: [["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_chain_step_draw" },
+  // visible-window tile scan in asm: draws every flag&1 tile of
+  // map[j0..j1][i0..i1] (byte tiles, row-major, lvlw wide) as an 8x8 sprite
+  tiles_draw: { kind: "fn", params: [["array8", false], ["array8", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_tiles_draw" },
   // Offscreen-GRAM background canvas. The GameTank has 512 KB of GRAM (32
   // pages of 128x128); the SDK uses only page 0 (the sheet). A background
   // drawn as ONE big blit from a spare page costs the same as one 8x8 blit

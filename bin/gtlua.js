@@ -502,7 +502,8 @@ function build(entry, outPath, sheetPath, num8 = false) {
     !(result.c.includes("gt_bg_compose(") || result.c.includes("gt_gspr("));
   const apiDefs = [
     ...(usesStarfield ? ["-DGT_STARFIELD"] : []),
-    ...(result.c.includes("gt_flakes") ? ["-DGT_FLAKES"] : []),
+    ...(result.c.includes("gt_flakes") || result.c.includes("gt_chain") ? ["-DGT_FLAKES"] : []),
+    ...(result.c.includes("gt_tiles_draw") ? ["-DGT_TILES"] : []),
     ...(usesAutocls ? ["-DGT_AUTOCLS"] : []),
     ...(usesPackedSheet ? ["-DGT_SHEET_PACKED"] : []),
   ];
@@ -537,8 +538,10 @@ function build(entry, outPath, sheetPath, num8 = false) {
   as(path.join(SDK, "interrupt.s"), B("interrupt.o"));
   as(path.join(SDK, "gt_blitq.s"), B("gt_blitq.o"));
   as(path.join(SDK, num8 ? "gt_fixed8_asm.s" : "gt_fixed_asm.s"), B("gt_fixed_asm.o"));
-  const usesFlakes = result.c.includes("gt_flakes");
+  const usesFlakes = result.c.includes("gt_flakes") || result.c.includes("gt_chain");
   if (usesFlakes) as(path.join(SDK, "gt_flakes.s"), B("gt_flakes.o"));
+  const usesTiles = result.c.includes("gt_tiles_draw");
+  if (usesTiles) as(path.join(SDK, "gt_tiles.s"), B("gt_tiles.o"));
   as(path.join(SDK, "gt_print_asm.s"), B("gt_print_asm.o"));
   as(B("gt_api.s"), B("gt_api.o"));
   as(B("gt_fixed.s"), B("gt_fixed.o"));
@@ -556,6 +559,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     ...(usesAudio ? [B("gt_audio.o")] : []),
     ...(usesMusic ? [B("gt_music.o")] : []),
     ...(usesFlakes ? [B("gt_flakes.o")] : []),
+    ...(usesTiles ? [B("gt_tiles.o")] : []),
     B("gt_print_asm.o"),
     B("sheet.o"),
   ];

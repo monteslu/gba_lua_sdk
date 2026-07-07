@@ -1111,6 +1111,34 @@ void gt_chain_step_draw(int x, int y, int col) {
 }
 #endif /* GT_FLAKES */
 
+#ifdef GT_TILES
+/* visible-window tile scan in asm (gt_tiles.s): stages QF_SPR entries for
+ * every flag&1 tile in the [i0..i1]x[j0..j1] cell window. The port draws
+ * animated/special tiles on top from its own list. */
+extern unsigned char *tp_map, *tp_fl;
+extern unsigned char tp_w, tp_h, tp_stride, tp_sx, tp_sy;
+#pragma zpsym ("tp_map")
+#pragma zpsym ("tp_fl")
+#pragma zpsym ("tp_w")
+#pragma zpsym ("tp_h")
+#pragma zpsym ("tp_stride")
+#pragma zpsym ("tp_sx")
+#pragma zpsym ("tp_sy")
+void gt_tiles_z(void);
+void gt_tiles_draw(unsigned char *map, unsigned char *flags, int lvlw,
+                   int i0, int i1, int j0, int j1) {
+    if (i1 < i0 || j1 < j0) return;
+    tp_map = map + (unsigned int)(j0 * lvlw + i0);
+    tp_fl = flags;
+    tp_w = (unsigned char)(i1 - i0 + 1);
+    tp_h = (unsigned char)(j1 - j0 + 1);
+    tp_stride = (unsigned char)(lvlw - (i1 - i0 + 1));
+    tp_sx = (unsigned char)(i0 * 8 - gt_cam_x);
+    tp_sy = (unsigned char)(j0 * 8 - gt_cam_y);
+    gt_tiles_z();
+}
+#endif /* GT_TILES */
+
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
 #define GT_LINE_DIAG line_diag_impl

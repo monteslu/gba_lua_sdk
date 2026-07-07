@@ -634,7 +634,8 @@ export function emit(chunk, symbols, file, opts = {}) {
       case "color": return expr(a, "int");
       // pass an array global by pointer: the bare mangled name decays to
       // int*/long* (the checker validated it's an array reference).
-      case "array": return a.kind === "name" ? mangle(a.name) : "0";
+      case "array":
+      case "array8": return a.kind === "name" ? mangle(a.name) : "0";
       // a flip flag: any truthy value -> 1, else 0 (packed by the caller).
       case "flip": return `((${expr(a, "int")}) ? 1 : 0)`;
       default: return expr(a, "any");
