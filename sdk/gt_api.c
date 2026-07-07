@@ -1146,6 +1146,37 @@ void gt_tiles_draw(unsigned char *map, unsigned char *flags, int lvlw,
 }
 #endif /* GT_TILES */
 
+#ifdef GT_BALLS
+/* one ball-table physics substep in asm (gt_balls.s): half-velocity
+ * integration on the 8.8 core embedded in the port's 16.16 arrays, wall
+ * bounces (clamp + per-ball flag), spatial grid rebuild, and a contact-
+ * pair scan into `pairs` (i,j 1-based, 0-terminated). Lua resolves the
+ * pairs (impulse/merge) and applies bounce rules from the flags. */
+extern unsigned char *bp_x, *bp_y, *bp_vx, *bp_vy, *bp_act, *bp_fl, *bp_pairs;
+extern unsigned char bp_n;
+#pragma zpsym ("bp_x")
+#pragma zpsym ("bp_y")
+#pragma zpsym ("bp_vx")
+#pragma zpsym ("bp_vy")
+#pragma zpsym ("bp_act")
+#pragma zpsym ("bp_fl")
+#pragma zpsym ("bp_pairs")
+#pragma zpsym ("bp_n")
+void gt_balls_z(void);
+void gt_balls_step(long *x, long *y, long *vx, long *vy, int *act,
+                   unsigned char *flags, unsigned char *pairs, int n) {
+    bp_x = (unsigned char *)x;
+    bp_y = (unsigned char *)y;
+    bp_vx = (unsigned char *)vx;
+    bp_vy = (unsigned char *)vy;
+    bp_act = (unsigned char *)act;
+    bp_fl = flags;
+    bp_pairs = pairs;
+    bp_n = (unsigned char)n;
+    gt_balls_z();
+}
+#endif /* GT_BALLS */
+
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
 #define GT_LINE_DIAG line_diag_impl

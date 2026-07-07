@@ -284,6 +284,10 @@ end
 
 -- returns the slot used, 0 if the table is full (cap 28; the cart is
 -- unbounded — see PORT_NOTES.md)
+-- gt.balls engine plumbing: bounce flags + contact-pair list
+local ballfl = array8(32)
+local bpairs = array8(64)
+
 function new_ball(xx, yy, cc)
   local i = 1
   while i <= 28 do
@@ -752,52 +756,32 @@ function update_game()
   if (curpress == 0) avoid_nextlaunch = 0
 
   -- integrate + wall bounces + collisions, 2 substeps (cart: 5 — see
-  -- PORT_NOTES.md; contact range 8px vs 3px/substep, no tunneling)
+  -- PORT_NOTES.md). The movement + spatial grid + pair SCAN run in the asm
+  -- engine (gt_balls.s, ~4k/substep vs ~28k compiled); the branchy impulse
+  -- and merge resolution stays here in do_coll, fed from the pair list.
   local s = 0
   while s < 2 do
+    gt.balls_step(ballx, bally, ballvx, ballvy, ballc, ballfl, bpairs, 28)
+    local k = 1
+    while bpairs[k] > 0 do
+      do_coll(bpairs[k], bpairs[k + 1])
+      k += 2
+    end
     local i = 1
     while i <= 28 do
       if ballc[i] > 0 then
-        local bvx = ballvx[i]
-        local bvy = ballvy[i]
-        local x = ballx[i] + bvx / 2
-        local y = bally[i] + bvy / 2
-
-        local hurt = 0
-
-        if x > 124 or x < 4 then
-          hurt = 1
-          bvx = -bvx
-          x += bvx
-          if (x > 124) x = 124
-          if (x < 4) x = 4
-          ballvx[i] = bvx
-        end
-        if (y > 112 and bvy > 0.1) or y < 4 then
-          hurt = 1
-          bvy = -bvy
-          y += bvy
-          if (y > 112) y = 112
-          if (y < 4) y = 4
-          ballvy[i] = bvy
-        end
-        ballx[i] = x
-        bally[i] = y
-
-        if hurt == 1 then
+        if ballfl[i] == 1 then
           if balllm[i] <= 55 then
             ballmul[i] = min(ballmul[i] * 2, 8)
             balllm[i] = 60
-            new_part(x, y, 0.25, 2, 0)
+            new_part(ballx[i], bally[i], 0.25, 2, 0)
             playfx(11)
           end
         end
-
         if (resetmult == 1) ballmul[i] = 1
       end
       i += 1
     end
-    col_balls()
     s += 1
   end
 

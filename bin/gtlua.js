@@ -504,6 +504,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     ...(usesStarfield ? ["-DGT_STARFIELD"] : []),
     ...(result.c.includes("gt_flakes") || result.c.includes("gt_chain") ? ["-DGT_FLAKES"] : []),
     ...(result.c.includes("gt_tiles_draw") ? ["-DGT_TILES"] : []),
+    ...(result.c.includes("gt_balls_step") ? ["-DGT_BALLS"] : []),
     ...(usesAutocls ? ["-DGT_AUTOCLS"] : []),
     ...(usesPackedSheet ? ["-DGT_SHEET_PACKED"] : []),
   ];
@@ -542,6 +543,8 @@ function build(entry, outPath, sheetPath, num8 = false) {
   if (usesFlakes) as(path.join(SDK, "gt_flakes.s"), B("gt_flakes.o"));
   const usesTiles = result.c.includes("gt_tiles_draw");
   if (usesTiles) as(path.join(SDK, "gt_tiles.s"), B("gt_tiles.o"));
+  const usesBalls = result.c.includes("gt_balls_step");
+  if (usesBalls) as(path.join(SDK, "gt_balls.s"), B("gt_balls.o"));
   as(path.join(SDK, "gt_print_asm.s"), B("gt_print_asm.o"));
   as(B("gt_api.s"), B("gt_api.o"));
   as(B("gt_fixed.s"), B("gt_fixed.o"));
@@ -560,6 +563,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     ...(usesMusic ? [B("gt_music.o")] : []),
     ...(usesFlakes ? [B("gt_flakes.o")] : []),
     ...(usesTiles ? [B("gt_tiles.o")] : []),
+    ...(usesBalls ? [B("gt_balls.o")] : []),
     B("gt_print_asm.o"),
     B("sheet.o"),
   ];
