@@ -475,6 +475,16 @@ export function emit(chunk, symbols, file, opts = {}) {
       if (ck === "int" && byteish(e.left) && byteish(e.right)) {
         return `((unsigned char)${expr(e.left, "int")} ${c} (unsigned char)${expr(e.right, "int")})`;
       }
+      // var-vs-var int compares stack through cc65's ~127-cycle tosicmp;
+      // subtract-then-test-vs-zero measures 147 vs 243 cyc/iter on the
+      // reference loop. Exact whenever the true difference fits in 16
+      // bits — a dialect guarantee for game data (coordinates, counters).
+      // Constant sides keep the direct form (the immediate path is faster
+      // still). num8 fixed is int-width, so it rides the same shape.
+      if ((ck === "int" || (N8 && ck === "fixed")) &&
+          e.left.kind !== "number" && e.right.kind !== "number") {
+        return `((${expr(e.left, ck)} - (${expr(e.right, ck)})) ${c} 0)`;
+      }
       return `(${expr(e.left, ck)} ${c} ${expr(e.right, ck)})`;
     }
 
