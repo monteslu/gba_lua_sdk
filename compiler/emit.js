@@ -32,17 +32,17 @@ function peelIndex(e) {
 // Decompose a small positive constant into <=3 signed power-of-two terms
 // ([shift, sign] pairs) for multiply strength-reduction, or null. 16-bit
 // wrap semantics are identical for shift-adds, so the rewrite is exact.
-function shiftTerms(c) {
-  if (c < 2 || c > 255) return null;
+function shiftTerms(c, maxBit = 8) {
+  if (c < 2 || c >= (1 << (maxBit + 1))) return null;
   const bits = [];
-  for (let k = 7; k >= 0; k--) if (c & (1 << k)) bits.push([k, 1]);
+  for (let k = maxBit; k >= 0; k--) if (c & (1 << k)) bits.push([k, 1]);
   if (bits.length <= 3) return bits;
   // difference form: c = 2^a - r where r has <=2 bits (e.g. 15 = 16 - 1)
-  for (let a = 8; a >= 0; a--) {
+  for (let a = maxBit + 1; a >= 0; a--) {
     const r = (1 << a) - c;
     if (r < 0) continue;
     const rb = [];
-    for (let k = 7; k >= 0; k--) if (r & (1 << k)) rb.push([k, -1]);
+    for (let k = maxBit; k >= 0; k--) if (r & (1 << k)) rb.push([k, -1]);
     if (rb.length <= 2) return [[a, 1], ...rb];
   }
   return null;
@@ -517,6 +517,29 @@ export function emit(chunk, symbols, file, opts = {}) {
             }
           }
           return cv(`(${expr(fixSide, "fixed")} * ${expr(intSide, "int")})`, "fixed", want);
+        }
+        {
+          // fixed literal side: the 8.8/16.16 raw value is an integer —
+          // strength-reduce (x * v) >> FSH into <=3 arithmetic shifts of x
+          // (~40 cycles vs the ~600-cycle fmul; each term floors on its
+          // own, so the result sits within 2 lsb of the runtime multiply)
+          const litSide = (e.left.kind === "number" && !e.left.isInt) ? e.left
+                        : ((e.right.kind === "number" && !e.right.isInt) ? e.right : null);
+          const varSide = litSide === e.left ? e.right : e.left;
+          if (litSide && purelyDup(varSide)) {
+            const v = Math.round(Math.abs(litSide.value) * FONE);
+            const terms = shiftTerms(v, N8 ? 12 : 20);
+            if (terms) {
+              const b = expr(varSide, "fixed");
+              const t = terms.map(([sh, sg], i) => {
+                const d = FSH - sh;
+                const piece = d === 0 ? `(${b})` : (d > 0 ? `((${b}) >> ${d})` : `((${b}) << ${-d})`);
+                return i === 0 ? piece : (sg > 0 ? ` + ${piece}` : ` - ${piece}`);
+              }).join("");
+              const body = `(${t})`;
+              return cv(litSide.value < 0 ? `(0 - ${body})` : body, "fixed", want);
+            }
+          }
         }
         return cv(fixedCall("gt_fmul", e.left, e.right), "fixed", want);
       }
