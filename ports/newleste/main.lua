@@ -371,7 +371,9 @@ end
 -- player box (hitbox 1,3,6,5) against a world box, current position (0/1)
 function p_over(bx0, by0, bx1, by1)
   if (pmode ~= 2) return 0
-  if bx1 >= px + 1 and bx0 <= px + 6 and by1 >= py + 3 and by0 <= py + 7 then
+  -- subtract-then-const compares: the var-vs-var forms each cost ~127
+  -- through cc65's stacked compare; this shape takes the immediate path
+  if bx1 - px >= 1 and bx0 - px <= 6 and by1 - py >= 3 and by0 - py <= 7 then
     return 1
   end
   return 0
@@ -433,11 +435,18 @@ end
 
 function p_is_solid(ox, oy)
   -- solid objects: fall floors (while collideable)
+  local pox = px + ox
+  local poy = py + oy
   for i = 1, ffn do
     if ffcol[i] == 1 then
-      if ffx[i] + 7 >= px + 1 + ox and ffx[i] <= px + 6 + ox and
-         ffy[i] + 7 >= py + 3 + oy and ffy[i] <= py + 7 + oy then
-        return 1
+      -- delta-form (const-side compares skip the ~127-cycle stacked path);
+      -- runs per PIXEL of player movement x every collideable floor
+      local fdx = pox - ffx[i]
+      if fdx >= -6 and fdx <= 6 then
+        local fdy = poy - ffy[i]
+        if fdy >= -7 and fdy <= 4 then
+          return 1
+        end
       end
     end
   end
@@ -1011,8 +1020,10 @@ function update_fall_floors()
       -- int compares) skips the three p_over calls when the player is nowhere
       -- near — which is nearly every floor, nearly every frame.
       local hit = 0
-      if ffx[i] - 1 <= px + 6 and px + 1 <= ffx[i] + 8 and
-         ffy[i] - 1 <= py + 7 and py + 3 <= ffy[i] + 7 then
+      local fdx = px - ffx[i]
+      local fdy = -100
+      if (fdx >= -7 and fdx <= 7) fdy = py - ffy[i]
+      if fdy >= -8 and fdy <= 4 then
         if (p_over(ffx[i] - 1, ffy[i], ffx[i] + 6, ffy[i] + 7) == 1) hit = 1
         if (p_over(ffx[i], ffy[i] - 1, ffx[i] + 7, ffy[i] + 6) == 1) hit = 1
         if (p_over(ffx[i] + 1, ffy[i], ffx[i] + 8, ffy[i] + 7) == 1) hit = 1
@@ -1046,8 +1057,9 @@ function update_springs()
     -- skip the fixed multiply once it gets there — it ran every spring, every
     -- frame, forever. The overlap test is p_over inlined (int compares).
     if (spgdelta[i] ~= 0) spgdelta[i] *= 0.75
-    if pmode == 2 and spgx[i] <= px + 6 and px + 1 <= spgx[i] + 7 and
-       spgy[i] <= py + 7 and py + 3 <= spgy[i] + 7 then
+    local sdx = px - spgx[i]
+    local sdy = py - spgy[i]
+    if pmode == 2 and sdx >= -6 and sdx <= 6 and sdy >= -7 and sdy <= 4 then
       if spgdir[i] == 0 then
         p_move(0, spgy[i] - py - 4, 1)
         pvx8 = pvx8 \ 5                -- *0.2
