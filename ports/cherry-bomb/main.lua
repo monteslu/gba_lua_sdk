@@ -1093,11 +1093,14 @@ function update_game()
   end
  end
 
- -- collision ship x enemies
+ -- collision ship x enemies (inlined: the 8-arg col() call was ~1200
+ -- cycles per enemy per frame through the stack path)
  if invul<=0 then
   for e in all(enemies) do
    if e.mission!=MI_B5 then
-    if col(e.x\16,e.y\16,ecw(e.type),ech(e.type),shipx,shipy,8,8)==1 then
+    local exp=e.x\16
+    local eyp=e.y\16
+    if eyp<=shipy+7 and shipy<=eyp+e.ch-1 and exp<=shipx+7 and shipx<=exp+e.cw-1 then
      hitship()
     end
    end
