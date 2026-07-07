@@ -85,6 +85,8 @@ _gt_p4:    .res 2
 rf_x0:     .res 1               ; rectfill_z scratch: cam-adjusted coords
 rf_y0:     .res 1
 rf_x1:     .res 1
+q_xov:  .res 1               ; left-edge clip: source columns skipped
+q_yov:  .res 1               ; top-edge clip: source rows skipped
 q_pwh:     .res 1               ; spr_z scratch: pixel-width high byte
 q_phl:     .res 1               ;                pixel-height low
 q_phh:     .res 1               ;                pixel-height high
@@ -456,20 +458,38 @@ _gt_p8_spr_z:
         BNE @rejn               ; x >= 256: off right
         BIT _gt_q+1,X
         BMI @rejn               ; 128..255: off right
+        ; right overhang: the blitter's counters are 7-bit and a run past
+        ; x=127 wraps onto the next row (the edge-garbage bug) — trim W
+        STZ q_xov
+        SEC
+        LDA #128
+        SBC _gt_q+1,X           ; 128 - x = max visible width
+        CMP _gt_q+5,X
+        BCS @xok                ; pw fits
+        STA _gt_q+5,X           ; W = 128 - x
         BRA @xok
 @rejn:  RTS                     ; near reject trampoline (offscreen clip)
-@xneg:  ; x < 0: reject when x + pw <= 0
+@xneg:  ; x < 0: clip the left overhang (reject only when fully off)
         STA q_s                 ; x high (X holds the ring slot)
         CLC
         LDA _gt_q+1,X
         ADC _gt_q+5,X
-        STA q_t
+        STA q_t                 ; sum lo = visible width when hi lands on 0
         LDA q_s
         ADC q_pwh
-        BMI @rejn               ; sum < 0
-        BNE @xok                ; sum >= 256: on screen
+        BMI @rejn               ; sum < 0: fully off left
+        BNE @xok0               ; sum >= 256 can't happen for pw<=128 unless
+                                ; x > 127 already rejected; treat as full
         LDA q_t
-        BEQ @rejn               ; sum == 0: right edge exactly at 0
+        BEQ @rejn               ; right edge exactly at 0: nothing visible
+        ; ov = pw - visible; VX = 0; W = visible; GX += ov (applied later)
+        SEC
+        LDA _gt_q+5,X
+        SBC q_t
+        STA q_xov
+        LDA q_t
+        STA _gt_q+5,X
+@xok0:  STZ _gt_q+1,X           ; VX = 0
 @xok:
         ; ---- ph = max(h,1) << 3 ----
         LDA _gt_a4
@@ -494,6 +514,13 @@ _gt_p8_spr_z:
         BNE @rejn
         BIT _gt_q+2,X
         BMI @rejn
+        STZ q_yov
+        SEC
+        LDA #128
+        SBC _gt_q+2,X           ; 128 - y = max visible height
+        CMP _gt_q+6,X
+        BCS @yok
+        STA _gt_q+6,X           ; H = 128 - y
         BRA @yok
 @yneg:  STA q_s
         CLC
@@ -503,9 +530,16 @@ _gt_p8_spr_z:
         LDA q_s
         ADC q_phh
         BMI @rejn
-        BNE @yok
+        BNE @yok0
         LDA q_t
         BEQ @rejn
+        SEC
+        LDA _gt_q+6,X
+        SBC q_t
+        STA q_yov
+        LDA q_t
+        STA _gt_q+6,X
+@yok0:  STZ _gt_q+2,X           ; VY = 0
 @yok:
         ; ---- stage the rest: flags, GX=(n&15)<<3, GY=(n&0xF0)>>1 ----
         LDA #QF_SPR
@@ -515,11 +549,15 @@ _gt_p8_spr_z:
         ASL A
         ASL A
         ASL A
-        STA _gt_q+3,X           ; GX = cell col * 8 (left edge of source cell)
+        CLC
+        ADC q_xov               ; skip the left-clipped source columns
+        STA _gt_q+3,X           ; GX = cell col * 8 + clip
         LDA _gt_a0
         AND #$F0
         LSR A
-        STA _gt_q+4,X           ; GY = cell row * 8 (top edge)
+        CLC
+        ADC q_yov               ; skip the top-clipped source rows
+        STA _gt_q+4,X           ; GY = cell row * 8 + clip
         LDA _gt_qbank           ; copy blits carry their bank in the color slot
         STA _gt_q+7,X           ; (sheet sprites: the frame's write bank)
         ; ---- hardware flip (gt_a5: bit0 = flip X, bit1 = flip Y) ----

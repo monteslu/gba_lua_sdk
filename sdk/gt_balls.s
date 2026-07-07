@@ -715,15 +715,10 @@ slot:   lda     _gt_qhead
 free:   ldx     _gt_qhead
         lda     #QF_SPRB
         sta     _gt_q+0,x
-        ldy     bz_o
-        lda     (_bp_x),y
-        sec
-        sbc     #8
-        sta     _gt_q+1,x       ; VX = int(x) - 8 (byte wrap; hw clips)
-        lda     (_bp_y),y
-        sec
-        sbc     #7
-        sta     _gt_q+2,x       ; VY = int(y) - 7
+        ; defaults: full 16x16 cell, no clip
+        lda     #16
+        sta     _gt_q+5,x
+        sta     _gt_q+6,x
         lda     bq_c
         and     #$0F
         asl     a
@@ -734,9 +729,65 @@ free:   ldx     _gt_qhead
         and     #$F0
         lsr     a
         sta     _gt_q+4,x       ; GY
-        lda     #16
+        ; ---- x: the blit registers are 7-bit, so edge overhang must CLIP
+        ; (a negative or >112 VX byte aliases across the screen — the
+        ; combo-pool edge-garbage bug) ----
+        ldy     bz_o
+        lda     (_bp_x),y
+        sec
+        sbc     #8              ; vx = int(x) - 8
+        cmp     #128
+        bcc     bxin            ; 0..127: maybe right-trim
+        ; negative (byte 248..255 for balls clamped >= 4): left overhang
+        eor     #$FF
+        inc     a               ; ov = -vx (1..8)
+        pha
+        clc
+        adc     _gt_q+3,x
+        sta     _gt_q+3,x       ; GX += ov
+        pla
+        eor     #$FF
+        sec
+        adc     #16             ; W = 16 - ov  (A = 16 - ov)
         sta     _gt_q+5,x
+        stz     _gt_q+1,x       ; VX = 0
+        bra     bxdone
+bxin:   sta     _gt_q+1,x
+        ; right trim: if vx > 112, W = 128 - vx
+        cmp     #113
+        bcc     bxdone
+        eor     #$FF
+        sec
+        adc     #128            ; A = 128 - vx
+        sta     _gt_q+5,x
+bxdone: ; ---- y: same treatment ----
+        ldy     bz_o
+        lda     (_bp_y),y
+        sec
+        sbc     #7              ; vy = int(y) - 7
+        cmp     #128
+        bcc     byin
+        eor     #$FF
+        inc     a               ; ov = -vy
+        pha
+        clc
+        adc     _gt_q+4,x
+        sta     _gt_q+4,x       ; GY += ov
+        pla
+        eor     #$FF
+        sec
+        adc     #16
+        sta     _gt_q+6,x       ; H = 16 - ov
+        stz     _gt_q+2,x
+        bra     bydone
+byin:   sta     _gt_q+2,x
+        cmp     #113
+        bcc     bydone
+        eor     #$FF
+        sec
+        adc     #128
         sta     _gt_q+6,x
+bydone:
         lda     _gt_qbank
         sta     _gt_q+7,x
         txa
