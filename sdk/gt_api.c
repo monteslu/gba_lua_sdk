@@ -1238,6 +1238,21 @@ void gt_pool_move(int *x, int *y, int *sx, int *sy, unsigned char *used,
     pm_mode = (unsigned char)mode;
     gt_poolmv_z();
 }
+
+/* bulk 8x8 sprite pass (gt_poolmv.s): used slots with a nonzero cell byte
+ * blit at (x>>4, y>>4). */
+extern unsigned char *pm_cells;
+#pragma zpsym ("pm_cells")
+void gt_pool_sprs_z(void);
+void gt_pool_sprs(int *x, int *y, unsigned char *used, unsigned char *cells,
+                  int n) {
+    pm_x = (unsigned char *)x;
+    pm_y = (unsigned char *)y;
+    pm_used = used;
+    pm_cells = cells;
+    pm_n = (unsigned char)n;
+    gt_pool_sprs_z();
+}
 #endif /* GT_POOLMV */
 
 #ifdef GT_CHUNKS

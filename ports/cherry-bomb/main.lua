@@ -96,7 +96,7 @@ local bossoff = array(4)  -- boss ani frame offsets {0,4,8,4}
 
 -- entity pools (original uses unbounded tables; capacities documented
 -- in PORT_NOTES.md — overflowing add()s drop silently)
-local enemies = pool(40, "type,wait,anispd,mission,flash,shake,subphase")
+local enemies = pool(40, "type,wait,anispd,mission,flash,shake,subphase,cel")
 local buls = pool(28, "spr,dmg,colw")
 local ebuls = pool(48, "af")
 local parts = pool(56, "age,size2,maxage,blue,spark")
@@ -511,7 +511,7 @@ function spawnen(entype,enx,eny,enwait)
   px4=48
   py4=25
  end
- add(enemies,{x=ex2,y=ey2,sx=0,sy=0,posx=px4,posy=py4,type=entype,wait=enwait,anispd=6,aniframe=16,mission=MI_FLYIN,hp=hp,flash=0,shake=0,subphase=0,phbegin=0})
+ add(enemies,{x=ex2,y=ey2,sx=0,sy=0,posx=px4,posy=py4,type=entype,wait=enwait,anispd=6,aniframe=16,mission=MI_FLYIN,hp=hp,flash=0,shake=0,subphase=0,phbegin=0,cel=0})
 end
 
 -- one layout row (original placens()): hi/lo pack 5 cells each, base 6.
@@ -1239,10 +1239,14 @@ function draw_game()
  -- drawing enemies
  for e in all(enemies) do
   local f=e.aniframe\16
+  local shaken=0
   local ex3=e.x\16
   if e.shake>0 then
    e.shake-=1
-   if tick%4<2 then ex3+=1 end
+   if tick%4<2 then
+    ex3+=1
+    shaken=1
+   end
   end
   local w=1
   local h=1
@@ -1274,8 +1278,16 @@ function draw_game()
     sn=49+(f-1)*2
    end
   end
-  spr(sn,ex3,e.y\16,w,h)
+  -- plain 8x8 enemies ride the bulk asm pass; multicell (type 4/5) and
+  -- shake-nudged frames keep the direct call
+  e.cel=0
+  if w==1 and h==1 and sn<=255 and shaken==0 then
+   e.cel=sn
+  else
+   spr(sn,ex3,e.y\16,w,h)
+  end
  end
+ gt.pool_sprs(enemies, "cel")
 
  -- drawing bullets
  for b in all(buls) do

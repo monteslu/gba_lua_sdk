@@ -144,3 +144,111 @@ pm_e:   .res 2
         sta     pm_t+1
         rts
 .endproc
+
+; ---------------------------------------------------------------------------
+; gt.pool_sprs — bulk 8x8 sprite pass for a pool: every used slot with a
+; nonzero cell byte stages a QF_SPR ring entry at (x>>4, y>>4) (the 1/16th-
+; pixel convention). ~80 cycles per sprite vs ~570 through spr()'s zp call.
+;   reuses pm_x/pm_y/pm_used/pm_n; pm_cells = cell byte array.
+; ---------------------------------------------------------------------------
+.export _gt_pool_sprs_z, _pm_cells
+.import _gt_q, _gt_qhead, _gt_qtail, _gt_q_pump, _gt_qbank, _gt_draw_mode
+
+QF_SPR2 = $55
+
+.segment "ZEROPAGE" : zeropage
+_pm_cells: .res 2
+ps_t:      .res 1
+
+.segment "CODE"
+
+.proc _gt_pool_sprs_z
+        stz     _gt_draw_mode
+        stz     pm_i
+loop:   lda     pm_i
+        cmp     _pm_n
+        bne     :+
+        rts
+:       tay
+        lda     (_pm_used),y
+        bne     :+
+        jmp     next
+:       lda     (_pm_cells),y
+        bne     :+
+        jmp     next
+:       sta     ps_t            ; cell
+        ; x>>4 from the int at offset i*2: (lo>>4)|(hi<<4)
+        tya
+        asl     a
+        tay
+        lda     (_pm_x),y
+        sta     pm_t
+        iny
+        lda     (_pm_x),y
+        sta     pm_t+1
+        ; screen x = (x16 >> 4) low byte; negative/large clip via hw bits
+        lda     pm_t
+        lsr     pm_t+1
+        ror     a
+        lsr     pm_t+1
+        ror     a
+        lsr     pm_t+1
+        ror     a
+        lsr     pm_t+1
+        ror     a
+        sta     pm_t            ; px
+        dey
+        ; y>>4
+        lda     (_pm_y),y
+        sta     pm_d
+        iny
+        lda     (_pm_y),y
+        sta     pm_d+1
+        lda     pm_d
+        lsr     pm_d+1
+        ror     a
+        lsr     pm_d+1
+        ror     a
+        lsr     pm_d+1
+        ror     a
+        lsr     pm_d+1
+        ror     a
+        sta     pm_d            ; py
+        ; stage
+slot:   lda     _gt_qhead
+        clc
+        adc     #8
+        cmp     _gt_qtail
+        bne     free
+        jsr     _gt_q_pump
+        bra     slot
+free:   ldx     _gt_qhead
+        lda     #QF_SPR2
+        sta     _gt_q+0,x
+        lda     pm_t
+        sta     _gt_q+1,x
+        lda     pm_d
+        sta     _gt_q+2,x
+        lda     ps_t
+        and     #$0F
+        asl     a
+        asl     a
+        asl     a
+        sta     _gt_q+3,x       ; GX = (c & 15) * 8
+        lda     ps_t
+        and     #$F0
+        lsr     a
+        sta     _gt_q+4,x       ; GY = (c >> 4) * 8
+        lda     #8
+        sta     _gt_q+5,x
+        sta     _gt_q+6,x
+        lda     _gt_qbank
+        sta     _gt_q+7,x
+        txa
+        clc
+        adc     #8
+        sta     _gt_qhead
+        jsr     _gt_q_pump
+next:   inc     pm_i
+        jmp     loop
+.endproc

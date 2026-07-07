@@ -653,13 +653,18 @@ export function check(chunk, file) {
           if (!sym || sym.kind !== "pool") {
             err(a, `${name}() argument ${i + 1} must be a pool`);
           } else {
-            for (const f of ["x", "y", "sx", "sy"]) {
+            const need = name === "pool_sprs" ? ["x", "y"] : ["x", "y", "sx", "sy"];
+            for (const f of need) {
               const fl = sym.fields.get(f);
               if (!fl) err(a, `${name}() pool needs an int field '${f}'`);
               else if (fl.kind !== "int" || fl.forceByte) err(a, `${name}() pool field '${f}' must be a 16-bit int`);
             }
             a.sym = sym;
           }
+          return;
+        }
+        if (params[i] && params[i][0] === "str") {
+          if (a.kind !== "string") err(a, `${name}() argument ${i + 1} must be a string literal`);
           return;
         }
         if (params[i] && (params[i][0] === "array" || params[i][0] === "array8")) {

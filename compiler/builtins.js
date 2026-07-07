@@ -112,6 +112,9 @@ export const GT_MEMBERS = {
   // 24px atlas-chunk grid window (racing tracks): grid ints, two decode
   // LUTs (road, decal), a props byte-list out, stride, cell window
   chunks_draw: { kind: "fn", params: [["array", false], ["array8", false], ["array8", false], ["array8", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_chunks_draw" },
+  // bulk sprite pass: every used slot whose byte field (arg 2, a field
+  // name string) is nonzero blits an 8x8 cell at (x>>4, y>>4)
+  pool_sprs: { kind: "fn", params: [["pool", false], ["str", false]], ret: "void", c: "gt_pool_sprs", special: "poolsprs" },
   // Offscreen-GRAM background canvas. The GameTank has 512 KB of GRAM (32
   // pages of 128x128); the SDK uses only page 0 (the sheet). A background
   // drawn as ONE big blit from a spare page costs the same as one 8x8 blit
