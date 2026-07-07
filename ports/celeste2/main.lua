@@ -116,6 +116,9 @@ local gp_y = 0
 local gp_live = 0
 
 -- map: 2 tiles per int, row-major; tail doubles as LZ staging at load
+-- row-offset LUT: rowoff[j+1] = j*lvl_w, rebuilt per level — mget/box_solid
+-- previously paid cc65's mul8x16 (~250 cycles) PER PROBE for j*lvl_w
+local rowoff = array(20)
 -- special tiles (animated checkpoints, neighbor-dependent edges) are drawn
 -- from this list on top of the asm tile scan; built once per level
 local spn = 0
@@ -307,18 +310,26 @@ function bset(i, b)
   map[i + 1] = b
 end
 
+function build_rowoff()
+  local j = 0
+  while j < lvl_h do
+    rowoff[j + 1] = j * lvl_w
+    j += 1
+  end
+end
+
 function mget(tx, ty)
   if tx < 0 or ty < 0 or tx >= lvl_w or ty >= lvl_h then
     return 0
   end
-  return bget(ty * lvl_w + tx)
+  return map[rowoff[ty + 1] + tx + 1]
 end
 
 function mset(tx, ty, v)
   if tx < 0 or ty < 0 or tx >= lvl_w or ty >= lvl_h then
     return
   end
-  bset(ty * lvl_w + tx, v)
+  bset(rowoff[ty + 1] + tx, v)
 end
 
 -- LZSS decode, in place: stream staged in the buffer tail by ld_dat(n)
@@ -378,13 +389,7 @@ function box_solid(x0, y0, x1, y1)
   while i <= i1 do
     local j = j0
     while j <= j1 do
-      local idx = j * lvl_w + i
-      local v = map[idx \ 2 + 1]
-      if idx % 2 == 1 then
-        v = (v >> 8) & 255
-      else
-        v = v & 255
-      end
+      local v = map[rowoff[j + 1] + i + 1]
       if v == 19 then return 1 end
       if v <= 127 and (fl[v + 1] & 2) ~= 0 then return 1 end
       j += 1
@@ -714,6 +719,7 @@ function load_level(n)
   ld_dat(n)
   lz_unpack()
   load_meta(n)
+  build_rowoff()
   build_specials()
   if lvl_title > 0 then
     level_intro = 60
