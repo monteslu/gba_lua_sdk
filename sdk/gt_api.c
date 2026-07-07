@@ -1279,6 +1279,48 @@ void gt_pool_sprs(int *x, int *y, unsigned char *used, unsigned char *cells,
 }
 #endif /* GT_POOLMV */
 
+#ifdef GT_HITS
+/* two-pool AABB overlap scan (gt_hits.s) — pairs of live ordinals out */
+extern unsigned char *hs_ax, *hs_ay, *hs_aw, *hs_ah, *hs_au;
+extern unsigned char *hs_bx, *hs_by, *hs_bw, *hs_bu, *hs_pairs;
+extern unsigned char hs_an, hs_bn, hs_bh, hs_sh;
+#pragma zpsym ("hs_ax")
+#pragma zpsym ("hs_ay")
+#pragma zpsym ("hs_aw")
+#pragma zpsym ("hs_ah")
+#pragma zpsym ("hs_au")
+#pragma zpsym ("hs_an")
+#pragma zpsym ("hs_bx")
+#pragma zpsym ("hs_by")
+#pragma zpsym ("hs_bw")
+#pragma zpsym ("hs_bu")
+#pragma zpsym ("hs_bn")
+#pragma zpsym ("hs_bh")
+#pragma zpsym ("hs_sh")
+#pragma zpsym ("hs_pairs")
+void gt_hits_z(void);
+void gt_hit_scan(int *ax, int *ay, unsigned char *aw, unsigned char *ah,
+                 unsigned char *au, int an,
+                 int *bx, int *by, unsigned char *bw, unsigned char *bu,
+                 int bn, int bh, int sh, unsigned char *pairs) {
+    hs_ax = (unsigned char *)ax;
+    hs_ay = (unsigned char *)ay;
+    hs_aw = aw;
+    hs_ah = ah;
+    hs_au = au;
+    hs_an = (unsigned char)an;
+    hs_bx = (unsigned char *)bx;
+    hs_by = (unsigned char *)by;
+    hs_bw = bw;
+    hs_bu = bu;
+    hs_bn = (unsigned char)bn;
+    hs_bh = (unsigned char)(bh - 1);
+    hs_sh = (unsigned char)sh;
+    hs_pairs = pairs;
+    gt_hits_z();
+}
+#endif /* GT_HITS */
+
 #ifdef GT_CHUNKS
 /* 24px atlas-chunk grid renderer (gt_chunks.s) — see the asm header. */
 extern unsigned char *ck_grid, *ck_lut, *ck_lut2, *ck_props;

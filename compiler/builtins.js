@@ -119,6 +119,9 @@ export const GT_MEMBERS = {
   // bulk sprite pass: every used slot whose byte field (arg 2, a field
   // name string) is nonzero blits an 8x8 cell at (x>>4, y>>4)
   pool_sprs: { kind: "fn", params: [["pool", false], ["str", false]], ret: "void", c: "gt_pool_sprs", special: "poolsprs" },
+  // two-pool AABB overlap scan: gt.hit_scan(A, "w", "h", B, "w", bh, shift,
+  // pairs) — pairs get (a_ord, b_ord) live ordinals, 0-terminated
+  hit_scan: { kind: "fn", params: [["pool", false], ["str", false], ["str", false], ["pool", false], ["str", false], ["int", false], ["int", false], ["array8", false]], ret: "void", c: "gt_hit_scan", special: "hitscan" },
   // Offscreen-GRAM background canvas. The GameTank has 512 KB of GRAM (32
   // pages of 128x128); the SDK uses only page 0 (the sheet). A background
   // drawn as ONE big blit from a spare page costs the same as one 8x8 blit

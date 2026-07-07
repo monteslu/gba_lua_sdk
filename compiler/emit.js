@@ -677,6 +677,13 @@ export function emit(chunk, symbols, file, opts = {}) {
         return `(0x100 | (${argAt(e, 0, "int", "0")} & 0xFF))`;
       }
       if (sig.isValue) return sig.c;
+      if (sig.special === "hitscan") {
+        const A = e.args[0].sym, B = e.args[3].sym;
+        const fw = e.args[1].value, fh = e.args[2].value, fbw = e.args[4].value;
+        const bh = expr(e.args[5], "int"), sh = expr(e.args[6], "int");
+        const pr = expr(e.args[7], "int");
+        return `gt_hit_scan(${A.cname}_x, ${A.cname}_y, ${A.cname}_${fw}, ${A.cname}_${fh}, ${A.cname}_used, ${A.cname}_hi, ${B.cname}_x, ${B.cname}_y, ${B.cname}_${fbw}, ${B.cname}_used, ${B.cname}_hi, ${bh}, ${sh}, ${pr})`;
+      }
       if (sig.special === "poolsprs") {
         const pl = e.args[0].sym;
         const fld = e.args[1].value;

@@ -96,13 +96,14 @@ local bossoff = array(4)  -- boss ani frame offsets {0,4,8,4}
 
 -- entity pools (original uses unbounded tables; capacities documented
 -- in PORT_NOTES.md — overflowing add()s drop silently)
-local enemies = pool(40, "type,wait,anispd,mission,flash,shake,subphase,cel")
+local enemies = pool(40, "type,wait,anispd,mission,flash,shake,subphase,cel,cw,ch")
 local buls = pool(28, "spr,dmg,colw")
 local ebuls = pool(48, "af")
 local parts = pool(56, "age,size2,maxage,blue,spark")
 local shwaves = pool(12, "r,tr,col,speed")
 local pickups = pool(8)
 local floats = pool(8)
+local hpairs = array8(64)   -- enemy x bullet overlap pairs (asm hit scan)
 
 -->8
 -- tools
@@ -511,7 +512,7 @@ function spawnen(entype,enx,eny,enwait)
   px4=48
   py4=25
  end
- add(enemies,{x=ex2,y=ey2,sx=0,sy=0,posx=px4,posy=py4,type=entype,wait=enwait,anispd=6,aniframe=16,mission=MI_FLYIN,hp=hp,flash=0,shake=0,subphase=0,phbegin=0,cel=0})
+ add(enemies,{x=ex2,y=ey2,sx=0,sy=0,posx=px4,posy=py4,type=entype,wait=enwait,anispd=6,aniframe=16,mission=MI_FLYIN,hp=hp,flash=0,shake=0,subphase=0,phbegin=0,cel=0,cw=ecw(entype),ch=ech(entype)})
 end
 
 -- one layout row (original placens()): hi/lo pack 5 cells each, base 6.
@@ -1013,56 +1014,68 @@ function update_game()
   end
  end
 
- -- collision enemy x bullets
- for e in all(enemies) do
-  if e.mission!=MI_B5 then     -- dying boss is a ghost
-   local exp=e.x\16
-   local eyp=e.y\16
-   local ew=ecw(e.type)
-   local eh=ech(e.type)
-   for b in all(buls) do
-    local by2=b.y\16
-    if eyp<=by2+7 and by2<=eyp+eh-1 then
-     local bx2=b.x\16
-     if exp<=bx2+b.colw-1 and bx2<=exp+ew-1 then
-     smol_shwave(b.x\16+4,b.y\16+4,9)
-     del(buls,b)
-     smol_spark(exp+4,eyp+4)
-     if e.mission!=MI_FLYIN then
-      e.hp-=b.dmg
-     end
-     hit_sfx()                  -- bullet hit registered (orig sfx 3)
-     if e.type==5 then e.flash=5 else e.flash=2 end
-     if e.hp<=0 then
-      -- killen(), inlined
-      if e.type==5 then
-       e.mission=MI_B5    -- ghost + death throes
-       e.phbegin=tick
-       for eb in all(ebuls) do del(ebuls,eb) end
-       boom_sfx()                -- boss down (orig music stop + sfx 51)
-      else
-       del(enemies,e)
-       boom_sfx()                -- enemy explodes (orig sfx 2)
-       explode(exp+4,eyp+4,0)
-       local cherchance=13   -- 0.1 in 1/128ths
-       local scoremult=1
-       if e.mission==MI_ATTAC then
-        scoremult=2
-        if rnd()<0.5 then pickattac() end
-        cherchance=26        -- 0.2
+ -- collision enemy x bullets: geometry in asm (gt.hit_scan), the rare
+ -- hit resolution here. Pairs are (enemy_ord, bullet_ord) live ordinals in
+ -- all() order; only the first pair per enemy applies (the cart broke out
+ -- of the bullet loop after a hit).
+ gt.hit_scan(enemies, "cw", "ch", buls, "colw", 8, 4, hpairs)
+ if hpairs[1] > 0 then
+  local k = 1
+  local si = 0
+  for e in all(enemies) do
+   si += 1
+   if hpairs[k] == si then
+    if e.mission != MI_B5 then
+     local exp = e.x\16
+     local eyp = e.y\16
+     local bi = hpairs[k + 1]
+     local bj = 0
+     for b in all(buls) do
+      bj += 1
+      if bj == bi then
+       smol_shwave(b.x\16 + 4, b.y\16 + 4, 9)
+       del(buls, b)
+       smol_spark(exp + 4, eyp + 4)
+       if e.mission != MI_FLYIN then
+        e.hp -= b.dmg
        end
-       score+=etscore(e.type)*scoremult
-       if scoremult!=1 then
-        popfloat(etscore(e.type)*scoremult,0,exp+4,eyp+4)
+       hit_sfx()
+       if e.type == 5 then e.flash = 5 else e.flash = 2 end
+       if e.hp <= 0 then
+        -- killen(), inlined
+        if e.type == 5 then
+         e.mission = MI_B5
+         e.phbegin = tick
+         for eb in all(ebuls) do del(ebuls, eb) end
+         boom_sfx()
+        else
+         del(enemies, e)
+         boom_sfx()
+         explode(exp + 4, eyp + 4, 0)
+         local cherchance = 13
+         local scoremult = 1
+         if e.mission == MI_ATTAC then
+          scoremult = 2
+          if rnd() < 0.5 then pickattac() end
+          cherchance = 26
+         end
+         score += etscore(e.type) * scoremult
+         if scoremult != 1 then
+          popfloat(etscore(e.type) * scoremult, 0, exp + 4, eyp + 4)
+         end
+         if flr(rnd(128)) < cherchance then
+          add(pickups, {x = e.x, y = e.y})
+         end
+        end
        end
-       if flr(rnd(128))<cherchance then
-        add(pickups,{x=e.x,y=e.y})
-       end
+       break
       end
-      break
-     end
      end
     end
+    -- consume every pair for this enemy (first applies, rest skip)
+    k += 2
+    while hpairs[k] == si do k += 2 end
+    if (hpairs[k] == 0) break
    end
   end
  end
