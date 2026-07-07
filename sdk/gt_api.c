@@ -1101,6 +1101,14 @@ void gt_flakes_set(int i, int x, int y, int w, int h, int spd8, int col) {
     gt_bank(saved_bank);
 }
 #endif
+/* follower chain: ease + draw in asm (gt_flakes.s). Coordinates are
+ * screen-space (the caller's camera() applies before this). */
+void gt_chain_step_draw(int x, int y, int col) {
+    gt_a0 = x;
+    gt_a1 = y;
+    gt_a2 = col & 15;
+    gt_chain_z();
+}
 #endif /* GT_FLAKES */
 
 #ifdef GT_BANKED

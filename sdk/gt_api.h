@@ -89,7 +89,9 @@ void gt_starfield_draw(void);
 void gt_flakes_init(int n);
 void gt_flakes_draw(int camdx8, int camdy8);
 void gt_flakes_draw2(int first, int count, int camdx8, int camdy8);
-void gt_flakes_set(int i, int x, int y, int w, int h, int spd8, int col);       /* plot the whole field (one CPU pass) */
+void gt_flakes_set(int i, int x, int y, int w, int h, int spd8, int col);
+void gt_chain_step_draw(int x, int y, int col);
+void gt_chain_z(void);       /* plot the whole field (one CPU pass) */
 /* offscreen-GRAM background canvas (gt_bg.c) */
 void gt_bg_compose(int *map, int cols, int cx, int cy, int cw, int ch);
 void gt_bg_draw(int sx, int sy);

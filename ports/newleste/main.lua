@@ -652,13 +652,17 @@ function update_hair()
 end
 
 function draw_hair()
+  -- the ease + dots run in asm (gt.chain, ~1.6k vs ~11k through the
+  -- compiler). Screen-space: the chain stages raw ring entries with no
+  -- camera adjust; rooms are single-screen so only shake differs (the
+  -- hair lags the shake by a frame — invisible).
   local hc = 8
   if (pdjump == 0) hc = 12
-  circfill(hx[1], hy[1], 2, hc)
-  circfill(hx[2], hy[2], 2, hc)
-  circfill(hx[3], hy[3], 1, hc)
-  circfill(hx[4], hy[4], 1, hc)
-  circfill(hx[5], hy[5], 1, hc)
+  local lx = px + 1
+  if (pflip == 1) lx = px + 6
+  local ly = py + 3
+  if (pmode == 2 and btn(3)) ly = py + 4
+  gt.chain_step_draw(lx - draw_x, ly - draw_y, hc)
 end
 
 -- ---------------------------------------------------------------------
@@ -765,7 +769,6 @@ function spawn_update()
       player_init()
     end
   end
-  update_hair()
 end
 
 function next_level()
@@ -963,8 +966,6 @@ function p_update()
     if (h_input ~= 0 and p_is_solid(h_input, 0) == 1) s = 5 -- wall slide
   end
   pspr = s
-
-  update_hair()
 
   -- exit level
   local exiting = 0

@@ -94,6 +94,9 @@ export const GT_MEMBERS = {
   flakes_draw2: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_flakes_draw2" },
   // manual slot setup for the non-snow layer: (i, x, y, w, h, spd8, col)
   flakes_set: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_flakes_set" },
+  // follower chain (hair/tails): eases 5 segments toward (x,y), draws p8
+  // round dots r=2,2,1,1,1 in the given color — all in asm (gt_flakes.s)
+  chain_step_draw: { kind: "fn", params: [["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_chain_step_draw" },
   // Offscreen-GRAM background canvas. The GameTank has 512 KB of GRAM (32
   // pages of 128x128); the SDK uses only page 0 (the sheet). A background
   // drawn as ONE big blit from a spare page costs the same as one 8x8 blit

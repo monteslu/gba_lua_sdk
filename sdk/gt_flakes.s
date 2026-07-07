@@ -208,3 +208,210 @@ _gt_flakes_draw:
         bne     jl
         rts
 jl:     jmp     loop
+
+; ---------------------------------------------------------------------------
+; gt.chain — follower chain (hair, tails): 5 segments ease toward a target
+; with the port's integer 5/8 smoothing ((d*5+4)>>3), drawn as p8 round
+; dots (radii 2,2,1,1,1) staged straight into the blit ring. The same
+; update+draw measured ~11k/frame through the compiler; this is ~1.6k.
+;   gt_a0 = target x (screen px)  gt_a1 = target y  gt_a2 = p8 color
+; ---------------------------------------------------------------------------
+.export _gt_chain_z
+.importzp _gt_a0, _gt_a1, _gt_a2
+.import _p8pal, _gt_draw_mode
+
+CH_N = 5
+QF_RECTC = $CD
+
+.segment "BSS"
+_ch_x:  .res CH_N
+_ch_y:  .res CH_N
+ch_c:   .res 1                  ; resolved + inverted color
+ch_px:  .res 1                  ; current dot center x
+ch_py:  .res 1                  ; current dot center y
+.export _ch_x, _ch_y
+
+.segment "ZEROPAGE" : zeropage
+ce_d:   .res 2                  ; ease scratch (16-bit d*5)
+
+.segment "CODE"
+
+; A = current pos, ch_c-free helper: eases pos toward gt_aN. Inputs via
+; caller-set zp; returns eased new pos in A. Uses ce_d. Preserves Y.
+; new = pos + ((target - pos)*5 + 4) >> 3   (arithmetic shift)
+.proc ease58
+        ; X = target (passed in X), A = pos
+        sta     ce_d            ; pos
+        txa
+        sec
+        sbc     ce_d            ; d = target - pos (s8)
+        ; sign-extend d into ce_d 16-bit, then *5 + 4 >> 3
+        tax                     ; keep d
+        and     #$80
+        beq     :+
+        lda     #$FF
+:       sta     ce_d+1
+        stx     ce_d
+        ; d*5 = d + d<<2 (16-bit)
+        lda     ce_d
+        asl     a
+        rol     ce_d+1          ; CAUTION: hi already sign; shifting is fine
+        asl     a
+        rol     ce_d+1
+        ; A = d<<2 lo, ce_d+1 = running hi; add original d (sign-extended)
+        clc
+        adc     ce_d
+        sta     ce_d
+        txa                     ; recompute nothing — hi add:
+        and     #$80
+        beq     :+
+        lda     #$FF
+        bra     :++
+:       lda     #$00
+:       adc     ce_d+1
+        sta     ce_d+1
+        ; +4
+        lda     ce_d
+        clc
+        adc     #4
+        sta     ce_d
+        bcc     :+
+        inc     ce_d+1
+:       ; arithmetic >>3
+        lda     ce_d+1
+        cmp     #$80            ; carry = sign for ror
+        ror     ce_d+1
+        ror     ce_d
+        lda     ce_d+1
+        cmp     #$80
+        ror     ce_d+1
+        ror     ce_d
+        lda     ce_d+1
+        cmp     #$80
+        ror     ce_d+1
+        ror     ce_d
+        lda     ce_d            ; step (s8 in practice)
+        rts
+.endproc
+
+; stage one 1-scanline fill: A=x X=w  (ch_py holds y; ch_c the color)
+.proc chrow
+        sta     ce_d            ; x
+        stx     ce_d+1          ; w
+slot:   lda     _gt_qhead
+        clc
+        adc     #8
+        cmp     _gt_qtail
+        bne     free
+        phy
+        jsr     _gt_q_pump
+        ply
+        bra     slot
+free:   ldx     _gt_qhead
+        lda     #QF_RECTC
+        sta     _gt_q+0,x
+        lda     ce_d
+        sta     _gt_q+1,x
+        lda     ch_py
+        sta     _gt_q+2,x
+        stz     _gt_q+3,x
+        stz     _gt_q+4,x
+        lda     ce_d+1
+        sta     _gt_q+5,x
+        lda     #1
+        sta     _gt_q+6,x
+        lda     ch_c
+        sta     _gt_q+7,x
+        txa
+        clc
+        adc     #8
+        sta     _gt_qhead
+        phy
+        jsr     _gt_q_pump
+        ply
+        inc     ch_py           ; next scanline
+        rts
+.endproc
+
+; void gt_chain_z(void) — gt_a0/a1 = target, gt_a2 = p8 color
+.proc _gt_chain_z
+        stz     _gt_draw_mode
+        ldy     _gt_a2
+        lda     _p8pal,y
+        eor     #$FF
+        sta     ch_c
+        ; ---- update the chain ----
+        ldy     #0
+upd:    ldx     _gt_a0
+        lda     _ch_x,y
+        sta     ch_px           ; old pos
+        jsr     ease58
+        clc
+        adc     ch_px
+        sta     _ch_x,y
+        sta     _gt_a0
+        ldx     _gt_a1
+        lda     _ch_y,y
+        sta     ch_px
+        jsr     ease58
+        clc
+        adc     ch_px
+        sta     _ch_y,y
+        sta     _gt_a1
+        iny
+        cpy     #CH_N
+        bne     upd
+        ; ---- draw: segs 0,1 radius 2; segs 2,3,4 radius 1 ----
+        ldy     #0
+d2:     lda     _ch_y,y
+        sec
+        sbc     #2
+        sta     ch_py           ; top row of the r2 dot
+        lda     _ch_x,y
+        sec
+        sbc     #1
+        ldx     #3
+        jsr     chrow           ; row -2: w3 at x-1
+        lda     _ch_x,y
+        sec
+        sbc     #2
+        ldx     #5
+        jsr     chrow           ; row -1: w5 at x-2
+        lda     _ch_x,y
+        sec
+        sbc     #2
+        ldx     #5
+        jsr     chrow           ; row 0
+        lda     _ch_x,y
+        sec
+        sbc     #2
+        ldx     #5
+        jsr     chrow           ; row +1
+        lda     _ch_x,y
+        sec
+        sbc     #1
+        ldx     #3
+        jsr     chrow           ; row +2
+        iny
+        cpy     #2
+        bne     d2
+d1:     lda     _ch_y,y
+        sec
+        sbc     #1
+        sta     ch_py
+        lda     _ch_x,y
+        ldx     #1
+        jsr     chrow           ; row -1: w1 at x
+        lda     _ch_x,y
+        sec
+        sbc     #1
+        ldx     #3
+        jsr     chrow           ; row 0: w3 at x-1
+        lda     _ch_x,y
+        ldx     #1
+        jsr     chrow           ; row +1
+        iny
+        cpy     #CH_N
+        bne     d1
+        rts
+.endproc
