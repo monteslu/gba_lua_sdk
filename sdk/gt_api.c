@@ -1474,6 +1474,16 @@ void gt_p8_line_z(void) {
 #endif
 
 
+/* circle engine contract (gt_circ.s) — shared by banked and flat builds */
+extern int cc_x, cc_y;
+extern unsigned char cc_r, cc_c;
+#pragma zpsym ("cc_x")
+#pragma zpsym ("cc_y")
+#pragma zpsym ("cc_r")
+#pragma zpsym ("cc_c")
+void gt_circf_z(void);
+void gt_circo_z(void);
+
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
 #define GT_CIRCFILL_Z gt_p8_circfill_z_impl
@@ -1486,31 +1496,18 @@ static
 #endif
 void GT_CIRCFILL_Z(void) {
     unsigned char col = resolve_color(gt_a3);
-    int cx, cy, r, x, y, d;
+    int cx, cy, r;
     cx = gt_a0 - gt_cam_x; cy = gt_a1 - gt_cam_y;
     r = gt_a2;
     if (r < 0) return;
     if (r == 0) { pset_raw(cx, cy, col); return; }
-    fc_col = col;
-    /* midpoint circle -> two horizontal spans per step pair. Each scanline
-     * goes through the lean hspan_raw (spans are pre-ordered and <128 wide),
-     * not the full fill_clipped_z — this is what keeps circfill in budget. */
-    x = r; y = 0; d = 1 - r;
-    while (y <= x) {
-        hspan_raw(cx - x, cx + x, cy + y);
-        if (y != 0) hspan_raw(cx - x, cx + x, cy - y);
-        if (d < 0) {
-            d += (y << 1) + 3;
-        } else {
-            if (x != y) {
-                hspan_raw(cx - y, cx + y, cy + x);
-                hspan_raw(cx - y, cx + y, cy - x);
-            }
-            d += ((y - x) << 1) + 5;
-            --x;
-        }
-        ++y;
-    }
+    if (r > 127) r = 127;
+    /* the midpoint loop + span staging live in gt_circ.s (~45 cycles a
+     * span against ~300 through hspan_raw — cherry's explosion discs) */
+    cc_x = cx; cc_y = cy;
+    cc_r = (unsigned char)r;
+    cc_c = (unsigned char)~col;
+    gt_circf_z();
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
@@ -1535,21 +1532,16 @@ static
 #endif
 void GT_CIRC_Z(void) {
     unsigned char col = resolve_color(gt_a3);
-    int cx, cy, r, x, y, d;
+    int cx, cy, r;
     cx = gt_a0 - gt_cam_x; cy = gt_a1 - gt_cam_y;
     r = gt_a2;
     if (r < 0) return;
     if (r == 0) { pset_raw(cx, cy, col); return; }
-    x = r; y = 0; d = 1 - r;
-    while (y <= x) {
-        pset_raw(cx + x, cy + y, col); pset_raw(cx - x, cy + y, col);
-        pset_raw(cx + x, cy - y, col); pset_raw(cx - x, cy - y, col);
-        pset_raw(cx + y, cy + x, col); pset_raw(cx - y, cy + x, col);
-        pset_raw(cx + y, cy - x, col); pset_raw(cx - y, cy - x, col);
-        if (d < 0) d += (y << 1) + 3;
-        else { d += ((y - x) << 1) + 5; --x; }
-        ++y;
-    }
+    if (r > 127) r = 127;
+    cc_x = cx; cc_y = cy;
+    cc_r = (unsigned char)r;
+    cc_c = (unsigned char)~col;
+    gt_circo_z();
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
