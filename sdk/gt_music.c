@@ -63,6 +63,7 @@
 
 #define gt_music_tick GT_MB(gt_music_tick)
 #define gt_sfx        GT_MB(gt_sfx)
+#define gt_sfx_bank   GT_MB(gt_sfx_bank)
 #define gt_music      GT_MB(gt_music)
 #define gt_sfx_run    GT_MB(gt_sfx_run)
 #define gt_music_play GT_MB(gt_music_play)
@@ -393,14 +394,34 @@ static const BuiltinSfx builtin_sfx[GT_NUM_BUILTIN_SFX] = {
 /* auto channel: round-robin over the 4 FM channels for un-specified sfx() */
 static unsigned char next_sfx_ch = 0;
 
+/* converted PICO-8 sfx bank (tools/p8sfx.mjs): u8 n; n x u16le offsets;
+ * per sfx: u8 instr, u8 count, count x {u8 note, u8 dur} (= SfxStep).
+ * Registered by the port from a hexdata blob (fixed RODATA, so this bank-2
+ * code can read it from any mapping). A registered bank REPLACES the
+ * builtin table for ids it covers; count 0 falls through to the builtins. */
+static const unsigned char *sfx_bank = 0;
+
+void gt_sfx_bank(unsigned char *bank) { sfx_bank = bank; }
+
 void gt_sfx(int n, int ch) {
     const BuiltinSfx *b;
     unsigned char c;
     if (!audio_on) return;
-    if (n < 0 || n >= GT_NUM_BUILTIN_SFX) return;
-    b = &builtin_sfx[n];
+    if (n < 0) return;
     if (ch < 0) { c = next_sfx_ch; next_sfx_ch = (unsigned char)((next_sfx_ch + 1) & 3); }
     else c = (unsigned char)(ch & 3);
+    if (sfx_bank && n < sfx_bank[0]) {
+        unsigned int off = (unsigned int)sfx_bank[1 + n * 2]
+                         | ((unsigned int)sfx_bank[2 + n * 2] << 8);
+        unsigned char count = sfx_bank[off + 1];
+        if (count) {
+            gt_sfx_run((const SfxStep *)(sfx_bank + off + 2), count,
+                       sfx_bank[off], c);
+            return;
+        }
+    }
+    if (n >= GT_NUM_BUILTIN_SFX) return;
+    b = &builtin_sfx[n];
     gt_sfx_run(b->steps, b->count, b->instr, c);
 }
 

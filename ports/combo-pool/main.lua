@@ -109,15 +109,10 @@ local ballcost10 = array(7) -- life cost x10
 local lifes10 = array(4)    -- per-difficulty life budget x10
 
 -- audio: tiny per-channel sequencer approximating the cart's sfx
-local chfx = array(4)
-local chstep = array(4)
-local fxlen = array(17)
-local fxrate = array(17)
-local fxvol = array(17)
-local fxbase = array(17)
-local fxslide = array(17)
-local fxarp = array(17)
-local arp3 = array(3)
+-- converted PICO-8 sfx (tools/p8sfx.mjs from carts/combo-pool-extract):
+-- real pitches/waveforms/timing from the original cart's __sfx__ section,
+-- played by the SDK's FM runtime (sfx() checks the registered bank first)
+local p8sfx = hexdata("122500270045007d009300d30011014d018701a901ad01b101b501b901d101d501f70117020000030e241034112411341124113433241034112411341124115e1134115e11031b2408000834090008240900083409300824080009340800092408301a2408000834090008241134092410000934080009240800093011000a30212822322234223c214111401143113e114022041f3c043e0440043e044005410440044104430441054004430441043e0540043c08400443053e04410445044005430447044004450443053e04410440044305041e27082b082909000827092e082909000827082b09290827092e082b09290827092908000827092908000927082b11281129082b092908270929082b09041d27082b082909000830092e082b0900082e08330935082e0933082e0930082e0930082b0829092e1900092b0830082e0900112e082b0930082e09051c3008371135083a093c08300933083508330937083a0933083a1135113308350937083c0937113a08300835093a083309350837093a0835090510331035113a113f11431141113f113a113f1046113a11351137113a113f19370903012b0a030129070301410700014321000b2a012b012c012f0132013b01480133012f012c012b0100014f3b03103701390336013802360135013703380237013803300138033c0138033302380b000f3c0a3f0a430a460b480a4b0a4d153c0a3f0b430a460a480b4b0a4d0a3c0b0008401e431e481e4d1e401e431e481e4d1e")
 
 -- ---------------------------------------------------------------------
 -- audio driver: gt.note sequences stand in for the cart's sfx tracker
@@ -128,35 +123,7 @@ function playfx(f)
   if (f == 9 or f == 10) ch = 0      -- launcher
   if (f == 11) ch = 1                -- combo ticks
   if (f == 15 or f == 17) ch = 3     -- bomb / fanfare
-  chfx[ch + 1] = f
-  chstep[ch + 1] = 0
-end
-
-function update_audio()
-  local ch = 0
-  while ch < 4 do
-    local f = chfx[ch + 1]
-    if f > 0 then
-      local stp = chstep[ch + 1]
-      local idx = stp \ fxrate[f]
-      if idx >= fxlen[f] then
-        gt.noteoff(ch)
-        chfx[ch + 1] = 0
-      else
-        if stp % fxrate[f] == 0 then
-          local nt = fxbase[f]
-          if fxarp[f] == 1 then
-            nt += arp3[(idx % 3) + 1]
-          else
-            nt += fxslide[f] * idx
-          end
-          gt.note(ch, nt, fxvol[f])
-        end
-        chstep[ch + 1] = stp + 1
-      end
-    end
-    ch += 1
-  end
+  sfx(f, ch)
 end
 
 -- trail-stamp sheet cells per tier (scattered into blank cells; filled
@@ -793,7 +760,6 @@ function _update()
   -- HUD backdrop; main menu = weave band + black fills). Intro is the
   -- one sparse screen and clears itself.
   if (intromenu == 1) cls(0)
-  update_audio()
   if mainmenu == 1 then
     update_mainmenu()
     return
@@ -1302,58 +1268,6 @@ function _init()
   lifes10[3] = 400
   lifes10[4] = 340
 
-  -- sfx approximations (id -> len, frames/note, volume, base, shape)
-  arp3[1] = 0
-  arp3[2] = 4
-  arp3[3] = 7
-  fxlen[9] = 2
-  fxrate[9] = 1
-  fxvol[9] = 30
-  fxbase[9] = 47
-  fxslide[9] = 5
-  fxarp[9] = 0
-  fxlen[10] = 4
-  fxrate[10] = 1
-  fxvol[10] = 45
-  fxbase[10] = 52
-  fxslide[10] = 4
-  fxarp[10] = 0
-  fxlen[11] = 2
-  fxrate[11] = 1
-  fxvol[11] = 22
-  fxbase[11] = 86
-  fxslide[11] = -2
-  fxarp[11] = 0
-  fxlen[12] = 3
-  fxrate[12] = 2
-  fxvol[12] = 55
-  fxbase[12] = 57
-  fxslide[12] = 0
-  fxarp[12] = 1
-  fxlen[13] = 3
-  fxrate[13] = 2
-  fxvol[13] = 50
-  fxbase[13] = 50
-  fxslide[13] = 0
-  fxarp[13] = 1
-  fxlen[14] = 3
-  fxrate[14] = 2
-  fxvol[14] = 60
-  fxbase[14] = 64
-  fxslide[14] = 0
-  fxarp[14] = 1
-  fxlen[15] = 12
-  fxrate[15] = 1
-  fxvol[15] = 70
-  fxbase[15] = 70
-  fxslide[15] = -3
-  fxarp[15] = 0
-  fxlen[17] = 6
-  fxrate[17] = 3
-  fxvol[17] = 60
-  fxbase[17] = 60
-  fxslide[17] = 0
-  fxarp[17] = 1
 
   -- contact-math reciprocal table: invsq[m] ~ 1/sqrdist for
   -- sqrdist = (m-0.5)/2 (the only per-frame divisions left are here,
@@ -1381,6 +1295,8 @@ function _init()
   trailspr[5] = 11
   trailspr[6] = 25
   trailspr[7] = 26
+
+  sfx_bank(p8sfx)
 
   bake_sprites()
   for c = 1, 7 do
