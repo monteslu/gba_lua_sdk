@@ -284,3 +284,263 @@ next:   cpy     #0
         bne     loop
 done:   rts
 .endproc
+
+; ---------------------------------------------------------------------------
+; gt.pool_edraw — the whole per-enemy sprite pass in one walk: derive the
+; sheet cell from (aniframe, type, flash) through a per-type descriptor
+; table, apply the shake nudge, clip against the 7-bit blit registers, and
+; stage the sprite. cherry-bomb's compiled loop cost ~450 cycles an enemy
+; before the staging; this is ~90 with clipping.
+;
+; desc: 3 bytes per type (1-based), (type-1)*3:
+;   +0 base cell (the f=1 frame), +1 flash-variant base, +2 mode:
+;   0 = skip (the port draws it — cherry's boss), 1 = 8x8, cell = base+f-1,
+;   2 = 16x16, cell = base+(f-1)*2 (frames are 2 cells apart on the sheet).
+; Field arrays: aniframe/type/flash/shake are BYTES (pool-narrowed);
+; x/y are ints in 16ths. flash and shake decrement in here (the compiled
+; loop did the same). pe_nudge = 1 on shake-nudge frames (tick%4<2).
+; ---------------------------------------------------------------------------
+.export _gt_pool_edraw_z
+.export _pe_ani, _pe_type, _pe_flash, _pe_shake, _pe_desc, _pe_nudge
+
+.segment "ZEROPAGE" : zeropage
+_pe_ani:   .res 2
+_pe_type:  .res 2
+_pe_flash: .res 2
+_pe_shake: .res 2
+_pe_desc:  .res 2
+_pe_nudge: .res 1
+pe_f:      .res 1               ; animation frame (1..6)
+pe_cell:   .res 1               ; resolved sheet cell
+pe_sz:     .res 1               ; sprite size in px (8 or 16)
+pe_px:     .res 2               ; screen x (s16 -> s8 range)
+pe_py:     .res 2
+pe_vx:     .res 1               ; clipped VX
+pe_vy:     .res 1
+pe_w:      .res 1
+pe_h:      .res 1
+pe_gxo:    .res 1               ; source offset from left/top clip
+pe_gyo:    .res 1
+pe_mode:   .res 1               ; desc mode for this slot
+
+.segment "CODE"
+
+.proc _gt_pool_edraw_z
+        stz     _gt_draw_mode
+        stz     pm_i
+loop:   lda     pm_i
+        cmp     _pm_n
+        bne     :+
+        rts
+:       tay
+        lda     (_pm_used),y
+        bne     :+
+        jmp     next
+:       ; ---- desc lookup: (type-1)*3 into (pe_desc) ----
+        lda     (_pe_type),y
+        dec     a
+        sta     pe_f            ; scratch: type-1
+        asl     a
+        clc
+        adc     pe_f            ; *3
+        tax                     ; X = desc offset (types <= 8: fits)
+        phy
+        txa
+        tay
+        lda     (_pe_desc),y    ; base
+        sta     pe_cell
+        iny
+        iny
+        lda     (_pe_desc),y    ; mode
+        sta     pe_mode
+        ply
+        lda     pe_mode
+        bne     :+
+        jmp     next            ; mode 0: the port draws this type
+:       ; ---- f = aniframe >> 4 ----
+        lda     (_pe_ani),y
+        lsr     a
+        lsr     a
+        lsr     a
+        lsr     a
+        sta     pe_f
+        ; ---- flash override ----
+        lda     (_pe_flash),y
+        beq     @noflash
+        dec     a
+        sta     (_pe_flash),y
+        phy
+        txa
+        inc     a               ; desc +1 = flash base
+        tay
+        lda     (_pe_desc),y
+        sta     pe_cell
+        ply
+@noflash:
+        ; ---- cell = base + (f-1) [*2 for 16x16] ; size ----
+        lda     pe_mode
+        cmp     #2
+        beq     @m2
+        lda     #8
+        sta     pe_sz
+        lda     pe_f
+        dec     a
+        bra     @cadd
+@m2:    lda     #16
+        sta     pe_sz
+        lda     pe_f
+        dec     a
+        asl     a
+@cadd:  clc
+        adc     pe_cell
+        sta     pe_cell
+
+havecell:
+        ; ---- px = x >> 4 (arithmetic), py = y >> 4 ----
+        tya
+        asl     a
+        tay
+        lda     (_pm_x),y
+        sta     pe_px
+        iny
+        lda     (_pm_x),y
+        sta     pe_px+1
+        ldx     #4
+:       cmp     #$80
+        ror     pe_px+1
+        ror     pe_px
+        lda     pe_px+1
+        dex
+        bne     :-
+        dey
+        lda     (_pm_y),y
+        sta     pe_py
+        iny
+        lda     (_pm_y),y
+        sta     pe_py+1
+        ldx     #4
+:       cmp     #$80
+        ror     pe_py+1
+        ror     pe_py
+        lda     pe_py+1
+        dex
+        bne     :-
+        ; ---- shake nudge ----
+        ldy     pm_i
+        lda     (_pe_shake),y
+        beq     @noshake
+        dec     a
+        sta     (_pe_shake),y
+        lda     _pe_nudge
+        beq     @noshake
+        inc     pe_px
+        bne     @noshake
+        inc     pe_px+1
+@noshake:
+        ; ---- clip x: pe_px s16, sprite pe_sz wide ----
+        stz     pe_gxo
+        lda     pe_sz
+        sta     pe_w
+        sta     pe_h
+        lda     pe_px+1
+        beq     @xin
+        cmp     #$FF
+        bne     @offs           ; |x| large: fully off
+        ; negative: ov = -px; skip when ov >= sz
+        lda     #0
+        sec
+        sbc     pe_px
+        cmp     pe_sz
+        bcs     @offs
+        sta     pe_gxo
+        lda     pe_sz
+        sec
+        sbc     pe_gxo
+        sta     pe_w
+        stz     pe_vx
+        bra     @ydo
+@offs:  jmp     next
+@xin:   lda     pe_px
+        bmi     @offs           ; 128..255: off right
+        sta     pe_vx
+        ; right trim: if px + sz > 128 -> w = 128 - px
+        clc
+        adc     pe_sz
+        cmp     #129
+        bcc     @ydo
+        lda     #128
+        sec
+        sbc     pe_vx
+        sta     pe_w
+@ydo:   ; ---- clip y ----
+        stz     pe_gyo
+        lda     pe_py+1
+        beq     @yin
+        cmp     #$FF
+        bne     @offs
+        lda     #0
+        sec
+        sbc     pe_py
+        cmp     pe_sz
+        bcs     @offs
+        sta     pe_gyo
+        lda     pe_sz
+        sec
+        sbc     pe_gyo
+        sta     pe_h
+        stz     pe_vy
+        bra     @stage
+@yin:   lda     pe_py
+        bmi     @offs
+        sta     pe_vy
+        clc
+        adc     pe_sz
+        cmp     #129
+        bcc     @stage
+        lda     #128
+        sec
+        sbc     pe_vy
+        sta     pe_h
+@stage: ; ---- ring entry ----
+slot:   lda     _gt_qhead
+        clc
+        adc     #8
+        cmp     _gt_qtail
+        bne     free
+        jsr     _gt_q_pump
+        bra     slot
+free:   ldx     _gt_qhead
+        lda     #QF_SPR2
+        sta     _gt_q+0,x
+        lda     pe_vx
+        sta     _gt_q+1,x
+        lda     pe_vy
+        sta     _gt_q+2,x
+        lda     pe_cell
+        and     #$0F
+        asl     a
+        asl     a
+        asl     a
+        clc
+        adc     pe_gxo
+        sta     _gt_q+3,x       ; GX = (c & 15) * 8 + left clip
+        lda     pe_cell
+        and     #$F0
+        lsr     a
+        clc
+        adc     pe_gyo
+        sta     _gt_q+4,x       ; GY = (c >> 4) * 8 + top clip
+        lda     pe_w
+        sta     _gt_q+5,x
+        lda     pe_h
+        sta     _gt_q+6,x
+        lda     _gt_qbank
+        sta     _gt_q+7,x
+        txa
+        clc
+        adc     #8
+        sta     _gt_qhead
+        jsr     _gt_q_pump
+next:   inc     pm_i
+        jmp     loop
+.endproc

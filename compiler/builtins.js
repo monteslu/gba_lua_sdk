@@ -130,6 +130,10 @@ export const GT_MEMBERS = {
   // bulk animation: gt.pool_anim(pool, "frame", "spd", "maxf") — frame +=
   // spd per used slot, reset to 16 when frame > maxf (16ths-frames)
   pool_anim: { kind: "fn", params: [["pool", false], ["str", false], ["str", false], ["str", false]], ret: "void", c: "gt_pool_anim", special: "poolanim" },
+  // full enemy sprite pass: cell from per-type desc + anim frame + flash,
+  // shake nudge, edge clip. gt.pool_edraw(pool, "ani","type","flash","shake",
+  // desc_bytes, nudge)
+  pool_edraw: { kind: "fn", params: [["pool", false], ["str", false], ["str", false], ["str", false], ["str", false], ["array8", false], ["int", false]], ret: "void", c: "gt_pool_edraw", special: "pooledraw" },
   // 24px atlas-chunk grid window (racing tracks): grid ints, two decode
   // LUTs (road, decal), a props byte-list out, stride, cell window
   chunks_draw: { kind: "fn", params: [["array", false], ["array8", false], ["array8", false], ["array8", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_chunks_draw" },

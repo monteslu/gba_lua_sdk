@@ -1327,6 +1327,32 @@ void gt_pool_anim(unsigned char *frame, unsigned char *spd,
     gt_poolan_z();
 }
 
+/* full enemy sprite pass (gt_poolmv.s): cell from (aniframe,type,flash)
+ * via a per-type descriptor, shake nudge, edge clip, stage. Byte fields. */
+extern unsigned char *pe_ani, *pe_type, *pe_flash, *pe_shake;
+extern const unsigned char *pe_desc;
+extern unsigned char pe_nudge;
+#pragma zpsym ("pe_ani")
+#pragma zpsym ("pe_type")
+#pragma zpsym ("pe_flash")
+#pragma zpsym ("pe_shake")
+#pragma zpsym ("pe_desc")
+#pragma zpsym ("pe_nudge")
+void gt_pool_edraw_z(void);
+void gt_pool_edraw(int *x, int *y, unsigned char *ani, unsigned char *type,
+                   unsigned char *flash, unsigned char *shake,
+                   unsigned char *used, int n,
+                   const unsigned char *desc, int nudge) {
+    pm_x = (unsigned char *)x;
+    pm_y = (unsigned char *)y;
+    pe_ani = ani; pe_type = type; pe_flash = flash; pe_shake = shake;
+    pm_used = used;
+    pm_n = (unsigned char)n;
+    pe_desc = desc;
+    pe_nudge = (unsigned char)nudge;
+    gt_pool_edraw_z();
+}
+
 /* bulk 8x8 sprite pass (gt_poolmv.s): used slots with a nonzero cell byte
  * blit at (x>>4, y>>4). */
 extern unsigned char *pm_cells;

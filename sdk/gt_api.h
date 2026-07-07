@@ -102,6 +102,10 @@ void gt_tiles_draw(unsigned char *map, unsigned char *flags, int lvlw,
 void gt_balls_step(long *x, long *y, long *vx, long *vy, int *act,
                    unsigned char *flags, unsigned char *pairs, int n);
 void gt_pool_anim(unsigned char *frame, unsigned char *spd, unsigned char *maxf, unsigned char *used, int n);
+void gt_pool_edraw(int *x, int *y, unsigned char *ani, unsigned char *type,
+                   unsigned char *flash, unsigned char *shake,
+                   unsigned char *used, int n,
+                   const unsigned char *desc, int nudge);
 void gt_pool_move(int *x, int *y, int *sx, int *sy, unsigned char *used,
                   int n, int mode);
 void gt_balls_drag(long *vx, long *vy, int *act, int n);

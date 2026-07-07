@@ -741,6 +741,13 @@ export function emit(chunk, symbols, file, opts = {}) {
         const f = e.args[1].value, sp = e.args[2].value, mx = e.args[3].value;
         return `gt_pool_anim(${pl.cname}_${f}, ${pl.cname}_${sp}, ${pl.cname}_${mx}, ${pl.cname}_used, ${pl.cname}_hi)`;
       }
+      if (sig.special === "pooledraw") {
+        const pl = e.args[0].sym;
+        const an = e.args[1].value, ty = e.args[2].value, fl = e.args[3].value, sh = e.args[4].value;
+        const desc = expr(e.args[5], "array");
+        const nud = expr(e.args[6], "int");
+        return `gt_pool_edraw(${pl.cname}_x, ${pl.cname}_y, ${pl.cname}_${an}, ${pl.cname}_${ty}, ${pl.cname}_${fl}, ${pl.cname}_${sh}, ${pl.cname}_used, ${pl.cname}_hi, ${desc}, ${nud})`;
+      }
       return `${sig.c}(${sig.params.map((p, i) => argAt(e, i, p[0], defaultFor(callee.field, i))).join(", ")})`;
     }
 
