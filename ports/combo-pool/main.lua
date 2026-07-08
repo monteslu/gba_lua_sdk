@@ -1148,34 +1148,41 @@ function draw_game()
     local a2 = newballappear * newballappear
     local ballmenuy = 130 - (a2 * 12) \ 100
 
-    local bscol = 13
-    if (newballscoretimer > 0 and newballscoretimer \ 4 % 2 == 0) bscol = 7
-    print_score(3, ballscore, 80, ballmenuy, bscol)
-    if ballmult ~= mb_last then
-      mb_last = ballmult
-      local m = ballmult
-      local digits = 1
-      if (m >= 10) digits = 2
-      if (m >= 100) digits = 3
-      if (m >= 1000) digits = 4
-      mb_x = 124 - (digits + 1) * 4
-      local k = 1
-      mb_b[k] = 120             -- 'x'
-      k += 1
-      local dv = 1000
-      local started = 0
-      while dv >= 1 do
-        local d = (m \ dv) % 10
-        if d > 0 or started == 1 or dv == 1 then
-          mb_b[k] = 48 + d
-          k += 1
-          started = 1
+    -- the ball-score panel slides UP from y=130; at rest it sits fully below
+    -- the 128px screen. Drawing it there was ~2 print()s of entirely
+    -- off-screen glyphs EVERY resting frame — and off-screen y>123 takes the
+    -- slow CPU-glyph path (each one drains the blit queue). Skip the whole
+    -- panel until any of it is on-screen (its glyphs are 5px tall).
+    if ballmenuy <= 127 then
+      local bscol = 13
+      if (newballscoretimer > 0 and newballscoretimer \ 4 % 2 == 0) bscol = 7
+      print_score(3, ballscore, 80, ballmenuy, bscol)
+      if ballmult ~= mb_last then
+        mb_last = ballmult
+        local m = ballmult
+        local digits = 1
+        if (m >= 10) digits = 2
+        if (m >= 100) digits = 3
+        if (m >= 1000) digits = 4
+        mb_x = 124 - (digits + 1) * 4
+        local k = 1
+        mb_b[k] = 120             -- 'x'
+        k += 1
+        local dv = 1000
+        local started = 0
+        while dv >= 1 do
+          local d = (m \ dv) % 10
+          if d > 0 or started == 1 or dv == 1 then
+            mb_b[k] = 48 + d
+            k += 1
+            started = 1
+          end
+          dv \= 10
         end
-        dv \= 10
+        mb_b[k] = 0
       end
-      mb_b[k] = 0
+      gt.print_buf(mb_b, 0, mb_x, ballmenuy, bscol)
     end
-    gt.print_buf(mb_b, 0, mb_x, ballmenuy, bscol)
 
     spr(68, 72, 112, 7, 2)
 
