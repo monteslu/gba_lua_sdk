@@ -156,7 +156,9 @@ function pump_explosions()
  -- overlapping explosions DROPPED most of their particles. Match that:
  -- once the pool is crowded, pending bursts forfeit their remainder —
  -- same look, and the alive-particle ceiling stays where it always was.
- if #parts >= 44 then
+ -- FIDELITY TRADE-OFF (docs/FIDELITY_TRADEOFFS.md): ceiling 44 -> 36 to trim
+ -- the deep multi-kill vsync spikes; revert when a parts draw engine lands.
+ if #parts >= 36 then
   for q in all(pend) do del(pend,q) end
   return
  end
@@ -188,16 +190,20 @@ function pump_explosions()
  end
 end
 
+-- FIDELITY TRADE-OFF (docs/FIDELITY_TRADEOFFS.md): particle counts trimmed
+-- ~1/3 (orig explode 30/20, bigexplode 60/100) to shrink the multi-kill vsync
+-- spikes. Flash blob + shockwave (the "hit" read) unchanged. Revert to the
+-- originals once a parts draw engine makes particles cheap.
 function explode(expx,expy,isblue)
  addpart(expx,expy,0,0,0,20,0,isblue,0)
  big_shwave(expx,expy)
- add(pend,{x=expx,y=expy,blue=isblue,big=0,fleft=30,sleft=20})
+ add(pend,{x=expx,y=expy,blue=isblue,big=0,fleft=20,sleft=14})
 end
 
 function bigexplode(expx,expy)
  addpart(expx,expy,0,0,0,50,0,0,0)
  big_shwave(expx,expy)
- add(pend,{x=expx,y=expy,blue=0,big=1,fleft=60,sleft=100})
+ add(pend,{x=expx,y=expy,blue=0,big=1,fleft=40,sleft=66})
 end
 
 function smol_spark(sx2,sy2)
