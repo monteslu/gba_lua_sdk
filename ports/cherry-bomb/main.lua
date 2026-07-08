@@ -86,9 +86,11 @@ local eb_shake = 0
 local eb_flash = 0
 local eb_die = 0
 
--- The 100-star parallax field lives in the SDK (gt.starfield_*): moving and
+-- The parallax star field lives in the SDK (gt.starfield_*): moving and
 -- drawing the whole field in one tight C loop each, instead of ~1000 cycles
 -- of cc65 call overhead PER star from here every frame. That single change is
+-- (star count is a FIDELITY TRADE-OFF: 60 now, orig 100 —
+-- docs/FIDELITY_TRADEOFFS.md; each star is one adv step + one blit/frame.)
 -- what makes this bullet-hell port hit its frame budget.
 
 local banim = array(18)   -- blink() color ramp
@@ -833,7 +835,7 @@ end
 -- game flow
 
 function startscreen()
- gt.starfield_init(100)
+ gt.starfield_init(60)
  mode=MSTART
  music(7)
 end
@@ -857,7 +859,7 @@ function startgame()
  attacfreq=60
  firefreq=20
  nextfire=0
- gt.starfield_init(100)
+ gt.starfield_init(60)
  for b in all(buls) do del(buls,b) end
  for eb in all(ebuls) do del(ebuls,eb) end
  for e in all(enemies) do del(enemies,e) end
@@ -1476,7 +1478,7 @@ function _init()
  for i=1,45 do sway45[i]=flr(sin((i-1)*0.022222)*16) end
  for i=1,20 do sway20[i]=flr(sin((i-1)*0.05)*16) end
  makesil()
- gt.starfield_init(100)
+ gt.starfield_init(60)
 end
 
 function _update()

@@ -45,5 +45,27 @@ the five values in the table above.
 
 ---
 
+## cherry-bomb — parallax star count
+
+**File:** `ports/cherry-bomb/main.lua` (three `gt.starfield_init(...)` sites:
+title, game start, restart)
+
+| Knob | Original | Reduced |
+|------|---------:|--------:|
+| `gt.starfield_init(n)` star count | 100 | 60 |
+
+**Reason:** the star field is pure background decoration. Each star is one
+`gt_sf_adv_z` step + one `gt_sf_draw_z` blit every frame (~2.5k cyc at 100 in
+the combat profile). At 60 the field still reads as a dense starfield.
+
+**Measured:** ~+8 frames into the fast (2v/3v) bands in sustained combat; the
+6v band shrank. Modest but free — no visible loss.
+
+**Revert trigger:** none strictly needed (it's a taste knob), but if a future
+starfield engine draws the field in a single strided blit instead of one blit
+per star, the count is free again — restore 100 at all three init sites.
+
+---
+
 *(Add new entries above this line as further trade-offs are made. Keep the
 original values exact so a revert is mechanical.)*
