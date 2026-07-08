@@ -57,6 +57,12 @@ local texts = pool(8, "slot") -- floating "+score" popups
 -- (shadow + face) instead of four ~1k print() wrapper trips
 local tx_b = array8(64)         -- 8 slots x 8 bytes, NUL-terminated
 local tx_free = 0
+-- "sudden death : " baked once (_init) + the countdown digits on change:
+-- the banner otherwise re-staged ~17 print() glyphs per frame during the
+-- alarm phase, exactly when the flicker + music already load the frame
+local sd_b = array8(20)
+local sd_n = array8(4)
+local sd_last = -1
 
 local gtime = 0             -- original 'time' (renamed: time() builtin)
 local menutime = 0.0
@@ -1209,8 +1215,23 @@ function draw_game()
     local gy = 128 - min(96, finishtimer)
 
     if suddendeath == 1 then
-      print("sudden death : ", 33, 120, 8)
-      print(120 - finishtimer, 92, 120, 8)
+      gt.print_buf(sd_b, 0, 33, 120, 8)
+      local sdv = 120 - finishtimer
+      if sdv ~= sd_last then
+        sd_last = sdv
+        local k = 1
+        if sdv >= 100 then
+          sd_n[k] = 49
+          k += 1
+        end
+        if sdv >= 10 then
+          sd_n[k] = 48 + (sdv \ 10) % 10
+          k += 1
+        end
+        sd_n[k] = 48 + sdv % 10
+        sd_n[k + 1] = 0
+      end
+      gt.print_buf(sd_n, 0, 92, 120, 8)
     else
       rectfill(gx + 3, gy + 3, gx + 94, gy + 61, 0)
       draw_panel(gx, gy, 97, 64)
@@ -1265,6 +1286,22 @@ end
 -- ---------------------------------------------------------------------
 
 function _init()
+  sd_b[1] = 115
+  sd_b[2] = 117
+  sd_b[3] = 100
+  sd_b[4] = 100
+  sd_b[5] = 101
+  sd_b[6] = 110
+  sd_b[7] = 32
+  sd_b[8] = 100
+  sd_b[9] = 101
+  sd_b[10] = 97
+  sd_b[11] = 116
+  sd_b[12] = 104
+  sd_b[13] = 32
+  sd_b[14] = 58
+  sd_b[15] = 32
+  sd_b[16] = 0
   bpal[1] = 1
   bpal[2] = 13
   bpal[3] = 6
