@@ -14,7 +14,8 @@ Build: `gtlua build main.lua --sheet gfx.bin -o game.gtr`
 | ✅ **exact** | works, PICO-8 semantics |
 | 🟡 **partial** | works with documented limits |
 | 🔷 **differs** | works but different by hardware |
-| ⬜ **not yet** | planned / unbuilt |
+| 🔵 **planned** | on the roadmap (`PICO8.md`), not yet built |
+| ❌ **n/a** | no VM to emulate / deferred indefinitely |
 | ➕ **gt extra** | GameTank-only, beyond PICO-8 |
 
 Names are **global and unprefixed**, exactly like PICO-8. The `gt.*` namespace
@@ -115,8 +116,8 @@ free (Lexaloffle designed it for exactly this class of machine).
 | `camera([x,y])` | ✅ | sticky draw offset |
 | `color(c)` | ✅ | |
 | `sspr(...)` | 🟡 | unscaled rect blit works; **scaled = compile error** |
-| `clip(x,y,w,h)` | ⬜ | screen-edge only, not arbitrary rects |
-| `fillp`, `tline` | ⬜ | deferred |
+| `clip(x,y,w,h)` | 🔵 | screen-edge only today; software-clip v0.3+ |
+| `fillp`, `tline` | ❌ | deferred indefinitely |
 
 ## Palette & transparency — the largest real gap
 
@@ -183,8 +184,8 @@ Zero-authoring built-ins: `sfx(0)`=jump, 1=pickup, 2=shoot, 3=explode, 4=blip,
 | `print(str,[x,y],[c])` | ✅ | returns right-edge x (4×6 font) |
 | `?expr` | ✅ | print shorthand |
 | `s = "hello"` | ✅ | string literals |
-| `s .. s2` | ⬜ | runtime concat — not yet |
-| `sub tostr tonum chr ord split` | ⬜ | not yet |
+| `s .. s2` | 🔵 | runtime concat — v0.5 |
+| `sub tostr tonum chr ord split` | 🔵 | v0.5 |
 
 Bake dynamic text into byte buffers and draw with `gt.print_buf` for HUDs (the
 fast path); no runtime string building yet.
@@ -193,9 +194,9 @@ fast path); no runtime string building yet.
 
 | Call | | Notes |
 |---|:--:|---|
-| `map(tx,ty,sx,sy,tw,th,[lyr])` | ⬜ | not yet |
-| `mget / mset(x,y,[v])` | ⬜ | not yet |
-| `fget / fset(n,[f],[v])` | ⬜ | tile flags — not yet |
+| `map(tx,ty,sx,sy,tw,th,[lyr])` | 🔵 | v0.4 |
+| `mget / mset(x,y,[v])` | 🔵 | v0.4 |
+| `fget / fset(n,[f],[v])` | 🔵 | tile flags — v0.4 |
 
 **gt has it a different way today:** `gt.bg_compose` pre-paints a tilemap into a
 spare GRAM page once, then `gt.bg_draw` blits the whole page per frame — the
@@ -206,8 +207,8 @@ engines.
 
 | Call | | Notes |
 |---|:--:|---|
-| `cartdata("id")` | ⬜ | not yet |
-| `dget / dset(i,[v])` | ⬜ | 0..63 persistent slots — not yet |
+| `cartdata("id")` | 🔵 | v0.4 |
+| `dget / dset(i,[v])` | 🔵 | 0..63 persistent slots — v0.4 |
 
 The GameTank SAVE bank hardware exists for exactly this; the API layer is
 planned, not yet wired.
