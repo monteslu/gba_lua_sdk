@@ -17,7 +17,7 @@
 ;   cv_dx (16-bit world x), cv_dy (byte world y) — the screen origin is the
 ;   camera itself, so VX/VY are 0/64; canvas rows: crow = (dx>>8)*128 + dy.
 ; ---------------------------------------------------------------------------
-.export _gt_canvas_view_z, _cv_dx, _cv_dy, _cv_fl
+.export _gt_canvas_view_z, _cv_dx, _cv_dy, _cv_fl, _cv_h
 .import _gt_qbank
 
 QF_COPYV = $57
@@ -26,10 +26,13 @@ QF_COPYV = $57
 _cv_dx:  .res 2
 _cv_dy:  .res 1
 _cv_fl:  .res 1                 ; entry flags: $57 colorkey, $D7 opaque
+_cv_h:   .res 1                 ; visible height (0 -> 128 full); caps band 2 so
+                                ; a caller can leave a static HUD band untouched
 cv_coff: .res 1                 ; dx & 255
 cv_crow: .res 1                 ; (dx>>8)*128 + dy
 cv_w0:   .res 1
 cv_t:    .res 1
+cv_h2:   .res 1                 ; band-2 height (visible height - 64)
 
 .segment "CODE"
 
@@ -41,9 +44,12 @@ cv_gy:  .res 1
 cv_w:   .res 1
 cv_vx:  .res 1
 cv_vy:  .res 1
+cv_vh:  .res 1                  ; this piece's height (rows)
 
 .segment "CODE"
 .proc cvpiece
+        lda     cv_vh
+        beq     done            ; zero-height band: skip
         lda     cv_w
         beq     done
 slot:   lda     _gt_qhead
@@ -66,7 +72,7 @@ free:   ldx     _gt_qhead
         sta     _gt_q+4,x
         lda     cv_w
         sta     _gt_q+5,x
-        lda     #64
+        lda     cv_vh
         sta     _gt_q+6,x
         lda     _gt_qbank
         ora     #1              ; BG_GROUP
@@ -80,6 +86,22 @@ done:   rts
 .endproc
 
 .proc _gt_canvas_view_z
+        ; resolve visible height -> band-1 height (in cv_t, <=64) and band-2
+        ; height (cv_h2). _cv_h==0 means "full 128" (both bands 64).
+        lda     _cv_h
+        bne     :+
+        lda     #128            ; 0 -> full height
+:       cmp     #64
+        bcc     @short          ; h < 64: band1=h, band2=0
+        sec
+        sbc     #64
+        sta     cv_h2           ; band2 = h - 64
+        lda     #64
+        sta     cv_t            ; band1 = 64
+        bra     @hset
+@short: sta     cv_t            ; band1 = h (<64)
+        stz     cv_h2           ; band2 = 0
+@hset:
         lda     _cv_dx
         sta     cv_coff
         ; crow = (dx>>8)*128 + dy  (dx>>8 is 0/1 for a 2-strip canvas)
@@ -108,6 +130,8 @@ full:   lda     #127
         sta     cv_w
         stz     cv_vx
         stz     cv_vy
+        lda     cv_t            ; band-1 height
+        sta     cv_vh
         jsr     cvpiece
         lda     cv_crow
         clc
@@ -115,6 +139,8 @@ full:   lda     #127
         sta     cv_gy
         lda     #64
         sta     cv_vy
+        lda     cv_h2           ; band-2 height (0 -> cvpiece skips)
+        sta     cv_vh
         jsr     cvpiece
         ; pieces C/D: remaining width at VX=w0
         lda     #128
@@ -138,6 +164,8 @@ full:   lda     #127
         lda     cv_w0
         sta     cv_vx
         stz     cv_vy
+        lda     cv_t            ; band-1 height
+        sta     cv_vh
         jsr     cvpiece
         lda     cv_gy
         clc
@@ -145,6 +173,8 @@ full:   lda     #127
         sta     cv_gy
         lda     #64
         sta     cv_vy
+        lda     cv_h2           ; band-2 height
+        sta     cv_vh
         jsr     cvpiece
 doneall:
         rts

@@ -1178,16 +1178,20 @@ void gt_chain_step_draw(int x, int y, int col) {
 
 /* canvas window blit (gt_canvas.s) — independent of the flake fields */
 #ifdef GT_CANVAS
-extern unsigned char cv_dy, cv_fl;
+extern unsigned char cv_dy, cv_fl, cv_h;
 extern int cv_dx;
 #pragma zpsym ("cv_dx")
 #pragma zpsym ("cv_dy")
 #pragma zpsym ("cv_fl")
+#pragma zpsym ("cv_h")
 void gt_canvas_view_z(void);
-void gt_canvas_view(int dx, int dy, int opaque) {
+/* height omitted (or <=0) -> full 128 rows; pass e.g. 112 to leave a static
+ * HUD band (y>=112) untouched by the restore so its content persists. */
+void gt_canvas_view(int dx, int dy, int opaque, int height) {
     cv_dx = dx;
     cv_dy = (unsigned char)dy;
     cv_fl = (opaque == 1) ? 0xD7 : 0x57; /* omitted optional arrives as -1 */
+    cv_h = (height > 0 && height < 128) ? (unsigned char)height : 0;
     gt_draw_mode = MODE_NONE;
     gt_canvas_view_z();
 }
