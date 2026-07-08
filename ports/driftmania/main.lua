@@ -29,6 +29,13 @@ local cpdx = array(3)
 local cpdy = array(3)
 local cpl = array(3)
 local div3 = array(96)
+-- div3[i]*30 precomputed: the chunk-row stride multiply (cgrid is 30 wide)
+-- appears 6× in the hot tile-lookup path (grass_at/collides via road_tile/
+-- prop_tile + the wallnear pretest). div3[i] is an ARRAY read so the
+-- compiler can't strength-reduce the *30 (it won't dup an index), and it
+-- lowered to the generic mul8 every call — grass_at alone was ~11k cyc/frame.
+-- A flat table turns each into one more index.
+local div3x30 = array(96)
 local cs_lut = array8(30)  -- (i*10)\3 — centiseconds for the race clock
 -- chunk-decode byte LUTs for the asm track renderer (road + decal+decb)
 local ckdl = array8(32)
@@ -1051,6 +1058,7 @@ function gd_init()
  gd_5()
  for i = 0, 95 do
   div3[i + 1] = i \ 3
+  div3x30[i + 1] = (i \ 3) * 30
  end
  for i = 0, 29 do
   cs_lut[i + 1] = (i * 10) \ 3
@@ -1188,7 +1196,7 @@ end
 -- ---- map lookups ----------------------------------------------------------
 
 function road_tile(tx, ty)
-  local cg = cgrid[div3[ty + 1] * 30 + div3[tx + 1] + 1]
+  local cg = cgrid[div3x30[ty + 1] + div3[tx + 1] + 1]
   local r = cg & 31
   if (r == 0) return 0
   local k = ckd(r)
@@ -1197,7 +1205,7 @@ function road_tile(tx, ty)
 end
 
 function prop_tile(tx, ty)
-  local cg = cgrid[div3[ty + 1] * 30 + div3[tx + 1] + 1]
+  local cg = cgrid[div3x30[ty + 1] + div3[tx + 1] + 1]
   local p = cg >> 10
   if (p == 0) return 0
   local k = ckd(p + propb)
@@ -1560,10 +1568,10 @@ function _update()
   local txb = (carx + 14) >> 3
   local tya = (cary - 14) >> 3
   local tyb = (cary + 14) >> 3
-  if ((cgrid[div3[tya + 1] * 30 + div3[txa + 1] + 1] >> 10) != 0) wallnear = 1
-  if ((cgrid[div3[tya + 1] * 30 + div3[txb + 1] + 1] >> 10) != 0) wallnear = 1
-  if ((cgrid[div3[tyb + 1] * 30 + div3[txa + 1] + 1] >> 10) != 0) wallnear = 1
-  if ((cgrid[div3[tyb + 1] * 30 + div3[txb + 1] + 1] >> 10) != 0) wallnear = 1
+  if ((cgrid[div3x30[tya + 1] + div3[txa + 1] + 1] >> 10) != 0) wallnear = 1
+  if ((cgrid[div3x30[tya + 1] + div3[txb + 1] + 1] >> 10) != 0) wallnear = 1
+  if ((cgrid[div3x30[tyb + 1] + div3[txa + 1] + 1] >> 10) != 0) wallnear = 1
+  if ((cgrid[div3x30[tyb + 1] + div3[txb + 1] + 1] >> 10) != 0) wallnear = 1
 
   -- unstick nudge (the cart pushes away from the colliding point)
   if wallnear != 0 then
