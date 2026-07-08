@@ -459,6 +459,21 @@ export function emit(chunk, symbols, file, opts = {}) {
     return false;
   }
 
+  // emit the CONDITION of a var-vs-var compare with the same tosicmp-dodging
+  // shapes binop() uses, for the inline min/max/mid ternaries (whose inner
+  // compares don't pass through binop). `ck` is the compare kind ("int" or
+  // "fixed"). Both sides are already known cheapPure().
+  function cmpCond(left, right, op, ck) {
+    if (ck === "int" && byteish(left) && byteish(right)) {
+      return `((unsigned char)${expr(left, "int")} ${op} (unsigned char)${expr(right, "int")})`;
+    }
+    if ((ck === "int" || (N8 && ck === "fixed")) &&
+        left.kind !== "number" && right.kind !== "number") {
+      return `((${expr(left, ck)} - (${expr(right, ck)})) ${op} 0)`;
+    }
+    return `(${expr(left, ck)} ${op} ${expr(right, ck)})`;
+  }
+
   function binop(e, want) {
     const { op } = e;
     const k = e.tk; // result kind from the checker
@@ -972,7 +987,10 @@ export function emit(chunk, symbols, file, opts = {}) {
         if ((!anyFixed || N8) && cheapPure(a0) && cheapPure(second)) {
           const A = expr(a0, mk), B = expr(second, mk);
           const op = b.special === "min" ? "<" : ">";
-          return `((${A}) ${op} (${B}) ? (${A}) : (${B}))`;
+          // the ternary's CONDITION is a var-vs-var compare — route it through
+          // the same subtract-vs-zero shape as binop() so it skips tosicmp
+          // (~127 cyc). The returned A/B keep the direct form.
+          return `(${cmpCond(a0, second, op, mk)} ? (${A}) : (${B}))`;
         }
         const fn = `gt_${b.special}${anyFixed && !N8 ? "f" : "i"}`;
         const sec = e.args[1] ? expr(e.args[1], anyFixed ? "fixed" : "int") : (anyFixed ? "0L" : "0");
@@ -983,9 +1001,12 @@ export function emit(chunk, symbols, file, opts = {}) {
         // rationale as min/max above.
         if ((!anyFixed || N8) && e.args.every((a) => cheapPure(a))) {
           const mk = anyFixed ? "fixed" : "int";
-          const A = expr(e.args[0], mk), B = expr(e.args[1], mk), C = expr(e.args[2], mk);
-          return `((${A}) < (${B}) ? ((${B}) < (${C}) ? (${B}) : ((${A}) < (${C}) ? (${C}) : (${A})))` +
-                 ` : ((${A}) < (${C}) ? (${A}) : ((${B}) < (${C}) ? (${C}) : (${B}))))`;
+          const [pa, pb, pc] = e.args;
+          const A = expr(pa, mk), B = expr(pb, mk), C = expr(pc, mk);
+          const ab = cmpCond(pa, pb, "<", mk), bc = cmpCond(pb, pc, "<", mk);
+          const ac = cmpCond(pa, pc, "<", mk);
+          return `(${ab} ? (${bc} ? (${B}) : (${ac} ? (${C}) : (${A})))` +
+                 ` : (${ac} ? (${A}) : (${bc} ? (${C}) : (${B}))))`;
         }
         const fn = `gt_mid${anyFixed && !N8 ? "f" : "i"}`;
         const k = anyFixed ? "fixed" : "int";
