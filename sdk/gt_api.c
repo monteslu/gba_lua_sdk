@@ -1486,25 +1486,78 @@ void gt_chunks_draw(int *grid, unsigned char *lut, unsigned char *lut2,
 #pragma code-name ("B2CODE")
 #define GT_LINE_DIAG line_diag_impl
 static void line_diag_impl(int x0, int y0, int x1, int y1, unsigned char col);
+static void hv_span(int a0, int a1, int b, int vert);
 #else
 #define GT_LINE_DIAG line_diag
 #endif
+/* one straight run of a diagonal line: a0..a1 along the run axis at
+ * cross-coordinate b; vert selects vertical. Order-normalized + clipped. */
+static void hv_span(int a0, int a1, int b, int vert) {
+    int t;
+    if (a0 > a1) { t = a0; a0 = a1; a1 = t; }
+    if (b < 0 || b > 127 || a1 < 0 || a0 > 127) return;
+    if (a0 < 0) a0 = 0;
+    if (a1 > 127) a1 = 127;
+    gt_ent[0] = QF_RECT;
+    if (vert) {
+        gt_ent[1] = (unsigned char)b;
+        gt_ent[2] = (unsigned char)a0;
+        gt_ent[5] = 1;
+        gt_ent[6] = (unsigned char)(a1 - a0 + 1);
+    } else {
+        gt_ent[1] = (unsigned char)a0;
+        gt_ent[2] = (unsigned char)b;
+        gt_ent[5] = (unsigned char)(a1 - a0 + 1);
+        gt_ent[6] = 1;
+    }
+    gt_ent[3] = 0;
+    gt_ent[4] = 0;
+    gt_ent[7] = (unsigned char)~fc_col;
+    Q_COMMIT();
+}
+
 #ifdef GT_BANKED
 static
 #endif
 void GT_LINE_DIAG(int x0, int y0, int x1, int y1, unsigned char col) {
+    /* runs, not pixels: each maximal straight run becomes ONE 1-wide (or
+     * 1-tall) fill entry. A near-vertical 90px aim line was 90 ring
+     * entries + 90 pump/IRQ trips a frame (combo-pool's aim guide);
+     * as runs it's |dx|+1 entries. */
     int dx, dy, sx, sy, e2, errv;
+    int ry0 = y0, rx0 = x0;
     dx = gt_absi(x1 - x0);
     dy = -gt_absi(y1 - y0);
     sx = x0 < x1 ? 1 : -1;
     sy = y0 < y1 ? 1 : -1;
     errv = dx + dy;
-    for (;;) {
-        pset_raw(x0, y0, col);
-        if (x0 == x1 && y0 == y1) break;
-        e2 = errv << 1;
-        if (e2 >= dy) { errv += dy; x0 += sx; }
-        if (e2 <= dx) { errv += dx; y0 += sy; }
+    fc_col = col;
+    if (dx >= -dy) {
+        /* shallow: horizontal runs flushed on y-steps */
+        rx0 = x0;
+        for (;;) {
+            if (x0 == x1 && y0 == y1) { hv_span(rx0, x0, y0, 0); break; }
+            e2 = errv << 1;
+            if (e2 >= dy) { errv += dy; x0 += sx; }
+            if (e2 <= dx) {
+                hv_span(rx0, x0 - sx, y0, 0);
+                errv += dx; y0 += sy;
+                rx0 = x0;
+            }
+        }
+    } else {
+        /* steep: vertical runs flushed on x-steps */
+        ry0 = y0;
+        for (;;) {
+            if (x0 == x1 && y0 == y1) { hv_span(ry0, y0, x0, 1); break; }
+            e2 = errv << 1;
+            if (e2 <= dx) { errv += dx; y0 += sy; }
+            if (e2 >= dy) {
+                hv_span(ry0, y0 - sy, x0, 1);
+                errv += dy; x0 += sx;
+                ry0 = y0;
+            }
+        }
     }
 }
 #ifdef GT_BANKED
