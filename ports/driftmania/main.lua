@@ -1869,11 +1869,23 @@ function _draw()
     if (tlc[i] >= 0) pset(tlx[i], tly[i], tlc[i])
   end
 
-  -- next-checkpoint hint (blinking line; the cart pal-flashes the decal)
+  -- next-checkpoint hint (blinking line; the cart pal-flashes the decal).
+  -- The endpoints are WORLD coords (up to 719) but line_diag walks every
+  -- pixel including the off-screen tail (~5k cyc/draw for a long line). Cull
+  -- when the line's world bbox doesn't touch the [cam, cam+127] view — the
+  -- guide is only useful when its checkpoint is on/near screen anyway.
   if state == 1 and (frame & 8) == 0 then
     local c = nextcp
-    line(cpx[c], cpy[c], cpx[c] + cpdx[c] * (cpl[c] - 1),
-         cpy[c] + cpdy[c] * (cpl[c] - 1), 7)
+    local ex = cpx[c] + cpdx[c] * (cpl[c] - 1)
+    local ey = cpy[c] + cpdy[c] * (cpl[c] - 1)
+    local lx0 = min(cpx[c], ex)
+    local lx1 = max(cpx[c], ex)
+    local ly0 = min(cpy[c], ey)
+    local ly1 = max(cpy[c], ey)
+    if lx1 >= camxi and lx0 <= camxi + 127 and
+       ly1 >= camyi and ly0 <= camyi + 127 then
+      line(cpx[c], cpy[c], ex, ey, 7)
+    end
   end
 
   -- the car (pre-rotated 16x16 frames baked into sheet cells 128-255;
