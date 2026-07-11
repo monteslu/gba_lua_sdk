@@ -17,7 +17,7 @@
 ;   cv_dx (16-bit world x), cv_dy (byte world y) — the screen origin is the
 ;   camera itself, so VX/VY are 0/64; canvas rows: crow = (dx>>8)*128 + dy.
 ; ---------------------------------------------------------------------------
-.export _gt_canvas_view_z, _cv_dx, _cv_dy, _cv_fl, _cv_h
+.export _gt_canvas_view_z, _cv_dx, _cv_dy, _cv_fl, _cv_h, _cv_grp
 .import _gt_qbank
 
 QF_COPYV = $57
@@ -28,6 +28,8 @@ _cv_dy:  .res 1
 _cv_fl:  .res 1                 ; entry flags: $57 colorkey, $D7 opaque
 _cv_h:   .res 1                 ; visible height (0 -> 128 full); caps band 2 so
                                 ; a caller can leave a static HUD band untouched
+_cv_grp: .res 1                 ; source GRAM group OR'd into the entry bank byte
+                                ; (1=BG_GROUP default; 3=track cache group)
 cv_coff: .res 1                 ; dx & 255
 cv_crow: .res 1                 ; (dx>>8)*128 + dy
 cv_w0:   .res 1
@@ -75,7 +77,7 @@ free:   ldx     _gt_qhead
         lda     cv_vh
         sta     _gt_q+6,x
         lda     _gt_qbank
-        ora     #1              ; BG_GROUP
+        ora     _cv_grp         ; source GRAM group (1=BG_GROUP, 3=track cache)
         sta     _gt_q+7,x
         txa
         clc

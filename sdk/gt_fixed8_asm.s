@@ -25,6 +25,7 @@
         .export _gt_fmul_zp
         .export _gt_fdiv
         .export _gt_fdiv_zp
+        .export _gt_ratio8
         .export _fa
         .export _fb
         .importzp c_sp
@@ -47,6 +48,9 @@ mptr:   .res 2          ; mul8: indirect pointer into sqlo/sqhi
 mx:     .res 1          ; mul8 operand x
 my:     .res 1          ; mul8 operand y
 m16:    .res 2          ; mul8 result (16-bit product)
+r8_max: .res 1          ; gt_ratio8 divisor
+r8_rem: .res 1          ; gt_ratio8 remainder
+r8_q:   .res 1          ; gt_ratio8 quotient
 
         .segment "CODE"
 
@@ -165,6 +169,43 @@ sat:    lda     mneg
         rts
 satn:   lda     #$01
         ldx     #$80            ; -0x7FFF (P8's 0x8001)
+        rts
+.endproc
+
+; ---------------------------------------------------------------------------
+; gt_ratio8: fast 8-bit unsigned ratio for atan2. Returns (min << 8) / max
+; clamped to 0..255, where min = _fa (0..127), max = _fb (max >= min > 0). Only
+; 8 quotient bits (vs gt_fdiv's 24-round divide) — atan2 feeds this straight into
+; the 256-entry angle table, so 8 bits is exact for the table index (measured
+; max angular error vs the full divide: 1/256 turn = 1.4 deg). ~3x cheaper than
+; gt_fdiv. Returns the quotient in A/X (X=0; it's a 0..255 int for cc65).
+;   C contract: int gt_ratio8(int min, int max)  — cdecl (min on C stack, max A/X)
+; ---------------------------------------------------------------------------
+.proc _gt_ratio8
+        ; cdecl: max is in A/X (last arg), min on the C stack.
+        ; Dedicated zp scratch (r8_*) so nothing cc65 calls around us (tosicmp,
+        ; the abs negations) can clobber the shared mul/div slots mid-routine.
+        sta     r8_max          ; max (0..127 -> low byte; hi ignored)
+        lda     (c_sp)
+        sta     r8_rem          ; remainder := min (0..127)
+        jsr     incsp2          ; drop the pushed C-stack arg
+        ; (min << 8) / max, 8 quotient bits. Numerator low 8 bits are 0 (the
+        ; <<8): seed rem = min, feed 8 zero bits; quotient bit = (rem >= max).
+        lda     #0
+        sta     r8_q
+        ldx     #8
+r8lp:   asl     r8_rem          ; rem <<= 1 (feed a 0 bit)
+        asl     r8_q            ; make room for the quotient bit
+        lda     r8_rem
+        cmp     r8_max          ; rem >= max ?
+        bcc     r8no
+        sbc     r8_max          ; rem -= max
+        sta     r8_rem
+        inc     r8_q            ; quotient bit = 1
+r8no:   dex
+        bne     r8lp
+        lda     r8_q            ; 8-bit quotient = (min*256)/max, 0..255
+        ldx     #0
         rts
 .endproc
 

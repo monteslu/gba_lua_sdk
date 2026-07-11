@@ -19,6 +19,7 @@ extern int fa, fb;
 #pragma zpsym ("fb")
 int gt_fmul_zp(void);
 int gt_fdiv_zp(void);           /* returns fa/fb (8.8 asm), /0 saturates */
+int  gt_ratio8(int min, int max); /* (min<<8)/max in 0..255; 8-round divide for atan2 */
 int  gt_fsqrt(int x);
 int  gt_ffmod(int a, int b);
 int  gt_fsin(int turns);

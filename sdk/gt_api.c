@@ -44,6 +44,15 @@ char frameflip;             /* DMA_PAGE_OUT bit state */
 char bankflip;              /* BANK_SECOND_FRAMEBUFFER bit state */
 static char fps30;          /* _update() mode: two vsyncs per logical frame */
 
+/* Deadline pacing: the vsync (gt_ticks) count this frame must reach before it
+ * ends. Advances by the frame's vsync quota each endframe (2 for fps30, 1 for
+ * 60fps). gt_endframe waits until gt_ticks HITS this — not "N edges from now" —
+ * so work that already crossed edges counts toward the quota instead of being
+ * paid on top of it. Anchored to gt_ticks on the first endframe (frame_dl_init).
+ * This is the fix for carts spilling to 20fps at ~1.1 vsyncs of real work. */
+static unsigned int frame_deadline;
+static char frame_dl_init;
+
 /* draw state (PICO-8 sticky globals; camera lives in zp — gt_blitq.s) */
 unsigned char draw_color;          /* resolved GameTank byte (asm fast paths read/write) */
 
@@ -383,12 +392,26 @@ int GT_PRINT_INT(int v, int x, int y, int c) {
     unsigned char neg = 0;
     *p = 0;
     if (v < 0) { neg = 1; uv = (unsigned int)(-v); } else uv = (unsigned int)v;
-    do {
+    /* Digit extraction. `uv / 10` on a 16-bit int calls cc65's udiv16by8a
+     * (~measured hot in the HUD profile). Once the value fits a byte — which is
+     * EVERY digit of a number <256 (KPH, lap, most HUD values) and the low
+     * digits of any number — use the exact byte reciprocal (b*205)>>11 instead,
+     * an 8x8 mul8 + shift, no 16-bit divide. */
+    while (uv >= 256u) {
         unsigned int q = uv / 10;
         --p;
         *p = (char)('0' + (unsigned char)(uv - ((q << 3) + (q << 1))));
         uv = q;
-    } while (uv);
+    }
+    {
+        unsigned char b = (unsigned char)uv;
+        do {
+            unsigned char q = (unsigned char)(((unsigned int)b * 205u) >> 11); /* b/10, exact 0..255 */
+            --p;
+            *p = (char)('0' + (b - ((q << 3) + (q << 1))));
+            b = q;
+        } while (b);
+    }
     if (neg) { --p; *p = '-'; }
     return GT_PRINT(p, x, y, c);
 }
@@ -797,7 +820,14 @@ void gt_p8_cls(int c) {
 #endif
 
 void gt_p8_camera(int x, int y) { gt_cam_x = x; gt_cam_y = y; }
-void gt_p8_color(int c) { resolve_color(c); }
+/* color() sets the current draw color. Inlined (not resolve_color(c)) so the hot
+ * path is a couple of zp stores instead of a cdecl call: c<0 keeps the current
+ * color, 0x100|byte is a raw hw color, else it's a p8 index through the palette. */
+void __fastcall__ gt_p8_color(int c) {
+    if (c < 0) return;
+    if (c & 0x100) draw_color = (unsigned char)c;
+    else draw_color = p8pal[c & 15];
+}
 
 #ifdef GT_BANKED
 #pragma code-name ("B0CODE")
@@ -1178,24 +1208,60 @@ void gt_chain_step_draw(int x, int y, int col) {
 
 /* canvas window blit (gt_canvas.s) — independent of the flake fields */
 #ifdef GT_CANVAS
-extern unsigned char cv_dy, cv_fl, cv_h;
+extern unsigned char cv_dy, cv_fl, cv_h, cv_grp;
 extern int cv_dx;
 #pragma zpsym ("cv_dx")
 #pragma zpsym ("cv_dy")
 #pragma zpsym ("cv_fl")
 #pragma zpsym ("cv_h")
+#pragma zpsym ("cv_grp")
 void gt_canvas_view_z(void);
 /* height omitted (or <=0) -> full 128 rows; pass e.g. 112 to leave a static
  * HUD band (y>=112) untouched by the restore so its content persists. */
 void gt_canvas_view(int dx, int dy, int opaque, int height) {
     cv_dx = dx;
     cv_dy = (unsigned char)dy;
-    cv_fl = (opaque == 1) ? 0xD7 : 0x57; /* omitted optional arrives as -1 */
+    /* NO DMA_PAGE_OUT bit (0x02): the page bit is injected by gt_q_pump's
+     * `ORA _frameflip` at queue time, exactly like QF_SPR/QF_RECT. Hardwiring
+     * it here forced the presented page = the DRAW page whenever a canvas piece
+     * was the last $2007 writer before present (the endframe idle loops keep
+     * pumping) — presenting the half-drawn page on one flip parity => the
+     * "entities black every other frame" flicker. 0xD5/0x55 = 0xD7/0x57 & ~0x02. */
+    cv_fl = (opaque == 1) ? 0xD5 : 0x55; /* omitted optional arrives as -1 */
     cv_h = (height > 0 && height < 128) ? (unsigned char)height : 0;
+    cv_grp = 1;                          /* source group 1 (BG_GROUP) */
     gt_draw_mode = MODE_NONE;
     gt_canvas_view_z();
 }
 #endif /* GT_CANVAS */
+
+#ifdef GT_TRACK_CACHE
+#define TRACK_GROUP 3
+/* Restore the 128x128 view of the group-3 track cache at source (ox,oy) in the
+ * 256x256 canvas. The blitter's GX/GY bit7 selects the quadrant per-pixel and
+ * wraps SEAMLESSLY across quadrant boundaries as the source counter crosses 128
+ * (same mechanism gt_bg_draw relies on), so a plain opaque copy at (ox,oy)
+ * spans all four quadrants correctly — no strip mangling like canvas_view.
+ * Staged as two 64-tall pieces (the blitter height field is 7-bit). Queued
+ * (async), opaque — the track is the base layer under car/props/HUD. */
+static void track_piece(unsigned char vy, unsigned char gx, unsigned char gy) {
+    gt_ent[0] = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_OPAQUE | DMA_GCARRY;
+    gt_ent[1] = 0;                       /* VX: screen x */
+    gt_ent[2] = vy;                      /* VY: screen y (0 or 64) */
+    gt_ent[3] = gx;                      /* GX: source x (bit7 = right quad) */
+    gt_ent[4] = gy;                      /* GY: source y (bit7 = bottom quad) */
+    gt_ent[5] = 127;                     /* width 128 (127 = full) */
+    gt_ent[6] = 64;                      /* height 64 */
+    gt_ent[7] = (unsigned char)(gt_qbank | TRACK_GROUP);
+    gt_draw_mode = MODE_NONE;
+    gt_q_push();
+}
+void gt_track_view(int sx, int sy) {
+    unsigned char ox = (unsigned char)sx, oy = (unsigned char)sy;
+    track_piece(0,  ox, oy);             /* rows 0..63  from (ox, oy) */
+    track_piece(64, ox, (unsigned char)(oy + 64));  /* rows 64..127 */
+}
+#endif
 
 #ifdef GT_TILES
 /* visible-window tile scan in asm (gt_tiles.s): stages QF_SPR entries for
@@ -1484,6 +1550,43 @@ void gt_chunks_draw(int *grid, unsigned char *lut, unsigned char *lut2,
     ck_y0 = (unsigned char)(cy0 * 24 - gt_cam_y);
     gt_chunks_z();
 }
+
+/* Props-only walk: collect the (propidx, screenx, screeny) triples for the
+ * visible chunk window WITHOUT painting the track. The track cache already
+ * holds the road+decal pixels, but props (trees/fences/guardrails, cg>>10) are
+ * live sprites drawn over the car each frame — this feeds cprops[] so that pass
+ * still runs. Mirrors gt_chunks_z's prop emission (byte triples, 45-byte cap,
+ * 0-terminated); sparse cells make it far cheaper than a full chunks_draw. */
+void gt_track_props(int *grid, unsigned char *props, int stride,
+                    int cx0, int cy0, int cx1, int cy1) {
+    int r, c, p;
+    unsigned char sy, sx, pi = 0;
+    int *row;
+    if (cx1 < cx0 || cy1 < cy0) { props[0] = 0; return; }
+    /* clamp to the 30x30 chunk grid: div3[] can index cell 30/31 at the world
+     * edge, which would walk past cgrid[900] (OOB read of an adjacent BSS var
+     * that can carry a bogus prop id -> a wild gspr that never completes). */
+    if (cx1 > 29) cx1 = 29;
+    if (cy1 > 29) cy1 = 29;
+    if (cx0 > 29 || cy0 > 29) { props[0] = 0; return; }
+    sy = (unsigned char)(cy0 * 24 - gt_cam_y);
+    for (r = cy0; r <= cy1; ++r) {
+        row = grid + r * stride + cx0;
+        sx = (unsigned char)(cx0 * 24 - gt_cam_x);
+        for (c = cx0; c <= cx1; ++c) {
+            p = ((unsigned)(*row++) >> 10) & 0x3F;   /* cg >> 10 (6-bit propidx) */
+            if (p) {
+                props[pi++] = (unsigned char)p;
+                props[pi++] = sx;
+                props[pi++] = sy;
+                if (pi >= 45) { props[pi] = 0; return; }
+            }
+            sx += 24;
+        }
+        sy += 24;
+    }
+    props[pi] = 0;
+}
 #endif /* GT_CHUNKS */
 
 #ifdef GT_BANKED
@@ -1494,6 +1597,18 @@ static void hv_span(int a0, int a1, int b, int vert);
 #else
 #define GT_LINE_DIAG line_diag
 #endif
+
+/* gt_line.s — asm Bresenham VRAM-poke walk for on-screen diagonals. The zp vars
+ * are its arg block (set by GT_LINE_DIAG before the call). Caller must be in
+ * CPU-to-VRAM mode; all coords 0..127 (the C wrapper only takes the asm path
+ * when both endpoints are on-screen, which keeps the whole line in-box). */
+/* gt_line's state block lives in BSS (absolute), not zero page — only the
+ * internal ln_ptr is zp. This keeps the always-resident zp footprint to 2 bytes
+ * (a line-using game was overflowing the zp budget otherwise). */
+extern unsigned char ln_x, ln_y, ln_dx, ln_dy, ln_sx, ln_sy, ln_col, ln_n;
+extern int ln_err;
+void gt_line_poke(void);
+
 /* one straight run of a diagonal line: a0..a1 along the run axis at
  * cross-coordinate b; vert selects vertical. Order-normalized + clipped. */
 static void hv_span(int a0, int a1, int b, int vert) {
@@ -1536,6 +1651,39 @@ void GT_LINE_DIAG(int x0, int y0, int x1, int y1, unsigned char col) {
     sy = y0 < y1 ? 1 : -1;
     errv = dx + dy;
     fc_col = col;
+    /* Diagonal fast path: the run-based blit walk below is optimal for
+     * near-axis-aligned lines (few long runs) but degenerates to one 1px blit
+     * PER PIXEL on a true diagonal (~370 cyc each -> a 40px diagonal was ~47k
+     * cyc). When the SHORTER axis span is large the runs are all tiny, so
+     * CPU-poke the pixels straight into VRAM instead: enter CPU mode ONCE, then
+     * ~20 cyc/pixel. Poke only when the shorter axis is >= 8 (so the run path
+     * would emit many short 1px blits) — for few-pixel lines the run path's
+     * handful of blits beats the CPU-mode drain. Off-screen pixels are skipped
+     * per-pixel (clip in the loop). */
+    if (dx >= 8 && -dy >= 8) {
+        enter_cpu_mode();
+        if ((unsigned)x0 <= 127u && (unsigned)y0 <= 127u &&
+            (unsigned)x1 <= 127u && (unsigned)y1 <= 127u) {
+            ln_x = (unsigned char)x0;  ln_y = (unsigned char)y0;
+            ln_dx = (unsigned char)dx;
+            ln_dy = (unsigned char)(-dy);
+            ln_sx = (unsigned char)sx; ln_sy = (unsigned char)sy;
+            ln_err = errv;
+            ln_col = col;
+            ln_n = (unsigned char)((dx > -dy) ? dx : -dy);
+            gt_line_poke();
+            return;
+        }
+        for (;;) {
+            if ((unsigned)x0 <= 127u && (unsigned)y0 <= 127u)
+                vram_row[y0][x0] = col;
+            if (x0 == x1 && y0 == y1) break;
+            e2 = errv << 1;
+            if (e2 >= dy) { errv += dy; x0 += sx; }
+            if (e2 <= dx) { errv += dx; y0 += sy; }
+        }
+        return;
+    }
     if (dx >= -dy) {
         /* shallow: horizontal runs flushed on y-steps */
         rx0 = x0;
@@ -1865,6 +2013,17 @@ static void await_vsync(void) {
     while (gt_frameflag) { gt_q_pump(); ++gt_idle_polls; }
 }
 
+/* Wait until the NMI vsync counter reaches `target` (a gt_ticks value). If it's
+ * ALREADY there — because the frame's work spilled past the edge on its own —
+ * this returns immediately, so the fixed per-frame waits OVERLAP the work
+ * instead of stacking on top of it. That's the whole 30fps fix: a frame doing
+ * 1.5 vsyncs of work + 0.5 vsync of idle wait costs 2 vsyncs, not 3. */
+static void await_tick(unsigned int target) {
+    /* signed diff so wrap at 65535->0 is handled: keep waiting while we're
+     * still short of the target (gt_ticks - target reads negative). */
+    while ((int)(gt_ticks - target) < 0) { gt_q_pump(); ++gt_idle_polls; }
+}
+
 static void flip_pages(void) {
     frameflip ^= DMA_PAGE_OUT;
     bankflip ^= BANK_SECOND_FRAMEBUFFER;
@@ -1884,6 +2043,7 @@ void gt_init(void) {
     gt_frameflag = 0;
     gt_draw_busy = 0;
     gt_ticks = 0;
+    frame_dl_init = 0;           /* re-anchor deadline pacing on first endframe */
     frameflip = 0;
     bankflip = BANK_SECOND_FRAMEBUFFER;
     fps30 = 0;
@@ -1918,6 +2078,14 @@ int gt_autocls = -1;
 void gt_autocls_set(int c) { gt_autocls = c; }
 #endif
 
+/* Benchmark marker: write byte `n` to $1F00 (unused RAM gap the linker leaves
+ * between RAM $0200-$1EFF and I/O $2000). The libretro core's cycle-marker hook
+ * records (n, totalCyclesCount) on every write there, so the micro-benchmark
+ * harness reads the cycle delta between two gt.mark() calls = exact cost of the
+ * code between them. Ships in every build (a single STA, ~4 cycles) but is only
+ * ever called by generated benchmark carts — kept out of the cheat sheet. */
+void gt_mark(int n) { GT_MARK_ADDR = (unsigned char)n; }
+
 #ifdef GT_AUTOCLS
 static void queue_autocls(void) {
     unsigned char col;
@@ -1943,34 +2111,63 @@ extern unsigned int gt_frames;
 #pragma zpsym ("gt_frames")
 
 void gt_endframe(void) {
+    /* the frame's vsync quota: 2 for a 30fps (_update) cart, 1 for 60fps. */
+    unsigned char quota = fps30 ? 2 : 1;
+
     ++gt_frames;
-    /* vsync FIRST, then the drain check: queued blits keep draining DURING
-     * the vsync wait, so their pixel time vanishes from the frame budget
-     * (a full-screen cls is 16k pixels of blitter time — serializing it
-     * before the wait cost fill-heavy carts a whole extra vsync). The drain
-     * check after the edge is normally already satisfied; when it isn't,
-     * the flip slides a few hundred cycles into vblank, which is where it
-     * belongs anyway. */
+
+    /* DEADLINE PACING (the 30fps fix): advance the target by this frame's
+     * quota and wait until gt_ticks REACHES it — rather than doing `quota`
+     * unconditional edge-waits after the work. When _update/_draw already
+     * spilled past an edge, that edge is spent toward the quota, not paid on
+     * top of it. Result: a frame can use its FULL 2-vsync budget for work
+     * (~1.9 vsyncs busy + a short wait) and still hold 30fps, instead of any
+     * work over ~1.0 vsync spilling to a 3-vsync (20fps) frame. */
+    if (!frame_dl_init) {        /* anchor on the first endframe */
+        frame_deadline = gt_ticks;
+        frame_dl_init = 1;
+    }
+    frame_deadline += quota;
+    /* Overrun resync: if the frame blew its budget so hard that the work alone
+     * already reached/passed the deadline, DON'T add a fresh quota of idle on
+     * top (that rounds a 2.4-vsync frame up to a 4-vsync one). Snap the deadline
+     * DOWN to the current tick — the flip await_vsync() below then rounds the
+     * frame up to the next whole vsync (ceil of the work), which is the honest
+     * minimum: 2.4v of work costs 3 vsyncs, not 4. This also stops a hitch from
+     * leaving us permanently behind: the cadence re-anchors to reality here. */
+    if ((int)(gt_ticks - frame_deadline) >= 0)
+        frame_deadline = gt_ticks;
+
+    /* Drain THIS frame's blits with blitter/CPU overlap before the flip. Wait
+     * for at least one vsync edge (pumping the queue the whole time) so the
+     * blitter finishes its pixels IN PARALLEL — a full-screen cls is 16k pixels
+     * of blitter time that must hide inside a wait, not be paid synchronously.
+     * The edge we wait for is counted toward the deadline (await_vsync advances
+     * gt_ticks), so it is NOT extra: a frame whose work already spanned edges
+     * just consumes them here. It also guarantees a heavy frame advances by at
+     * least one vsync — so ceil(work), never a busy-spin with no present. */
     await_vsync();
     await_drawing();
     flip_pages();
-    queue_autocls();             /* the NEW draw page clears during the wait */
+    queue_autocls();             /* the NEW draw page clears during the tail wait */
     gt_time_tick();
+
+    /* Hold to the deadline: sit out whatever vsyncs remain in the quota (0..n).
+     * THIS is where the fix lives — instead of a second unconditional edge-wait,
+     * we wait only until gt_ticks reaches the deadline the work+flip haven't
+     * already passed. Work that overran the first edge is spent against the
+     * quota, so ~1.9 vsyncs of work + one flip edge = 2 total, not 3. */
+    await_tick(frame_deadline);
+
+    /* Music/sequencer is a 60 Hz clock: step it once per ELAPSED vsync since
+     * last time (capped), or envelopes stretch and notes hang during slowdown.
+     * gt_ticks counts real vsyncs via the NMI. */
     if (gt_frame_hook) {
-        /* The sequencer is a 60 Hz clock: when a heavy frame spans extra
-         * vsyncs, step it once per ELAPSED vsync (capped) or envelopes
-         * stretch and notes hang on loud phases — audible as distortion
-         * during slowdown. gt_ticks counts real vsyncs via the NMI. */
         unsigned char steps = (unsigned char)(gt_ticks - hook_tick_last);
         if (steps > 6) steps = 6;
         if (steps < 1) steps = 1;
         while (steps--) gt_frame_hook();
     }
     hook_tick_last = (unsigned char)gt_ticks;
-    if (fps30) {                 /* 30fps mode: burn the second vsync */
-        await_vsync();           /* (pumps: the autocls drains in here) */
-        gt_time_tick();
-        if (gt_frame_hook) gt_frame_hook(); /* keep music at 60 Hz in 30fps mode */
-        hook_tick_last = (unsigned char)gt_ticks;
-    }
+    gt_time_tick();
 }

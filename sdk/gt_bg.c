@@ -25,6 +25,13 @@
 #include "gt_api.h"
 
 #define BG_GROUP 1                  /* bank_reg low bits select GRAM group 1 */
+#define TRACK_GROUP 3               /* group 3: a free 256x256 canvas (0=fb+sheet,
+                                     * 1=bg atlas, 2=font cache) — the scrolling
+                                     * track cache for driftmania-style renderers */
+
+/* Which GRAM group the CPU-write + bg_draw paths target. Default BG_GROUP; the
+ * track-cache path flips it to TRACK_GROUP around a compose/view and restores. */
+static unsigned char bg_grp = BG_GROUP;
 
 /* draw-mode + page-flip plumbing (defined in gt_api.c). frameflip/bankflip are
  * the page-flip bit states; a normal frame's blit runs against $2007 =
@@ -102,7 +109,7 @@ static void bg_enter_write_q(unsigned char quad) {
      * with the game's flip protocol (seen as content on alternate frames
      * only). */
     *dma_flags = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY | frameflip;
-    *bank_reg  = bankflip | BG_GROUP | BANK_CLIP_X | BANK_CLIP_Y;
+    *bank_reg  = bankflip | bg_grp | BANK_CLIP_X | BANK_CLIP_Y;
     vram[GX] = (quad & 1) ? 0x80 : 0;   /* GX bit7 -> right quadrant column */
     vram[GY] = (quad & 2) ? 0x80 : 0;   /* GY bit7 -> bottom quadrant row */
     vram[VX] = 200; vram[VY] = 200;  /* offscreen + clipped: no visible pixel */
@@ -238,7 +245,7 @@ void gt_bg_draw(int sx, int sy) {
      * with DMA_ENABLE clear, which would blit nothing). Source GRAM group 1
      * (the composed bg page) via BG_GROUP. */
     *dma_flags = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_OPAQUE | DMA_GCARRY | frameflip;
-    *bank_reg  = bankflip | BG_GROUP | BANK_CLIP_X | BANK_CLIP_Y;
+    *bank_reg  = bankflip | bg_grp | BANK_CLIP_X | BANK_CLIP_Y;
     vram[GX] = (unsigned char)sx;
     vram[GY] = (unsigned char)sy;
     vram[VX] = 0;
@@ -250,6 +257,356 @@ void gt_bg_draw(int sx, int sy) {
     bg_drain();
     bg_restore_draw_state();          /* hand the blitter back in normal state */
 }
+
+/* ---- track cache (group 3) -----------------------------------------------
+ * A second scrolling canvas independent of the bg atlas (group 1). A renderer
+ * whose whole background re-blits every frame (a scrolling tilemap) composes
+ * the visible window + margin ONCE into group 3, then restores it each frame
+ * with a single windowed blit (gt_track_view) — 4 quadrant copies instead of
+ * the dozens/hundreds of per-cell fills+chunk blits the live render stages.
+ *
+ * Compose reuses gt_bg_compose_impl verbatim; only the target GROUP differs
+ * (bg_grp). The map is a tile-id grid the caller builds for the visible window
+ * (tile 0 = transparent -> left as the cleared color 0). Restore is gt_bg_draw
+ * with the group flipped. Both save/restore bg_grp so bg-atlas users are
+ * unaffected. */
+#if defined(GT_BG_COMPOSE_ON) && defined(GT_TRACK_CACHE)
+/* Compose a BYTE tile-id grid (cw x ch, stride cols) into the track cache
+ * (group 3). Tile 0 = transparent (left cleared). Same 4bpp sheet decode as
+ * gt_bg_compose, but the map is bytes (tile ids fit a byte) — half the RAM of
+ * the int map, which matters in the 2 KB budget. Composes to quadrant 0..3 by
+ * the cell's 128px block, re-latching CPU writes per quadrant. */
+#ifdef GT_BANKED
+#pragma code-name ("B2CODE")
+#define GT_TRACK_COMPOSE gt_track_compose_impl
+#else
+#define GT_TRACK_COMPOSE gt_track_compose
+#endif
+void GT_TRACK_COMPOSE(unsigned char *map, int cols, int cx, int cy,
+                      int cw, int ch) {
+    int i, j;
+    unsigned char py, t, sy0, b, quad, cur_quad, lx;
+    unsigned char lut[16];
+    const unsigned char *sheet = gt_sheet_ptr;
+    if (!sheet) return;
+    for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
+    bg_grp = TRACK_GROUP;
+    { unsigned char q; unsigned int p; unsigned char c0 = lut[0];
+      for (q = 0; q < 4; ++q) { bg_enter_write_q(q);
+          for (p = 0; p < 16384u; ++p) vram[p] = c0; } }
+    cur_quad = 0xFF;
+    for (j = 0; j < ch; ++j) {
+        if (cy + j < 0) continue;
+        for (i = 0; i < cw; ++i) {
+            if (cx + i < 0) continue;
+            t = map[(cy + j) * cols + (cx + i)];
+            if (t == 0) continue;
+            quad = (unsigned char)((((j >> 4) & 1) << 1) | ((i >> 4) & 1));
+            if (quad != cur_quad) { bg_enter_write_q(quad); cur_quad = quad; }
+            lx = (unsigned char)((i << 3) & 0x7F);
+            if (t & 0x80) {
+                /* flat fill: 8x8 of color (t & 15) — matches chunks_draw's
+                 * direct rectfill in color k (NOT a sheet tile). */
+                b = lut[t & 15];
+                for (py = 0; py < 8; ++py) {
+                    unsigned char *dp =
+                        vram + (((unsigned int)(((j << 3) + py) & 0x7F) << 7) | lx);
+                    unsigned char k; for (k = 0; k < 8; ++k) *dp++ = b;
+                }
+                continue;
+            }
+            sy0 = (unsigned char)((t >> 4) << 3);
+            for (py = 0; py < 8; ++py) {
+                const unsigned char *sp =
+                    sheet + (((unsigned int)(sy0 + py) << 6) | (unsigned int)((t & 15) << 2));
+                unsigned char *dp =
+                    vram + (((unsigned int)(((j << 3) + py) & 0x7F) << 7) | lx);
+                unsigned char k;
+                for (k = 0; k < 4; ++k) {
+                    b = *sp++;
+                    *dp++ = lut[b & 15];
+                    *dp++ = lut[b >> 4];
+                }
+            }
+        }
+    }
+    bg_restore_draw_state();
+    bg_grp = BG_GROUP;
+}
+
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+void gt_track_compose(unsigned char *map, int cols, int cx, int cy,
+                      int cw, int ch) {
+    unsigned char saved_bank = gt_cur_bank;
+    if (!gt_sheet_ptr) return;
+    gt_bank(GT_SHEET_BANK);
+    gt_track_compose_impl(map, cols, cx, cy, cw, ch);
+    gt_bank(saved_bank);
+}
+#endif
+
+/* ---- cgrid-driven track compose (the real path) --------------------------
+ * Paint the visible 16x16 sub-tile window (128x128) directly from the packed
+ * chunk grid, running gt.chunks_draw's exact per-cell decode but writing GRAM
+ * group 3 instead of staging blits. No RAM tile-map (reads cgrid), and it
+ * layers road THEN decal-with-colorkey so decal transparency shows the road —
+ * which the flat one-tile-per-cell map couldn't. Pixel-identical to the live
+ * render by construction.
+ *
+ * grid  : cgrid, an int per 3x3-tile chunk cell, row stride `stride` cells.
+ * ckdt  : int[]; ckdt[n] low byte = ckd(n) (color if <16, atlas idx if >=16),
+ *         high byte = ckt(n) (a solid-color sheet tile, unused here).
+ * ctiles: int[]; ctile(idx) = (idx&1) ? ctiles[idx>>1]>>8 : ctiles[idx>>1]&255
+ *         — the atlas chunk's 9 sub-tile sheet ids.
+ * tx0/ty0: top-left 8px-tile of the window. grassCol: p8 color for empty road.
+ * decb: the decal ckdt offset (driftmania's DECB). */
+#if defined(GT_TRACK_CACHE)
+/* decode ONE 8px sub-tile from sheet tile `t` at canvas (lx, py0..+7). If
+ * colorkey, source nibble 0 is skipped (leaves the road underneath). */
+static void tgrid_tile(const unsigned char *sheet, const unsigned char *lut,
+                       unsigned char t, unsigned char lx, unsigned char py0,
+                       unsigned char colorkey) {
+    unsigned char py, k, b, sy0 = (unsigned char)((t >> 4) << 3);
+    for (py = 0; py < 8; ++py) {
+        const unsigned char *sp =
+            sheet + (((unsigned int)(sy0 + py) << 6) | (unsigned int)((t & 15) << 2));
+        unsigned char *dp = vram + (((unsigned int)((py0 + py) & 0x7F) << 7) | lx);
+        for (k = 0; k < 4; ++k) {
+            b = *sp++;
+            if (!colorkey || (b & 15)) *dp = lut[b & 15];
+            dp++;
+            if (!colorkey || (b >> 4)) *dp = lut[b >> 4];
+            dp++;
+        }
+    }
+}
+
+/* Resolve + paint ONE world sub-tile into the current quadrant at local
+ * (lx, py0). Runs chunks_draw's exact road+decal decode: flat road = opaque
+ * fill; atlas road = grass then colorkey chunk; decal (over road) = flat opaque
+ * or colorkey atlas. ckdt/ctiles are Lua 1-indexed (ckdt[n-1]; ctiles[idx>>1]
+ * where the Lua +1 and C -1 cancel). Shared by grid/col/row compose.
+ *
+ * The chunk cell (cxc,cyr) + sub-tile (srx,sry) come in PRE-DIVIDED: the caller
+ * tracks them incrementally (srx cycles 0,1,2; cxc bumps on wrap) so the hot
+ * loop never runs the 6502 software divide (udiv16by8a was ~3.5k cyc/column in
+ * the profile — no /3 in here now). oob=1 forces grass (off the 90x90 grid). */
+/* world tile t -> chunk cell *cc, sub *sr (0..2), *oob if off the 90x90 grid.
+ * The ONE /3 site; callers hoist it out of the sub-tile loop (per row/column,
+ * or once for a constant-tile column). */
+static void tdiv(int t, int *cc, int *sr, int *oob) {
+    if (t < 0 || t >= 90) { *oob = 1; *cc = 0; *sr = 0; return; }
+    *oob = 0;
+    { int c = t / 3; *cc = c; *sr = t - c * 3; }
+}
+static void paint_subtile(int *grid, int *ckdt, int *ctiles, int stride,
+                          const unsigned char *sheet, const unsigned char *lut,
+                          int cxc, int cyr, int srx, int sry, int oob,
+                          int grassCol, int decb,
+                          unsigned char lx, unsigned char py0) {
+    int cg, sub, r, d, k;
+    unsigned char rtile = 0, dtile = 0, rflat = 0xFF, dflat = 0xFF, py, kk, c;
+    if (oob) { cg = 0; }
+    else cg = grid[cyr * stride + cxc];
+    sub = sry * 3 + srx;
+    r = cg & 31;
+    if (r == 0) { rflat = (unsigned char)grassCol; }
+    else {
+        k = ckdt[r - 1] & 255;
+        if (k < 16) rflat = (unsigned char)k;
+        else { int idx = (k - 16) * 9 + sub;
+               rtile = (unsigned char)((idx & 1) ? (ctiles[idx >> 1] >> 8)
+                                                 : (ctiles[idx >> 1] & 255)); }
+    }
+    d = (cg >> 5) & 31;
+    if (d != 0) {
+        k = ckdt[d + decb - 1] & 255;
+        if (k < 16) dflat = (unsigned char)k;
+        else { int idx = (k - 16) * 9 + sub;
+               dtile = (unsigned char)((idx & 1) ? (ctiles[idx >> 1] >> 8)
+                                                 : (ctiles[idx >> 1] & 255)); }
+    }
+    /* road */
+    if (rflat != 0xFF) {
+        c = lut[rflat];
+        for (py = 0; py < 8; ++py) {
+            unsigned char *dp = vram + (((unsigned int)((py0 + py) & 0x7F) << 7) | lx);
+            for (kk = 0; kk < 8; ++kk) *dp++ = c;
+        }
+    } else {
+        c = lut[(unsigned char)grassCol];
+        for (py = 0; py < 8; ++py) {
+            unsigned char *dp = vram + (((unsigned int)((py0 + py) & 0x7F) << 7) | lx);
+            for (kk = 0; kk < 8; ++kk) *dp++ = c;
+        }
+        if (rtile) tgrid_tile(sheet, lut, rtile, lx, py0, 1);
+    }
+    /* decal over road */
+    if (dflat != 0xFF) {
+        c = lut[dflat];
+        for (py = 0; py < 8; ++py) {
+            unsigned char *dp = vram + (((unsigned int)((py0 + py) & 0x7F) << 7) | lx);
+            for (kk = 0; kk < 8; ++kk) *dp++ = c;
+        }
+    } else if (dtile) tgrid_tile(sheet, lut, dtile, lx, py0, 1);
+}
+#ifdef GT_BANKED
+#pragma code-name ("B2CODE")
+#define GT_TRACK_GRID gt_track_grid_impl
+#else
+#define GT_TRACK_GRID gt_track_grid
+#endif
+/* Composes a 32x32 sub-tile (256x256px) region = ALL FOUR group-3 quadrants,
+ * so the 128x128 view can scroll up to ~128px within it before a recompose.
+ * tx0/ty0 = top-left 8px-tile of the 256px region. */
+void GT_TRACK_GRID(int *grid, int *ckdt, int *ctiles, int stride,
+                   int tx0, int ty0, int grassCol, int decb) {
+    unsigned char lut[16];
+    unsigned char b, quad;
+    const unsigned char *sheet = gt_sheet_ptr;
+    if (!sheet) return;
+    for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
+    bg_grp = TRACK_GROUP;
+    /* TORUS: world tile (tx0+i, ty0+j) lands at canvas ((tx0+i)&31)*8,
+     * ((ty0+j)&31)*8 = (worldpx & 255). track_view reads at (camxi&255,
+     * camyi&255), so the seam wraps seamlessly. QUADRANT-MAJOR over CANVAS
+     * quadrants: enter CPU-write ONCE per quadrant. Canvas col cvx (0..31) ->
+     * quadrant column cvx>>4, local x (cvx&15)<<3; the world tile for this
+     * canvas col is the one whose (&31) == cvx, i.e. tx0 + ((cvx - (tx0&31))
+     * & 31). Same for rows. */
+    { unsigned char qy, qx, jj, ii;
+    int tbaseX = tx0 & 31, tbaseY = ty0 & 31;
+    for (qy = 0; qy < 2; ++qy)
+    for (qx = 0; qx < 2; ++qx) {
+      quad = (unsigned char)((qy << 1) | qx);
+      bg_enter_write_q(quad);
+      for (jj = 0; jj < 16; ++jj) {
+        int cvy = (qy << 4) + jj;                 /* canvas sub-row 0..31 */
+        int ty = ty0 + ((cvy - tbaseY) & 31);     /* world tile at this canvas row */
+        unsigned char py0 = (unsigned char)((cvy << 3) & 0x7F);
+        int cyr, sry, yoob; tdiv(ty, &cyr, &sry, &yoob);   /* ONE /3 per row */
+        for (ii = 0; ii < 16; ++ii) {
+            int cvx = (qx << 4) + ii;              /* canvas sub-col 0..31 */
+            int tx = tx0 + ((cvx - tbaseX) & 31);  /* world tile at this canvas col */
+            unsigned char lx = (unsigned char)((cvx << 3) & 0x7F);
+            int cxc, srx, xoob; tdiv(tx, &cxc, &srx, &xoob);
+            paint_subtile(grid, ckdt, ctiles, stride, sheet, lut,
+                          cxc, cyr, srx, sry, xoob || yoob, grassCol, decb, lx, py0);
+        }
+      }
+    }
+    }
+    bg_restore_draw_state();
+    bg_grp = BG_GROUP;
+}
+
+/* Refresh ONE canvas column (32 sub-tiles tall) for world tile-x `wtx`, at the
+ * torus canvas x = (wtx & 31)*8. `wty0` = the world tile-y at canvas row 0.
+ * Cheap incremental scroll: paint only the column that just entered the view. */
+#ifdef GT_BANKED
+#pragma code-name ("B2CODE")
+#define GT_TRACK_COL gt_track_col_impl
+#else
+#define GT_TRACK_COL gt_track_col
+#endif
+void GT_TRACK_COL(int *grid, int *ckdt, int *ctiles, int stride,
+                  int wtx, int wty0, int grassCol, int decb) {
+    unsigned char lut[16], b, cvx, quad, jj;
+    const unsigned char *sheet = gt_sheet_ptr;
+    if (!sheet) return;
+    for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
+    bg_grp = TRACK_GROUP;
+    cvx = (unsigned char)(wtx & 31);              /* canvas sub-col 0..31 */
+    { unsigned char qy; int tbaseY = wty0 & 31;
+      unsigned char lx = (unsigned char)((cvx << 3) & 0x7F);
+      int cxc, srx, xoob; tdiv(wtx, &cxc, &srx, &xoob);   /* wtx CONSTANT: one /3 */
+      for (qy = 0; qy < 2; ++qy) {
+        quad = (unsigned char)((qy << 1) | (cvx >> 4));
+        bg_enter_write_q(quad);
+        for (jj = 0; jj < 16; ++jj) {
+            int cvy = (qy << 4) + jj;
+            int ty = wty0 + ((cvy - tbaseY) & 31);
+            unsigned char py0 = (unsigned char)((cvy << 3) & 0x7F);
+            int cyr, sry, yoob; tdiv(ty, &cyr, &sry, &yoob);
+            paint_subtile(grid, ckdt, ctiles, stride, sheet, lut,
+                          cxc, cyr, srx, sry, xoob || yoob, grassCol, decb, lx, py0);
+        }
+      }
+    }
+    bg_restore_draw_state();
+    bg_grp = BG_GROUP;
+}
+
+/* Refresh ONE canvas row (32 sub-tiles wide) for world tile-y `wty`, at torus
+ * canvas y = (wty & 31)*8. `wtx0` = world tile-x at canvas col 0. */
+#ifdef GT_BANKED
+#pragma code-name ("B2CODE")
+#define GT_TRACK_ROW2 gt_track_row2_impl
+#else
+#define GT_TRACK_ROW2 gt_track_row2
+#endif
+void GT_TRACK_ROW2(int *grid, int *ckdt, int *ctiles, int stride,
+                   int wty, int wtx0, int grassCol, int decb) {
+    unsigned char lut[16], b, cvy, quad, ii;
+    const unsigned char *sheet = gt_sheet_ptr;
+    if (!sheet) return;
+    for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
+    bg_grp = TRACK_GROUP;
+    cvy = (unsigned char)(wty & 31);
+    { unsigned char qx; int tbaseX = wtx0 & 31;
+      unsigned char py0 = (unsigned char)((cvy << 3) & 0x7F);
+      int cyr, sry, yoob; tdiv(wty, &cyr, &sry, &yoob);   /* wty CONSTANT: one /3 */
+      for (qx = 0; qx < 2; ++qx) {
+        quad = (unsigned char)(((cvy >> 4) << 1) | qx);
+        bg_enter_write_q(quad);
+        for (ii = 0; ii < 16; ++ii) {
+            int cvx = (qx << 4) + ii;
+            int tx = wtx0 + ((cvx - tbaseX) & 31);
+            unsigned char lx = (unsigned char)((cvx << 3) & 0x7F);
+            int cxc, srx, xoob; tdiv(tx, &cxc, &srx, &xoob);
+            paint_subtile(grid, ckdt, ctiles, stride, sheet, lut,
+                          cxc, cyr, srx, sry, xoob || yoob, grassCol, decb, lx, py0);
+        }
+      }
+    }
+    bg_restore_draw_state();
+    bg_grp = BG_GROUP;
+}
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+void gt_track_grid(int *grid, int *ckdt, int *ctiles, int stride,
+                   int tx0, int ty0, int grassCol, int decb) {
+    unsigned char saved_bank = gt_cur_bank;
+    if (!gt_sheet_ptr) return;
+    gt_bank(GT_SHEET_BANK);
+    gt_track_grid_impl(grid, ckdt, ctiles, stride, tx0, ty0, grassCol, decb);
+    gt_bank(saved_bank);
+}
+void gt_track_col(int *grid, int *ckdt, int *ctiles, int stride,
+                  int wtx, int wty0, int grassCol, int decb) {
+    unsigned char saved_bank = gt_cur_bank;
+    if (!gt_sheet_ptr) return;
+    gt_bank(GT_SHEET_BANK);
+    gt_track_col_impl(grid, ckdt, ctiles, stride, wtx, wty0, grassCol, decb);
+    gt_bank(saved_bank);
+}
+void gt_track_row2(int *grid, int *ckdt, int *ctiles, int stride,
+                   int wty, int wtx0, int grassCol, int decb) {
+    unsigned char saved_bank = gt_cur_bank;
+    if (!gt_sheet_ptr) return;
+    gt_bank(GT_SHEET_BANK);
+    gt_track_row2_impl(grid, ckdt, ctiles, stride, wty, wtx0, grassCol, decb);
+    gt_bank(saved_bank);
+}
+#endif
+#endif /* GT_TRACK_CACHE */
+
+
+/* gt_track_view lives in gt_api.c: it reuses the QUEUED gt_canvas_view path
+ * (async 4-copy, no synchronous drain) targeting group 3 — the cheap per-frame
+ * restore that hits the render ceiling, unlike a synchronous gt_bg_draw. */
+#endif /* GT_TRACK_CACHE */
 
 /* ---- atlas-building primitives -------------------------------------------
  * gt.bg_clear() + gt.bg_tile(t, px, py) let a game paint the 256x256 canvas
@@ -386,6 +743,16 @@ void gt_bg_tile(int t, int px, int py) {
 }
 #endif
 #endif /* GT_BG_ATLAS */
+
+/* Fully drain the blit queue + in-flight blit, then re-establish a clean
+ * live-blit draw state. Exposed for the track-cache path: after track_view's
+ * group-3 opaque blits, draining before the group-1 prop gspr's sidesteps an
+ * emulator blitter hang where a group-1 colorkey blit queued behind a completed
+ * group-3 opaque blit never raises its done-IRQ. Cheap (drains what's pending). */
+void gt_gflush(void) {
+    bg_drain();
+    bg_restore_draw_state();
+}
 
 /* Queue-blit a w x h rect FROM the canvas at (gx,gy) to screen (x,y) — a
  * "sprite" cut from the composed 256x256 page. Camera-adjusted and colorkey-

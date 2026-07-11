@@ -13,6 +13,12 @@ typedef char bool;
 #define audio_nmi ((char *) 0x2001)
 #define audio_rate ((char *) 0x2006)
 #define dma_flags ((char *) 0x2007)
+
+/* Benchmark cycle marker — a fixed mid-RAM byte the micro-benchmark harness
+ * watches (the libretro core snapshots the cycle count on every write). Chosen
+ * in the middle of RAM ($0200-$1EFF) so a tiny bench cart's BSS (grows up from
+ * $0200) and C stack (grows down from $1EFF) never reach it. gt_mark() only. */
+#define GT_MARK_ADDR (*((volatile unsigned char *) 0x1000))
 #define bank_reg ((char *) 0x2005)
 #define via ((char*) 0x2800)
 #define aram ((unsigned char *) 0x3000)

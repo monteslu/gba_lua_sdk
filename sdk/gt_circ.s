@@ -15,12 +15,22 @@
 ; ---------------------------------------------------------------------------
 .export _gt_circf_z, _gt_circo_z
 .export _cc_x, _cc_y, _cc_r, _cc_c
+.exportzp _gt_draw_scratch      ; base of the shared draw-op scratch (see below)
 .import _gt_q, _gt_qhead, _gt_qtail, _gt_q_pump, _gt_draw_mode
 .PC02
 
 QF_RECT = $CD                  ; NMI|ENABLE|IRQ|COLORFILL|OPAQUE
 
+; ---------------------------------------------------------------------------
+; Shared draw-op scratch (zero page). circ/circfill and line are all SYNCHRONOUS
+; blocking draws — only one is ever mid-flight — so gt_line.s overlays its 13-byte
+; Bresenham state onto this same region (see gt_line.s) instead of reserving its
+; own resident bytes. That keeps line's inner loop in fast zp addressing while
+; costing zero net zp/BSS: the tie-breaker that lets big text-heavy carts
+; (driftmania) keep the fast blit font. 15 bytes here covers line's 13.
+; ---------------------------------------------------------------------------
 .segment "ZEROPAGE" : zeropage
+_gt_draw_scratch:
 _cc_x:  .res 2
 _cc_y:  .res 2
 _cc_r:  .res 1

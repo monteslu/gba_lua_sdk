@@ -67,7 +67,7 @@ unsigned char gt_p8_btnp(int i, int pl);
 /* --- drawing (PICO-8 semantics; camera offset applies to all) --- */
 void gt_p8_cls(int c);
 void gt_p8_camera(int x, int y);
-void gt_p8_color(int c);
+void __fastcall__ gt_p8_color(int c);
 void gt_p8_pal(int c0, int c1);              /* (-1,-1) = reset */
 
 /* zp-ABI entry points: args in gt_a0..gt_a5 (see the block above).
@@ -134,6 +134,26 @@ void gt_chain_z(void);       /* plot the whole field (one CPU pass) */
 /* offscreen-GRAM background canvas (gt_bg.c) */
 void gt_bg_compose(int *map, int cols, int cx, int cy, int cw, int ch);
 void gt_bg_draw(int sx, int sy);
+/* track cache (GRAM group 3): compose a visible-window tile grid once, restore
+ * it each frame with one windowed blit. See gt_bg.c "track cache". */
+void gt_track_compose(unsigned char *map, int cols, int cx, int cy, int cw, int ch);
+void gt_track_view(int sx, int sy);
+/* cgrid-driven compose: paints the 32x32 sub-tile (256x256) TORUS window
+ * directly from the packed chunk grid (road+decal, colorkey layering) — no RAM
+ * tile-map. World tile (tx0+i) -> canvas ((tx0+i)&31)*8. track_col/row2 refresh
+ * one canvas column/row for incremental scroll. track_view reads at
+ * (camx&255, camy&255). */
+void gt_track_grid(int *grid, int *ckdt, int *ctiles, int stride,
+                   int tx0, int ty0, int grassCol, int decb);
+void gt_track_col(int *grid, int *ckdt, int *ctiles, int stride,
+                  int wtx, int wty0, int grassCol, int decb);
+void gt_track_row2(int *grid, int *ckdt, int *ctiles, int stride,
+                   int wty, int wtx0, int grassCol, int decb);
+/* props-only walk: fills `props` with (idx,sx,sy) triples for cg>>10 cells in
+ * the visible window, no track paint (the cache holds the track). */
+void gt_track_props(int *grid, unsigned char *props, int stride,
+                    int cx0, int cy0, int cx1, int cy1);
+void gt_gflush(void);                        /* drain blit queue + restore draw state */
 void gt_bg_clear(void);                      /* clear the 256x256 canvas */
 void gt_bg_tile(int t, int px, int py);      /* stamp one sheet tile (8px grid) */
 void gt_gspr(int gx, int gy, int w, int h, int x, int y);  /* blit FROM canvas */
@@ -142,6 +162,7 @@ extern const unsigned char *gt_sheet_ptr;
 void gt_p8_rect(int x0, int y0, int x1, int y1, int c);
 void gt_p8_border(int c);
 void gt_autocls_set(int c);    /* frame clear during the post-flip vsync wait */
+void gt_mark(int n);           /* benchmark cycle marker (writes GT_MARK_ADDR); test-only */
 int gt_p8_print(const char *str, int x, int y, int c);
 #ifdef GT_NUM8
 int gt_p8_print_num(int v, int x, int y, int c);
@@ -172,5 +193,12 @@ void gt_sfx_bank(const unsigned char *bank);
 void gt_music_bank(const unsigned char *bank);
 void gt_music(int n, int loop);
 void gt_p8_spr(int n, int x, int y, int w, int h, int flip);
+
+/* PCM audio path (gt_pcm.c) — bit-exact sample playback via the ACP PCM
+ * firmware. Only linked when the game calls pcm_init(). */
+void gt_pcm_init(int count);
+void gt_pcm_music(int id);
+void gt_pcm_sfx(int id);
+void gt_pcm_tick(void);
 
 #endif

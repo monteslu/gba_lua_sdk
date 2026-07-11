@@ -36,17 +36,24 @@
 #define gt_time_tick GT_M(gt_time_tick)
 
 #include "gt_fixed.h"
+/* The 16.16 sine table (1 KB of longs) is only used by the non-N8 path below.
+ * The canonical N8 build reads the 512-byte 8.8 table instead, so it doesn't
+ * pay for the long table. */
+#ifndef GT_NUM8
 #include "gt_sintab.h"
+#endif
 
 #ifdef GT_NUM8
 /* 8.8 mode: the turn fraction IS the low byte — the table index is free.
- * The ROM table stays 16.16; entries shift to 8.8 on the way out. */
+ * Read from a NATIVE 8.8 table (int16) so each call is one 2-byte indexed load,
+ * not a long-table index (*4) + 32-bit >>8. gt_sintab8 is gt_sintab >> 8. */
+#include "gt_sintab8.h"
 int gt_fsin(int turns) {
-    return (int)(gt_sintab[(unsigned char)turns] >> 8);
+    return gt_sintab8[(unsigned char)turns];
 }
 
 int gt_fcos(int turns) {
-    return -(int)(gt_sintab[(unsigned char)(turns + 0x40)] >> 8);
+    return -gt_sintab8[(unsigned char)(turns + 0x40)];
 }
 #else
 long gt_fsin(long turns) {
@@ -61,18 +68,31 @@ long gt_fcos(long turns) {
 #endif
 
 #ifdef GT_NUM8
+#include "gt_atantab.h"
 int gt_fatan2(int dx, int dy) {
-    /* same octant-folded approximation as the 16.16 version below, with the
-     * constants rescaled to 8.8 (0.125 -> 32, 0.04345 -> 11, 1.0 -> 256) */
+    /* octant-folded atan2. The angle polynomial (two gt_fmul, ~1200 cyc) became
+     * a 256-byte table (gt_atantab); the ratio, which used to cost a full 24-round
+     * gt_fdiv (~1350 cyc), now uses gt_ratio8 — an 8-round unsigned divide that
+     * yields exactly the 8-bit table index (measured error vs full divide:
+     * 1/256 turn = 1.4 deg). Only cheap ops left. */
     unsigned char swap = 0, mirror = 0, negate = 0;
     int mx = dx, my = -dy;
-    int ax, ay, r, a;
+    unsigned int ax, ay, big;
+    int a;
+    unsigned char r;
     if (dx == 0 && dy == 0) return 0xC0;
-    if (mx < 0) { mirror = 1; ax = -mx; } else ax = mx;
-    if (my < 0) { negate = 1; ay = -my; } else ay = my;
-    if (ay > ax) { swap = 1; r = gt_fdiv(ax, ay); }
-    else         {           r = gt_fdiv(ay, ax); }
-    a = gt_fmul(r, 32 + gt_fmul(11, 256 - r));
+    if (mx < 0) { mirror = 1; ax = (unsigned int)(-mx); } else ax = (unsigned int)mx;
+    if (my < 0) { negate = 1; ay = (unsigned int)(-my); } else ay = (unsigned int)my;
+    /* gt_ratio8 needs both operands in 0..127 (8-bit divide). dx/dy arrive in 8.8
+     * fixed (a pixel delta of 1 is 256), so ax/ay can be 16-bit. The angle only
+     * depends on the RATIO, so scale both down by the same power of two until the
+     * larger fits a byte — the ratio (and thus the angle) is preserved. */
+    big = (ax > ay) ? ax : ay;
+    while (big > 127u) { ax >>= 1; ay >>= 1; big >>= 1; }
+    /* gt_ratio8(min, max) = (min<<8)/max in 0..255 (min<=max); equal -> 255. */
+    if (ay > ax) { swap = 1; r = (unsigned char)gt_ratio8((int)ax, (int)ay); }
+    else         {           r = (unsigned char)gt_ratio8((int)ay, (int)ax); }
+    a = gt_atantab[r];
     if (swap) a = 0x40 - a;
     if (mirror) a = 0x80 - a;
     if (negate) a = -a;
@@ -117,8 +137,12 @@ int gt_p8_rnd_int(int n) {
     unsigned int s = gt_rng_next();
     if (n <= 0) return 0;
 #ifdef GT_NUM8
-    /* frac(8bit)*n >> 8 == the 8.8 fixed multiply of raw ints */
-    return gt_fmul((int)(s & 0xFFU), n);
+    /* frac(8bit)*n >> 8 == the 8.8 fixed multiply of raw ints. Route through the
+     * zp fmul entry (like gt_p8_rnd) — nothing between here and the call touches
+     * fa/fb — dropping the C-stack marshalling from every flr(rnd(n)). */
+    fa = (int)(s & 0xFFU);
+    fb = n;
+    return gt_fmul_zp();
 #else
     /* (s*n) >> 16 == the 16.16 fixed multiply of raw ints — the asm
      * quarter-square core (~300 cycles); the C long multiply this
@@ -132,8 +156,13 @@ int gt_p8_rnd_int(int n) {
 int gt_p8_rnd(int x) {
     unsigned int s = gt_rng_next();
     if (x <= 0) return 0;
-    /* fraction in [0,1) from 8 random bits: rnd(x) = frac * x */
-    return gt_fmul((int)(s & 0xFFU), x);
+    /* fraction in [0,1) from 8 random bits: rnd(x) = frac * x. Route through the
+     * zp fmul entry (operands in fa/fb) instead of the cdecl gt_fmul — nothing
+     * between the stage and the call touches fa/fb, so it's safe, and it drops
+     * the C-stack marshalling from every spawn/particle rnd(). */
+    fa = (int)(s & 0xFFU);
+    fb = x;
+    return gt_fmul_zp();
 }
 
 void gt_p8_srand(int seed) {

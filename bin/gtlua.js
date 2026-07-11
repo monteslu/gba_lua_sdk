@@ -595,6 +595,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
   if (usesStarfield) as(path.join(SDK, "gt_stars.s"), B("gt_stars.o"));
   if (usesCanvas) as(path.join(SDK, "gt_canvas.s"), B("gt_canvas.o"));
   as(path.join(SDK, "gt_circ.s"), B("gt_circ.o"));
+  as(path.join(SDK, "gt_line.s"), B("gt_line.o"));
   const usesTiles = result.c.includes("gt_tiles_draw");
   if (usesTiles) as(path.join(SDK, "gt_tiles.s"), B("gt_tiles.o"));
   const usesBalls = result.c.includes("gt_balls_step");
@@ -628,6 +629,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     ...(usesStarfield ? [B("gt_stars.o")] : []),
     ...(usesCanvas ? [B("gt_canvas.o")] : []),
     B("gt_circ.o"),
+    B("gt_line.o"),
     ...(usesTiles ? [B("gt_tiles.o")] : []),
     ...(usesBalls ? [B("gt_balls.o")] : []),
     ...(usesPoolmv ? [B("gt_poolmv.o")] : []),

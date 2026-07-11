@@ -19,11 +19,17 @@ _pm_sy:   .res 2
 _pm_used: .res 2
 _pm_n:    .res 1
 _pm_mode: .res 1
+_pm_ox:   .res 1                ; pool_sprs: pixel offset subtracted from x
+_pm_oy:   .res 1                ;            and y (sprite centering)
+
+; Pure per-routine scratch — never used for indirect (zp),y addressing, so it
+; costs only +1 cycle/access in RAM but keeps zeropage under the 256B ceiling
+; (combo-pool's SDK stack is a tight fit). Do NOT move the _pm_* array pointers
+; above or the (zp),y ball loops break.
+.segment "BSS"
 pm_i:     .res 1
 pm_o:     .res 1                ; element byte offset (i*2)
 pm_t:     .res 2
-_pm_ox:   .res 1                ; pool_sprs: pixel offset subtracted from x
-_pm_oy:   .res 1                ;            and y (sprite centering)
 
 .segment "CODE"
 
@@ -95,11 +101,13 @@ live:   tya
         lda     pm_t+1
         sta     (_pm_sy),y
 next:   inc     pm_i
-        bra     loop
+        jmp     loop            ; jmp (not bra): moving scratch to BSS grew the
+                                ; body's absolute accesses past bra's ±127 reach
 .endproc
 
 ; pm_t (s16) -= (pm_t>>3) + (pm_t>>5), arithmetic. Uses pm_d scratch.
-.segment "ZEROPAGE" : zeropage
+; RAM scratch (no indirect use) — kept out of zeropage for headroom.
+.segment "BSS"
 pm_d:   .res 2
 pm_e:   .res 2
 
@@ -160,8 +168,10 @@ pm_e:   .res 2
 QF_SPR2 = $55
 
 .segment "ZEROPAGE" : zeropage
-_pm_cells: .res 2
-ps_t:      .res 1
+_pm_cells: .res 2               ; MUST stay zp — read via (_pm_cells),y
+
+.segment "BSS"
+ps_t:      .res 1               ; plain scratch, no indirect use
 
 .segment "CODE"
 
@@ -310,6 +320,9 @@ done:   rts
 .export _gt_pool_edraw_z
 .export _pe_ani, _pe_type, _pe_flash, _pe_shake, _pe_desc, _pe_nudge
 
+; Array pointers stay in zeropage — dereferenced via (zp),y. _pe_nudge also
+; MUST stay zp: the C side (gt_api.c) imports it as an extern and cc65 emits a
+; zeropage `sta` for it; a BSS address there is a link-time range error.
 .segment "ZEROPAGE" : zeropage
 _pe_ani:   .res 2
 _pe_type:  .res 2
@@ -317,6 +330,10 @@ _pe_flash: .res 2
 _pe_shake: .res 2
 _pe_desc:  .res 2
 _pe_nudge: .res 1
+
+; Per-slot scratch: internal to this module, never indirect, so it lives in RAM
+; (BSS) to keep the whole SDK zeropage stack under 256 bytes.
+.segment "BSS"
 pe_f:      .res 1               ; animation frame (1..6)
 pe_cell:   .res 1               ; resolved sheet cell
 pe_sz:     .res 1               ; sprite size in px (8 or 16)

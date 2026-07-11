@@ -111,22 +111,33 @@ act:    ldy     bz_i
         adc     bz_t+1
         tax
         pla                     ; A/X = new x
-        ; ---- wall x: clamp 4..124 int-part ----
-        cpx     #4
-        bmi     xlow
+        ; ---- wall x: clamp 4..124 int-part (SIGNED 8.8) ----
+        ; The old test used bmi/bpl and a fast ball that overshot the RIGHT wall
+        ; to x>=132 read as NEGATIVE, tripped "x<4", and teleported to x=4 (the
+        ; "balls wrap across the screen" bug). But a ball off the LEFT (negative
+        ; x) ALSO has hi byte >=128, so we must split by sign: bit7 set => off the
+        ; left => clamp x=4; else an unsigned >=124 is the right wall.
+        cpx     #128
+        bcs     xlow            ; hi byte >= 128 => negative x => off the left
         cpx     #124
-        bpl     xhigh
+        bcs     xhigh           ; x >= 124 (right wall, incl. overshoot to 127)
+        cpx     #4
+        bcc     xlow            ; x < 4 (left)
         bra     xstore
-xlow:   ; x < 4: negate vx, x = 4
+xlow:   ; x < 4: negate vx, park just INSIDE the wall (x=5, not 4) so a ball
+        ; shoved back by a neighbour's collision push isn't re-clamped onto the
+        ; exact boundary every frame — the original nudges inward (b.x += b.vx);
+        ; this 1px inset is the cheap equivalent that un-pins wall/corner jams
+        ; (the "balls stuck in the corner, stuck bounce sound, particle spam").
         jsr     negvx
         lda     #0
-        ldx     #4
+        ldx     #5
         jsr     hurt
         bra     xstore
-xhigh:  ; x >= 124: negate vx, x = 124
+xhigh:  ; x >= 124: negate vx, park just inside at 123 (see xlow)
         jsr     negvx
         lda     #0
-        ldx     #124
+        ldx     #123
         jsr     hurt
 xstore: ; write x back (A=lo X=hi)
 .ifdef GT_NUM8
@@ -181,15 +192,22 @@ xstore: ; write x back (A=lo X=hi)
         adc     bz_t+1
         tax
         pla
-        ; ---- wall y: <4 bounce; >112 bounce only when vy > 0.1 (25 in 8.8)
-        cpx     #4
-        bmi     ylow
+        ; ---- wall y: <4 bounce; >112 bounce only when vy > 0.1 (25 in 8.8) ----
+        ; The position is SIGNED 8.8. hi byte bit7 set => y is NEGATIVE => the
+        ; ball punched through the TOP: clamp to y=4 (NOT ">=112", which stranded
+        ; a ball at y=-50 off-screen forever — the earlier unsigned-only fix read
+        ; byte 206 as "bottom" and left it there). Then, for on-screen y, an
+        ; unsigned >=112 catches the bottom incl. a small positive overshoot.
+        cpx     #128
+        bcs     ylow            ; hi byte >= 128 => negative y => off the top
         cpx     #112
-        bpl     ymaybe
+        bcs     ymaybe          ; y >= 112 (bottom, incl. overshoot up to 127)
+        cpx     #4
+        bcc     ylow            ; y < 4 (top)
         bra     ystore
 ylow:   jsr     negvy
         lda     #0
-        ldx     #4
+        ldx     #5              ; park just inside the top wall (see xlow inset)
         jsr     hurt
         bra     ystore
 ymaybe: ; y >= 112: only a wall if vy > 0.1 (hi>0, or hi==0 && lo>25)
@@ -204,7 +222,7 @@ ymaybe: ; y >= 112: only a wall if vy > 0.1 (hi>0, or hi==0 && lo>25)
         bcc     ystore
 ywall:  jsr     negvy
         lda     #0
-        ldx     #112
+        ldx     #111            ; park just inside the bottom wall (see xlow inset)
         jsr     hurt
 ystore:
 .ifdef GT_NUM8
@@ -471,40 +489,55 @@ bd_o:   .res 1                  ; element byte offset (i*4)
 
 ; drag one velocity at (ptr),bd_o
 .ifdef GT_NUM8
-; 8.8: d = v>>8 (the hi byte, sign-extended); v -= (d<<2) + d
+; 8.8: v -= (v>>6) + (v>>8) on the FULL 16-bit velocity (arithmetic shifts).
+; The old code took d = the HI BYTE only (v>>8 as an int), so any velocity
+; below 1.0 (hi byte 0) got ZERO drag — slow balls rolled forever. Shift the
+; whole 16-bit word so the sub-integer bits decay too.  bz_t = v>>6 + v>>8.
 .macro DRAG1 ptr
+        ; bd_d = v (16-bit working copy)
         ldy     bd_o
-        iny
-        lda     (ptr),y         ; hi byte = v >> 8 (signed)
+        lda     (ptr),y
         sta     bd_d
-        bpl     :+
-        lda     #$FF
-        bra     :++
-:       lda     #0
-:       sta     bd_d+1
+        iny
+        lda     (ptr),y
+        sta     bd_d+1
+        ; bz_t = v >> 6  (arithmetic, sign-preserving)
         lda     bd_d
         sta     bz_t
         lda     bd_d+1
         sta     bz_t+1
-        asl     bd_d
-        rol     bd_d+1
-        asl     bd_d
-        rol     bd_d+1
-        clc
-        lda     bd_d
-        adc     bz_t
-        sta     bd_d
+        ldx     #6
+:       lda     bz_t+1
+        cmp     #$80            ; carry = sign bit of the hi byte
+        ror     bz_t+1
+        ror     bz_t
+        dex
+        bne     :-
+        ; bd_d = v >> 8  (arithmetic): hi -> lo, sign-extend hi
         lda     bd_d+1
-        adc     bz_t+1
-        sta     bd_d+1
+        sta     bd_d
+        bpl     :+
+        lda     #$FF
+        bra     :++
+:       lda     #$00
+:       sta     bd_d+1
+        ; bz_t += bd_d
+        clc
+        lda     bz_t
+        adc     bd_d
+        sta     bz_t
+        lda     bz_t+1
+        adc     bd_d+1
+        sta     bz_t+1
+        ; v -= bz_t
         ldy     bd_o
         sec
         lda     (ptr),y
-        sbc     bd_d
+        sbc     bz_t
         sta     (ptr),y
         iny
         lda     (ptr),y
-        sbc     bd_d+1
+        sbc     bz_t+1
         sta     (ptr),y
 .endmacro
 .else

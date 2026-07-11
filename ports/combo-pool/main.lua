@@ -48,7 +48,7 @@ local invsq = array(128, 0.0)
 -- computed once at boot instead of two divisions per ball per frame
 local march_off = array(14, 0.0)
 local phase_off = array(14, 0.0)
-local menu_march = 0.0
+local menu_march = 0.0          -- marching-ball offset 0..135 (num8, like cart)
 
 local parts = pool(32)      -- explosion/spark particles
 local texts = pool(8, "slot") -- floating "+score" popups
@@ -67,12 +67,19 @@ local sd_last = -1
 local gtime = 0             -- original 'time' (renamed: time() builtin)
 local menutime = 0.0
 
-local launch_vrot = 0.0
+local launch_arate = 0          -- aim ramp speed level (integer)
+local launch_acc = 0            -- sub-LSB aim accumulator (int, 1/2048-turn units)
 local launch_rot = 0.25
 local launch_dx = 0.0
 local launch_dy = 1.0
 local launch_x = 64
-local launch_y = 120
+local launch_y = 120           -- launcher GRAPHIC center (screen bottom)
+-- Ball spawn + aim-cue ORIGIN. The physics play area is y in [4,112): a ball
+-- born at launch_y=120 is inside the bottom-wall band and its upward velocity
+-- never integrates (shallow shots slid dead-flat). Spawn at 111 (the launcher
+-- mouth, inside the field) so shallow shots climb. The cue draws from this SAME
+-- point so the aiming line visibly originates where the ball actually leaves.
+local launch_spawn_y = 111
 local launch_str = 6
 local launch_press = 0
 local avoid_nextlaunch = 1
@@ -118,6 +125,7 @@ local ballvalue = array8(7) -- score value per merge
 local ballcost10 = array8(7)-- life cost x10 (max 40: fits a byte)
 local lifes10 = array(4)    -- per-difficulty life budget x10
 
+-- ---------------------------------------------------------------------
 -- audio: tiny per-channel sequencer approximating the cart's sfx
 -- converted PICO-8 sfx (tools/p8sfx.mjs from carts/combo-pool-extract):
 -- real pitches/waveforms/timing from the original cart's __sfx__ section,
@@ -127,10 +135,12 @@ local p8sfx = hexdata("1225002800470080009700d800170154018f01b201b701bc01c101c60
 -- sting (self-loops), 10 = sudden-death alarm (self-loops)
 local p8music = hexdata("0b0105ffffff0006ffffff0007ffffff0208ffffff0001ffffff0303ffffff00ffffffff00ffffffff00ffffffff00ffffffff0304ffffff")
 
--- ---------------------------------------------------------------------
 -- audio driver: gt.note sequences stand in for the cart's sfx tracker
 -- ---------------------------------------------------------------------
 
+-- PCM audio: assets rendered by scripts/p8pcm.mjs (bit-exact PICO-8 sound).
+-- Asset table order (see build.mjs render args): SFX 9,10,11,12,13,14,15,17
+-- then music 0,5,10. playfx() maps the original p8 sfx number to its asset id.
 function playfx(f)
   local ch = 2                       -- merges (12/13/14) on channel 2
   if (f == 9 or f == 10) ch = 0      -- launcher
@@ -351,7 +361,8 @@ function reset_game()
   gtime = 0
   menutime = 0
 
-  launch_vrot = 0
+  launch_arate = 0
+  launch_acc = 0
   launch_rot = 0.25
   launch_dx = 0
   launch_dy = 1
@@ -468,9 +479,11 @@ function do_coll(i, j)
   local invd = dist * inv_sq
 
   if ballc[i] == ballc[j] then
-    -- merge j into i
-    x1 = (x1 + x2) / 2
-    y1 = (y1 + y2) / 2
+    -- merge j into i. midpoint = x1 + (x2-x1)/2 — NOT (x1+x2)/2, whose sum
+    -- (two balls near the wall ~= 248) overflows num8 8.8 BEFORE the /2 and the
+    -- merged ball teleports. The delta form keeps every term in range.
+    x1 = x1 + (x2 - x1) / 2
+    y1 = y1 + (y2 - y1) / 2
     vx1 += vx2
     vy1 += vy2
     ballx[i] = x1
@@ -534,17 +547,36 @@ function do_coll(i, j)
       local dvyq = flr((vy2 - vy1) * 16)
       local k = (dvxq * dxq + dvyq * dyq) * 0.00390625
       k *= inv_sq
+      -- k is the projection ratio (dv·d)/|d|²; mathematically it's ~O(1), but the
+      -- 1/|d|² approximation (inv_sq) SPIKES for deeply overlapping balls and k
+      -- blows past the 8.8 range, so kx = dx*k wraps to a huge velocity — the
+      -- "balls jump all over the screen" explosion. The original never hits this
+      -- (its push un-overlaps balls before they interpenetrate, and its
+      -- normalized-normal exchange keeps k bounded). Clamp k to the physical
+      -- range: an elastic normal-swap can't add more than the relative speed, so
+      -- |k| <= ~4 covers every real contact and only the overflow cases get cut.
+      if (k > 4) k = 4
+      if (k < -4) k = -4
       local kx = dx * k
       local ky = dy * k
 
-      -- positional push apart
+      -- positional push apart. The original caps this at max(0,9-dist)*0.5/dist;
+      -- clamp the num8 result too so a near-zero dist (inv_sq spike) can't fling
+      -- the balls apart instead of gently separating them.
       local push = (max(0, 9 - dist) / 2) * invd
+      if (push > 4) push = 4
       local pdx = dx * push
       local pdy = dy * push
-      ballx[i] = x1 + pdx
-      bally[i] = y1 + pdy
-      ballx[j] = x2 - pdx
-      bally[j] = y2 - pdy
+      -- The separation push can shove a ball near a wall PAST 127.99 (e.g.
+      -- x1=124 + pdx) which WRAPS in num8 8.8 to a low x — the ball teleports
+      -- clear across the screen (measured: slot jumped x=121.5 -> 6.6 in one
+      -- frame). The original is 16.16 so it never wraps; here we clamp the pushed
+      -- position to the playfield [3,125] so it can't leave the 8.8 range. The
+      -- wall bounce then settles it; balls just don't teleport.
+      ballx[i] = mid(3, x1 + pdx, 125)
+      bally[i] = mid(3, y1 + pdy, 125)
+      ballx[j] = mid(3, x2 - pdx, 125)
+      bally[j] = mid(3, y2 - pdy, 125)
 
       vx1 += kx
       vy1 += ky
@@ -609,15 +641,23 @@ function update_mainmenu()
     music(0)
   end
 
-  -- marching-ball advance (the cart computes animtime*10 % 136 per ball
-  -- per frame; a wrapped accumulator needs no division)
+  -- marching-ball advance (cart: animtime*10 % 136 per ball per frame).
+  -- num8 (8.8) CANNOT hold this: 136 is past 8.8's +127.99 ceiling, so the old
+  -- float accumulator wrapped NEGATIVE at ~128 and the demo balls scattered as
+  -- junk across the title. Accumulate in INTEGER 1/3-units instead: march3 is
+  -- 0..407 (= 136*3), stepped +1/frame, and menu_march = march3\3 stays 0..135
+  -- and never enters the fixed-point range.
   if menutime > 1.5 then
     menu_march += 0.3333
     if (menu_march >= 136) menu_march -= 136
   end
 
   gtime += 1
-  menutime += 0.0333
+  -- menutime drives the title-text eases (all settle by menutime>=4: the
+  -- `menutime<4` / `min(2,menutime)` clamps below). It's num8 (8.8), so left
+  -- to climb forever it OVERFLOWS at ~128 (~64s idle) and wraps — the title
+  -- suddenly animates super fast. Stop advancing it once the animation is done.
+  if (menutime < 5) menutime += 0.0333
 end
 
 function update_intromenu()
@@ -665,22 +705,43 @@ function update_game()
   local resetmult = 0
 
   if finish == 0 then
-    -- keyboard aiming (the cart also supports the P8 mouse; GameTank
-    -- has no mouse)
-    local vrot = 0.002
-    if (curpress == 1) vrot = 0.003
-    if (btn(0)) launch_vrot += vrot
-    if (btn(1)) launch_vrot -= vrot
+    -- keyboard aiming. The cart used vrot ~0.002 turn/frame — but 0.002 is
+    -- HALF a num8 LSB (1/256 = 0.0039), so it rounds to 0 and the aim can't
+    -- move. Fix: keep a SUB-LSB accumulator `launch_acc` in 1/2048-turn units
+    -- (8x finer than num8's 1/256). Each frame the ramp adds to launch_acc, and
+    -- whole 1/256-turn steps carry into launch_rot. This gives the original's
+    -- smooth slow sweep (~0.002/frame) instead of the old coarse 1..4/256 jumps
+    -- that skipped angles and snapped near horizontal.
+    -- Speed calibrated to the CART: it swept ~3.6 deg/frame (0.002 turn * the
+    -- 0.8-damp terminal *5), full 180 arc in ~50 frames. arate ramps 1..3 and
+    -- astep sizes the step so arate_max*astep/2048 ~= that speed. The old astep=4
+    -- was 2.1 deg/frame — too sluggish to ever reach the shallow near-horizontal
+    -- shots, so aiming low still fired ~flat. astep=7 -> 21/2048 = 3.7 deg/frame.
+    local astep = 7                    -- ~3.7 deg/frame at full ramp (matches cart)
+    if (curpress == 1) astep = 11      -- precise hold: ~5.8 deg/frame (cart's 0.003)
+    if btn(0) then
+      launch_arate += 1
+    elseif btn(1) then
+      launch_arate -= 1
+    else
+      launch_arate = 0                 -- no key: stop (no drift)
+    end
+    if (launch_arate > 3) launch_arate = 3
+    if (launch_arate < -3) launch_arate = -3
 
-    launch_rot = min(max(0.005, launch_rot + launch_vrot), 0.495)
+    -- accumulate in 1/2048-turn units; carry whole 1/256 steps into launch_rot
+    launch_acc += launch_arate * astep
+    while launch_acc >= 8 do
+      launch_acc -= 8
+      launch_rot += 0.0039            -- +1/256 turn
+    end
+    while launch_acc <= -8 do
+      launch_acc += 8
+      launch_rot -= 0.0039            -- -1/256 turn
+    end
+    launch_rot = min(max(0.005, launch_rot), 0.495)
     launch_dx = cos(launch_rot)
     launch_dy = sin(launch_rot)
-
-    if curpress == 1 then
-      launch_vrot = 0
-    else
-      launch_vrot *= 0.8
-    end
 
     -- no pure-vertical shots (cart keeps a tiny bias so you can't play 1d)
     if launch_dx == 0 then
@@ -694,7 +755,15 @@ function update_game()
     if (curpress == 1 and launch_press == 0 and canrelease == 1) playfx(9)
 
     if curpress == 0 and launch_press == 1 and canrelease == 1 then
-      local nb = new_ball(launch_x, launch_y, launch_next)
+      -- Spawn the ball at y=111 (the launcher MOUTH), not y=120 (the launcher
+      -- CENTER). The physics play area is y in [4,112): the asm engine's bottom
+      -- wall (gt_balls.s wall_y) treats y>=112 as the bottom-bounce band, and a
+      -- ball born at y=120 (8px INSIDE that band) never integrates its upward
+      -- velocity out — a SHALLOW shot (small vy) got stuck on the launcher row
+      -- and slid dead-flat sideways instead of following the aim. Born at y=111,
+      -- inside the play area, the ball climbs correctly at every angle. The
+      -- launcher graphic still draws at launch_y=120; only the ball's start moves.
+      local nb = new_ball(launch_x, launch_spawn_y, launch_next)
       if nb > 0 then
         ballvx[nb] = launch_dx * launch_str
         ballvy[nb] = launch_dy * launch_str
@@ -793,15 +862,18 @@ function update_game()
 
   -- life bar / sudden death
   if maxallowed10 > 0 and death == 0 and victory == 0 then
-    -- 8.8 range audit: 1/400 underflows (and 400 itself wraps 8.8), so the
-    -- old inv_maxlife precompute produced a NEGATIVE inverse and the cubic
-    -- rode an overflow cliff (sudden death fired on wrap, not on the rule).
-    -- Divide directly (0..~2.8 fits) and clamp so ratio^3*100 stays in range
-    -- past the death threshold.
-    local ratio = lifecost10 / maxallowed10
-    if (ratio > 1.05) ratio = 1.05
-    local r2 = ratio * ratio
-    plife = 100 - (r2 * ratio) * 100
+    -- num8 (8.8) fixed-point CANNOT hold the life-bar cubic: ratio = lifecost10 /
+    -- maxallowed10 with lifecost10 up to ~400 and maxallowed10 = 340..500 —
+    -- both far past 8.8's ±127.99 range — and ratio^3 * 100 overflowed HARD
+    -- (measured live: plife wrapped to -32536, firing sudden-death "out of
+    -- nowhere" once enough balls were on the table). Do the whole thing in
+    -- INTEGER math: q = ratio in 0.8 fixed (256 = 1.0), cube via >>8 shifts,
+    -- and scale to a plain 0..100 integer. No value ever enters 8.8.
+    local q = (lifecost10 * 256) \ maxallowed10   -- ratio << 8, integer
+    if (q > 268) q = 268                          -- clamp ratio to 1.05 (1.05*256)
+    local q3 = (((q * q) >> 8) * q) >> 8          -- ratio^3 << 8, still integer
+    plife = 100 - ((q3 * 100) >> 8)               -- 0..100 integer
+    if (plife > 100) plife = 100                  -- integer-round can nudge >100
     if plife < 0 then
       if (suddendeath == 0) music(10)   -- alarm in
       suddendeath = 1
@@ -947,6 +1019,12 @@ function draw_mainmenu()
   local mx = 40
   local my = 37
 
+  -- Full-frame blue backdrop FIRST (cart: rectfill(0,0,128,128,1) before the
+  -- map). Without it the cls(0) black shows through everywhere the weave band
+  -- and border balls don't cover — the top strip, the side margins, and the
+  -- gaps between the marching balls all bled dark background.
+  rectfill(0, 0, 127, 127, 1)
+
   -- checkerboard weave band (cart: map(0,0,0,1,16,16) over a blue fill;
   -- here 4 composed row-strip blits)
   spr(240, 0, 17, 16, 1)
@@ -965,7 +1043,13 @@ function draw_mainmenu()
   local titley = my
   local title2x = flr(134 - 70 * titlex)
   local title2y = my
-  if menutime < 4 then
+  -- Title-text bounce eases (original divided by menutime and menutime^2). In
+  -- num8 (8.8) those denominators UNDERFLOW to 0 for small menutime — e.g.
+  -- 0.0333^2 = 0.0011 rounds to 0 — and an 8.8 divide-by-zero HANGS the cc65
+  -- division routine (froze the boot). Gate on menutime >= 0.5 so the divisor
+  -- is always >= 0.25 (>> 1 LSB); below that the logos just sit at `my`, which
+  -- is where the ease starts anyway.
+  if menutime >= 0.5 and menutime < 4 then
     titley = flr(my + (sin(menutime + 0.3) * 5) / (menutime * menutime))
     title2y = flr(my + (sin(menutime) * 10) / menutime)
   end
@@ -996,9 +1080,18 @@ function draw_mainmenu()
   local bid = 1
   while i < 14 do
     local ss = sin(phbase + phase_off[i + 1])
+    -- cart: avance = (...)%136 - 4. A true modulo wraps CONTINUOUSLY; the old
+    -- pair of `if avance>=132 then -=136` was NOT a modulo — it only fired in a
+    -- band, so a ball crossing 132 SNAPPED (the "smooth then jittery every few
+    -- seconds") and some landed off-screen at the edges. Wrap both ways to the
+    -- continuous [-4, 132) window instead.
     local avance = menu_march + (ss << 2) + ss + march_off[i + 1] - 4
+    -- bounded wrap (NOT a while loop): in num8, avance is 8.8 and 136 is past
+    -- the +-127.99 range, so `avance += 136` / `-= 136` WRAPS — a `while` here
+    -- never terminates and HANGS the boot. avance only ever exceeds the
+    -- [-4,132) window by one step, so two ifs cover it.
     if (avance >= 132) avance -= 136
-    if (avance >= 132) avance -= 136
+    if (avance < -4) avance += 136
     local bx = flr(avance) + easein
     draw_ball_spr(bx, my, bid)
     draw_ball_spr(128 - bx, my - second, bid)
@@ -1087,6 +1180,7 @@ function draw_game()
   -- static field: one opaque canvas blit (composed once in reset_game)
   gt.canvas_view(0, 0, 1)
 
+
   -- sudden-death flicker (cart tints its persistent trail noise red)
   if suddendeath == 1 then
     local k = 0
@@ -1098,17 +1192,24 @@ function draw_game()
     end
   end
 
-  -- ball motion trails, one asm walk (stamp + anchor update)
-  local tupd = 0
-  if (gtime % 2 == 0) tupd = 1
-  gt.trail_stamp(ballc, ballx, bally, trailx, traily, trailspr, 28, tupd)
+  -- (ball motion trails REMOVED) The cart smeared trails into a PERSISTENT
+  -- framebuffer (memcpy 0x6000/0x7000). Here the field is re-composed OPAQUE
+  -- every frame (canvas_view), so a stamped trail can't persist — it just
+  -- flickered a colored dot behind each moving ball (the dot color = the ball
+  -- tier, so "black balls -> black dots, orange balls -> orange dots"). Dropping
+  -- it: the balls render clean from their baked sprites with no flicker.
 
   -- aim guide (cart: 5-pass boldline over the trail layer, under the map;
-  -- the strips are opaque so it draws over the lattice in the same color)
-  if finish == 0 then
-    draw_boldline(flr(launch_x), flr(launch_y), flr(launch_x + launch_dx * 90),
-                  flr(launch_y + launch_dy * 90), 1)
-  end
+  -- the strips are opaque so it draws over the lattice in the same color).
+  -- num8 (8.8) FIX: `launch_x + launch_dx*90` was computed in fixed-point, but
+  -- aiming RIGHT the endpoint x reaches ~132 — past 8.8's 127.99 ceiling — so it
+  -- WRAPPED NEGATIVE and the whole aim line flipped to the wrong side (the cue's
+  -- "top half on the wrong side past 45°"). Do the *90 in fixed (result <=90,
+  -- in range) then flr and add as INTEGERS, which can exceed 127 freely.
+  -- (the aim guide is now drawn LAST, on top of the balls + HUD — see the
+  -- launcher pass below. Drawing it here, early, buried it under the ball
+  -- sprites and the rectfill(0,119,..) HUD bar, which made shallow aims read
+  -- as flat.)
 
   -- balls (baked composite): cell choice here, the 16x16 blits in bulk asm
   local blinkon = 0
@@ -1192,9 +1293,40 @@ function draw_game()
     end
 
     if suddendeath == 0 then
-      line(launch_x, launch_y, flr(launch_x + launch_dx * 20),
-           flr(launch_y + launch_dy * 20), 13)
-      draw_ball_launcher(launch_x, launch_y, launch_next)
+      -- ON-TOP aim guide: the launcher sits at y=120 (screen bottom), so the
+      -- length-1 guide drawn early (color 1, before balls+HUD) gets buried by
+      -- the ball sprites and the rectfill(0,119,..) HUD bar — a SHALLOW aim's
+      -- line lives in the y=112..120 band that the HUD covers, so it read as
+      -- FLAT no matter the true angle. Draw a FULL-LENGTH edge-clipped guide
+      -- here, last, on top of everything, so the angle is always visible and
+      -- unmistakably tracks the aim (the ball already fires at the right angle;
+      -- this makes the visible cue match it). length 120 (256*120=30720) stays
+      -- in signed-16 range; num8 dx*120 can't overflow.
+      -- origin = launch_spawn_y (where the ball ACTUALLY leaves), not launch_y
+      -- (the launcher graphic center), so the cue starts at the ball, not 9px
+      -- below it.
+      local lsx = flr(launch_x)
+      local lsy = launch_spawn_y
+      local lex = lsx + flr(launch_dx * 120)
+      local ley = lsy + flr(launch_dy * 120)
+      if lex ~= lsx then
+        if (lex > 126) then ley = lsy + ((ley - lsy) * (126 - lsx)) \ (lex - lsx)  lex = 126 end
+        if (lex < 1)   then ley = lsy + ((ley - lsy) * (1 - lsx))   \ (lex - lsx)  lex = 1   end
+      end
+      if ley ~= lsy then
+        if (ley > 126) then lex = lsx + ((lex - lsx) * (126 - lsy)) \ (ley - lsy)  ley = 126 end
+        if (ley < 1)   then lex = lsx + ((lex - lsx) * (1 - lsy))   \ (ley - lsy)  ley = 1   end
+      end
+      -- color 15 (0xFFCCAA, light tan/peach) — the closest palette color to a
+      -- real wooden pool cue.
+      line(lsx, lsy, lex, ley, 15)
+      -- Draw the launcher ball at the SPAWN point (launch_spawn_y=111), not the
+      -- launcher-base y=120. The black ball IS the ball about to fire, so its
+      -- center should be exactly where the ball leaves and where the cue starts
+      -- — cue, launch, and the visible ball all share one origin. (At y=120 the
+      -- ball's lower half sat under the rectfill(0,119,..) HUD bar, so it read as
+      -- a half-buried dome offset below the cue.)
+      draw_ball_launcher(launch_x, launch_spawn_y, launch_next)
 
       draw_dbar(50, 124, flr(max(0, pstam)), flr(lstam), 13, 5, 1)
       if maxallowed10 > 0 then
