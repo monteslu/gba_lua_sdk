@@ -926,6 +926,10 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (name === "spr") {
       return `${b.c}(${args[0]}, ${args[1]}, ${args[2]}, ${args[3]}, ${args[4]}, ${args[5]} | (${args[6]} << 1))`;
     }
+    // sprf(frame,x,y,[fx],[fy]) -> gt_gspr_frame(frame,x,y, fx | (fy<<1))
+    if (name === "sprf") {
+      return `${b.c}(${args[0]}, ${args[1]}, ${args[2]}, ${args[3]} | (${args[4]} << 1))`;
+    }
     return `${b.c}(${args.join(", ")})`;
   }
 
@@ -955,6 +959,7 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (name === "sfx") return "-1";          // sfx(n) -> auto channel
     if (name === "music") return "1";         // music(n) -> loop by default
     if (name === "spr") return i >= 5 ? "0" : "1";  // w,h default 1 cell; flips default off
+    if (name === "sprf") return "0";          // flipx/flipy default off
     return "-1";                              // optional color -> current
   }
 

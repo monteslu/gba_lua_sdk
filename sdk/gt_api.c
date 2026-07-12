@@ -597,6 +597,75 @@ void gt_gsheet_load_packed(const unsigned char *p, unsigned int plen, unsigned c
         }
     }
 }
+
+/* ---- frame tables (.gsi) -------------------------------------------------
+ * A frame table is a flat ROM array of 6-byte records {vxo, vyo, w, h, gx, gy}
+ * (the build bakes the quadrant bit7 into gx/gy so gx/gy are final GRAM source
+ * coords). The game registers one with gt_frames_register(); sprf(frame,x,y,fx)
+ * looks it up and queue-blits it — arbitrary sprite size, per-frame draw offset,
+ * hardware flip, and any of the four 256x256 quadrants. Under FLASH2M the table
+ * rides bank 2 (with the sheet); the draw shim maps it in to read a frame, then
+ * restores the caller's bank — so it stays in the FIXED bank. */
+const unsigned char *gt_frametab;   /* base of the 6-byte-record table (may be banked) */
+unsigned char gt_frametab_bank;     /* FLASH2M bank holding the table */
+void gt_frames_register(const unsigned char *tab, unsigned int nframes) {
+    (void)nframes;                  /* stored for tooling; runtime trusts the index */
+    gt_frametab = tab;
+#ifdef GT_BANKED
+    gt_frametab_bank = gt_cur_bank; /* gt_sheet_init already mapped bank 2 */
+#endif
+}
+
+/* sprf(frame, x, y, flip): queue-blit frame `frame`. flip bit0 = X, bit1 = Y.
+ * gx/gy already carry the quadrant bit7. Mirrors the official queue_draw_sprite_
+ * frame: general quadrant-aware flip (gx ^= 0xFF; gx -= w-1), frame draw offset
+ * applied to the destination. */
+void gt_gspr_frame(int frame, int x, int y, int flip) {
+    const unsigned char *f;
+    signed char vxo, vyo;
+    unsigned char w, h, gx, gy;
+#ifdef GT_BANKED
+    unsigned char saved_bank = gt_cur_bank;
+    gt_bank(gt_frametab_bank);
+#endif
+    f = gt_frametab + (unsigned int)frame * 6;
+    vxo = (signed char)f[0];
+    vyo = (signed char)f[1];
+    w = f[2]; h = f[3]; gx = f[4]; gy = f[5];
+#ifdef GT_BANKED
+    gt_bank(saved_bank);
+#endif
+    /* destination + source, exactly as the official queue_draw_sprite_frame:
+     * the draw offset (vxo/vyo) places the sprite relative to its anchor, and on
+     * flip both the dest and the GRAM source counter are mirrored. */
+    x -= gt_cam_x;
+    y -= gt_cam_y;
+    if (flip & 1) {                             /* flip X */
+        x = x - (int)w - (int)vxo - 1;
+        gx ^= 0xFF;                             /* quadrant-aware (bit7 flips too) */
+        gx = (unsigned char)(gx - (w - 1));
+    } else {
+        x += vxo;
+    }
+    if (flip & 2) {                             /* flip Y */
+        y = y - (int)h - (int)vyo - 1;
+        gy ^= 0xFF;
+        gy = (unsigned char)(gy - (h - 1));
+    } else {
+        y += vyo;
+    }
+    if (x <= -(int)w || x > 127 || y <= -(int)h || y > 127) return;  /* offscreen */
+    gt_ent[0] = QF_SPR;                       /* DMA_NMI|ENABLE|IRQ|GCARRY colorkey */
+    gt_ent[1] = (unsigned char)x;
+    gt_ent[2] = (unsigned char)y;
+    gt_ent[3] = gx;
+    gt_ent[4] = gy;
+    gt_ent[5] = (unsigned char)(w | ((flip & 1) ? 0x80 : 0));   /* WIDTH bit7 = XDIR */
+    gt_ent[6] = (unsigned char)(h | ((flip & 2) ? 0x80 : 0));   /* HEIGHT bit7 = YDIR */
+    gt_ent[7] = gt_qbank;                     /* sheet group (0), current draw bank */
+    gt_draw_mode = MODE_NONE;
+    gt_q_push();
+}
 #endif /* GT_GSHEET */
 
 #ifdef GT_BANKED

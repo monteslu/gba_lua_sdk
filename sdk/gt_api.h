@@ -176,6 +176,10 @@ void gt_sheet_load_packed(const unsigned char *p, unsigned int plen); /* packbit
 /* native .gtg quadrant loader: 128x128 8bpp raw CAPTURE bytes, packbits in ROM,
  * into GRAM quadrant `quad` (0=NW 1=NE 2=SW 3=SE). See gt_api.c / docs/GRAPHICS.md. */
 void gt_gsheet_load_packed(const unsigned char *p, unsigned int plen, unsigned char quad);
+/* .gsi frame tables: register a flat ROM array of 6-byte {vxo,vyo,w,h,gx,gy}
+ * records (quadrant bit7 baked into gx/gy by the build), then draw by index. */
+void gt_frames_register(const unsigned char *tab, unsigned int nframes);
+void gt_gspr_frame(int frame, int x, int y, int flip);   /* sprf(frame,x,y,flip) */
 void gt_sheet_init(void);   /* generated per-build: loads the sheet or no-op */
 void __fastcall__ gt_bank(unsigned char b);  /* FLASH2M: switch the $8000 window */
 

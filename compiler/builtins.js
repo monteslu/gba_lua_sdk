@@ -22,6 +22,10 @@ export const BUILTINS = {
   pal:      { params: [["int", true], ["color", true]], ret: "void", c: "gt_p8_pal" },
   sset:     { params: [["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_sset" },
   spr:      { params: [["int", false], ["coord", false], ["coord", false], ["int", true], ["int", true], ["flip", true], ["flip", true]], ret: "void", c: "gt_p8_spr" },
+  // native frame-table sprite: sprf(frame, x, y, [flipx], [flipy]) draws frame
+  // `frame` from a .gsi table (arbitrary size/offset, any 256x256 quadrant).
+  // The two flip flags pack into one arg (bit0=X, bit1=Y) for gt_gspr_frame.
+  sprf:     { params: [["int", false], ["coord", false], ["coord", false], ["flip", true], ["flip", true]], ret: "void", c: "gt_gspr_frame" },
 
   // ---- input ---------------------------------------------------------------
   btn:      { params: [["int", false], ["int", true]], ret: "bool", c: "gt_p8_btn" },

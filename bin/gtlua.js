@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 
 import { compile, formatDiagnostics } from "../compiler/index.js";
 import { peephole } from "../compiler/peephole.js";
+import { parseGsi, bakeFrameTable } from "../compiler/gfx.mjs";
 
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SDK = path.join(REPO, "sdk");
@@ -234,12 +235,29 @@ function gtgSheetBytes(sheetPath) {
     .reduce((n, q) => n + packbits(Array.from(readFileSync(q))).length, 0);
 }
 
+// Bake a .gsi frame table into a C array for the runtime. .gsi gx/gy are
+// full-sheet pixel coords (0..255); the runtime wants 0..127 within a quadrant
+// with the quadrant selector in bit7 (GX bit7 = right, GY bit7 = bottom). We
+// derive the quadrant from gx/gy >= 128 and bake bit7 back on, so gt_gspr_frame
+// gets final GRAM source coords and needs zero quadrant logic. 6 bytes/frame.
+function makeFrameTableC(framesPath, banked) {
+  const frames = parseGsi(readFileSync(framesPath));
+  const quadOf = (i) => ((frames[i].gx >= 128 ? 1 : 0) | (frames[i].gy >= 128 ? 2 : 0));
+  // mask gx/gy to the low 7 bits before bakeFrameTable re-adds bit7 by quadrant
+  const masked = frames.map((f) => ({ ...f, gx: f.gx & 127, gy: f.gy & 127 }));
+  const tab = bakeFrameTable(masked, quadOf);
+  const decl = `static const unsigned char frametab[${tab.length}] = {${Array.from(tab).join(",")}};`;
+  const reg = `gt_frames_register(frametab, ${frames.length}U);`;
+  return { decl, reg, banked };
+}
+
 // Emit sheet.c for a NATIVE .gtg sheet: each 16384-byte quadrant is packbits-
 // compressed into its own ROM array and loaded into its GRAM quadrant (0=NW,
 // 1=NE, 2=SW, 3=SE) by gt_gsheet_load_packed. The grid spr(n) draw path reads
 // GRAM the same way regardless of how it was filled, so games keep working with
 // no Lua change — see docs/GRAPHICS.md. `banked` places the blobs in bank 2.
-function makeGSheetC(sheetPath, banked) {
+// A --frames foo.gsi adds a frame table (for sprf) alongside, in the same bank.
+function makeGSheetC(sheetPath, banked, framesPath) {
   const quads = discoverQuadrants(sheetPath);
   const decls = [];
   const calls = [];
@@ -248,6 +266,11 @@ function makeGSheetC(sheetPath, banked) {
     decls.push(`static const unsigned char gsheet${i}[${pk.length}] = {${pk.join(",")}};`);
     calls.push(`gt_gsheet_load_packed(gsheet${i}, ${pk.length}U, ${i});`);
   });
+  if (framesPath) {
+    const ft = makeFrameTableC(framesPath, banked);
+    decls.push(ft.decl);
+    calls.push(ft.reg);
+  }
   const body = banked ? `gt_bank(2); ${calls.join(" ")}` : calls.join(" ");
   const rodata = banked
     ? `#pragma rodata-name ("SHEET")\n${decls.join("\n")}\n#pragma rodata-name ("RODATA")\n`
@@ -255,9 +278,9 @@ function makeGSheetC(sheetPath, banked) {
   return `#include "gt_api.h"\n${rodata}void gt_sheet_init(void) { ${body} }\n`;
 }
 
-function makeSheetC(sheetPath, banked, packed) {
+function makeSheetC(sheetPath, banked, packed, framesPath) {
   if (!sheetPath) return `void gt_sheet_init(void) {}\n`;
-  if (isGtgSheet(sheetPath)) return makeGSheetC(sheetPath, banked);
+  if (isGtgSheet(sheetPath)) return makeGSheetC(sheetPath, banked, framesPath);
   const raw = readFileSync(sheetPath);
   if (raw.length !== 8192) {
     fail(`--sheet expects a 16384-byte native .gtg or an 8192-byte 4bpp gfx.bin (got ${raw.length})`);
@@ -558,7 +581,7 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
 
 // ---- build ------------------------------------------------------------------
 
-function build(entry, outPath, sheetPath, num8 = false) {
+function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) {
   if (!existsSync(entry)) fail(`no such file: ${entry}`);
   const tc = findToolchain();
   const projDir = path.dirname(path.resolve(entry));
@@ -626,7 +649,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
   const usesAtlas = result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(") ||
     result.c.includes("gt_bg_coln(");
   writeFileSync(B(`${name}.c`), result.c);
-  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, false));
+  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, false, false, framesPath));
 
   // 2. compile + assemble everything
   cc(B(`${name}.c`), B(`${name}.s`));
@@ -741,7 +764,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
   const placement = initialPlacement(result.callGraph);
 
   as(path.join(SDK, "gt_bank.s"), B("gt_bank.o"));
-  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, true, !usesBg));
+  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, true, !usesBg, framesPath));
   cc(B("sheet.c"), B("sheet.s"));
   as(B("sheet.s"), B("sheet.o"));
 
@@ -1044,13 +1067,17 @@ if (cmd === "build") {
   const outPath = oIdx !== -1 ? rest[oIdx + 1] : undefined;
   const sIdx = rest.indexOf("--sheet");
   const sheetPath = sIdx !== -1 ? rest[sIdx + 1] : undefined;
+  const fIdx = rest.indexOf("--frames");
+  const framesPath = fIdx !== -1 ? rest[fIdx + 1] : undefined;
   const nIdx = rest.indexOf("--num8");
+  const valueOf = (i) => (i === -1 ? -2 : i + 1);   // index of a flag's value arg
   const entry = rest.filter((a, i) =>
-    i !== oIdx && i !== (oIdx === -1 ? -2 : oIdx + 1) &&
-    i !== sIdx && i !== (sIdx === -1 ? -2 : sIdx + 1) &&
+    i !== oIdx && i !== valueOf(oIdx) &&
+    i !== sIdx && i !== valueOf(sIdx) &&
+    i !== fIdx && i !== valueOf(fIdx) &&
     i !== nIdx)[0];
-  if (!entry) fail("usage: gtlua build <main.lua> [--sheet gfx.bin] [--num8] [-o game.gtr]");
-  build(entry, outPath, sheetPath, nIdx !== -1);
+  if (!entry) fail("usage: gtlua build <main.lua> [--sheet foo.gtg] [--frames foo.gsi] [--num8] [-o game.gtr]");
+  build(entry, outPath, sheetPath, nIdx !== -1, framesPath);
 } else if (cmd === "c") {
   if (!rest[0]) fail("usage: gtlua c <main.lua>");
   process.stdout.write(compileLua(rest[0]).c);

@@ -6,7 +6,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   encodePng, decodePng, rgbaToGtg, gtgToPng, p8GfxToGtg, gfxBinToGtg, toGtg, gtgNames,
-  QUADRANT, QUADRANT_BYTES,
+  parseGsi, encodeGsi, bakeFrameTable,
+  QUADRANT, QUADRANT_BYTES, FRAME_BYTES,
 } from "../compiler/gfx.mjs";
 import { GT_CAPTURE_PALETTE, nearestColorByte } from "../compiler/gt_palette.js";
 import { P8_PALETTE } from "../compiler/builtins.js";
@@ -144,4 +145,34 @@ test("toGtg dispatches by content: PNG, p8, 4bpp gfx.bin, raw .gtg", () => {
 test("oversized image is rejected", () => {
   const rgba = makeRgba(300, 100, () => [0, 0, 0]);
   assert.throws(() => rgbaToGtg(300, 100, rgba), /exceeds one 256x256/);
+});
+
+test(".gsi frame records round-trip (8 bytes each, official layout)", () => {
+  const frames = [
+    { vxo: -3, vyo: 5, w: 16, h: 24, gx: 32, gy: 48 },
+    { vxo: 0, vyo: 0, w: 8, h: 8, gx: 200, gy: 130 },
+  ];
+  const buf = encodeGsi(frames);
+  assert.equal(buf.length, frames.length * FRAME_BYTES);
+  const back = parseGsi(buf);
+  assert.deepEqual(back, frames);
+});
+
+test("bakeFrameTable emits 6 bytes/frame with quadrant bit7 in gx/gy", () => {
+  const frames = [
+    { vxo: 1, vyo: 2, w: 8, h: 8, gx: 10, gy: 20 },   // NW quadrant
+    { vxo: 0, vyo: 0, w: 8, h: 8, gx: 12, gy: 30 },   // will be tagged SE
+  ];
+  const tab = bakeFrameTable(frames, (i) => (i === 0 ? 0 : 3));  // frame1 -> SE
+  assert.equal(tab.length, frames.length * 6);
+  // frame 0 (NW): gx/gy unchanged, no bit7
+  assert.equal(tab[4], 10); assert.equal(tab[5], 20);
+  // frame 1 (SE): both bit7 set
+  assert.equal(tab[10], 12 | 0x80); assert.equal(tab[11], 30 | 0x80);
+  // vxo/vyo/w/h carried through
+  assert.equal(tab[0], 1); assert.equal(tab[1], 2); assert.equal(tab[2], 8); assert.equal(tab[3], 8);
+});
+
+test("parseGsi rejects a non-multiple-of-8 blob", () => {
+  assert.throws(() => parseGsi(Buffer.alloc(7)), /not a multiple/);
 });
