@@ -117,9 +117,13 @@ async function runTool(tool, argv) {
   const vfsArgv = [];
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
-    if (tok === "-o") {
+    // Output-file flags: the tool WRITES the arg to that path. ld65 emits the
+    // cart (-o) plus a map (-m), label file (-Ln) and debug file (--dbgfile).
+    // All must be redirected to /work and copied back to the host afterward, or
+    // the tool fails trying to write to a host path that doesn't exist in MEMFS.
+    if (tok === "-o" || tok === "-m" || tok === "-Ln" || tok === "--dbgfile") {
       const host = argv[i + 1], vfs = "/work/" + path.basename(host);
-      vfsArgv.push("-o", vfs); outMap.push({ vfs, host }); i++; continue;
+      vfsArgv.push(tok, vfs); outMap.push({ vfs, host }); i++; continue;
     }
     if (tok === "-C") {
       const host = argv[i + 1], vfs = "/work/" + path.basename(host);

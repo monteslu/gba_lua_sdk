@@ -128,12 +128,15 @@ export async function runTool(tool, argv) {
   const vfsArgv = [];
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
-    if (tok === "-o") {
+    // Output-file flags (tool WRITES to the arg): -o cart, -m map, -Ln labels,
+    // --dbgfile debug. All redirect to /work and copy back, else the tool fails
+    // writing to a host path absent from MEMFS.
+    if (tok === "-o" || tok === "-m" || tok === "-Ln" || tok === "--dbgfile") {
       // next token is an output host path
       const host = argv[i + 1];
       const base = path.basename(host);
       const vfs = "/work/" + base;
-      vfsArgv.push("-o", vfs);
+      vfsArgv.push(tok, vfs);
       outMap.push({ vfs, host });
       i++;
       continue;
