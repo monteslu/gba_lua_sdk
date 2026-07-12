@@ -3,6 +3,16 @@
   "private": true,
   "type": "module",
   "bin": { "gtlua": "bin/gtlua.js" },
+  "exports": {
+    "./compiler/index.js": "./compiler/index.js",
+    "./compiler/peephole.js": "./compiler/peephole.js",
+    "./compiler/builtins.js": "./compiler/builtins.js",
+    "./compiler/gt_palette.js": "./compiler/gt_palette.js",
+    "./compiler/gfx.mjs": "./compiler/gfx.mjs",
+    "./compiler/gtm2.mjs": "./compiler/gtm2.mjs",
+    "./build": "./compiler/build.js",
+    "./package.json": "./package.json"
+  },
   "engines": { "node": ">=24" },
   "dependencies": {
     "romdev-toolchain-cc65": "0.1.3",
