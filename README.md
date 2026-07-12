@@ -74,6 +74,22 @@ node bin/gtlua.js build mygame/main.lua -o mygame/game.gtr
 
 `node bin/gtlua.js c <file.lua>` prints the generated C (for debugging).
 
+### Visual Studio Code
+
+The repo ships VS Code tasks for one-key build & run. Open the folder in VS
+Code, open any `.lua`, and:
+
+- **Ctrl+Shift+B** (Cmd+Shift+B on macOS) runs **gtlua: Build** on the open file,
+  producing `<name>.gtr` next to it.
+- **gtlua: Build & Run** (from *Terminal → Run Task…*) builds, then launches the
+  ROM in a detected emulator.
+
+The **Run** task finds an emulator the same way the `run_emulator` scripts do:
+the `GAMETANK_EMULATOR` env var first, then `gte` or `GameTankEmulator` on your
+`PATH`. Point `GAMETANK_EMULATOR` at your
+[GameTankEmulator](https://github.com/clydeshaffer/GameTankEmulator) build if
+it isn't on `PATH`.
+
 ## The PICO-8 contract
 
 Define `_update60()` (60 fps) or `_update()` (30 fps), plus `_draw()`, and
@@ -102,7 +118,7 @@ per-function compatibility map is
 | | |
 |---|---|
 | lifecycle | `_init` `_update` `_update60` `_draw` |
-| graphics | `cls` `camera` `color` `pal` `pset` `rect` `rectfill` `circ` `circfill` `line` `sset` `spr(n,x,y,[w,h],[flip_x,flip_y])` - flips are free (hardware blitter mirror) |
+| graphics | `cls` `camera` `color` `pset` `rect` `rectfill` `circ` `circfill` `line` `sset` `spr(n,x,y,[w,h],[flip_x,flip_y])` - flips are free (hardware blitter mirror) |
 | sprites | 8×8-grid `spr(n)` off a `.gtg` sheet (`--sheet`, [docs/GRAPHICS.md](docs/GRAPHICS.md)); `sprf(frame,x,y,[fx],[fy])` for arbitrary-size / animated frames off a `.gsi` table ([docs/SPRITES.md](docs/SPRITES.md)) |
 | input | `btn(i,[pl])` `btnp(i,[pl])` - indices 0-3 d-pad, 4=🅾️(GT A), 5=❎(GT B), **6=GT C**, 7=START; `btnp` has PICO-8 auto-repeat |
 | math | `flr` `ceil` `abs` `sgn` `sqrt` `min` `max` `mid` `sin` `cos` `atan2` `rnd` `srand` `t`/`time` |
