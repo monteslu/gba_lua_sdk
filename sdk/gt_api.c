@@ -123,29 +123,34 @@ void enter_cpu_mode(void) {
     gt_draw_mode = MODE_CPU;
 }
 
-/* GRAM CPU-write mode: dummy clipped 1x1 blit latches sheet quadrant 0,
- * then DMA off routes CPU writes into GRAM (hardware ref 3.4). */
+/* GRAM CPU-write mode: dummy clipped 1x1 blit latches a sheet QUADRANT, then
+ * DMA off routes CPU writes into GRAM (hardware ref 3.4). `quad` selects the
+ * 128x128 quadrant of a 256x256 GRAM sheet via the dummy blit's GX/GY bit7
+ * (0=NW 1=NE 2=SW 3=SE), matching the official SDK's load_spritesheet xbit/ybit.
+ * The 4bpp PICO-8 sheet only uses quadrant 0; native .gtg sheets fill 1-4. */
 /* FLASH2M: the GRAM-mode dance is cold (sset/sheet-load setup) — the body
  * rides bank 0; the fixed stub keeps it callable from any bank. */
 #ifdef GT_BANKED
 #pragma code-name ("B0CODE")
-#define GT_ENTER_GRAM enter_gram_mode_impl
-static void enter_gram_mode_impl(void);
+#define GT_ENTER_GRAM enter_gram_mode_q_impl
+static void enter_gram_mode_q_impl(unsigned char quad);
 #else
-#define GT_ENTER_GRAM enter_gram_mode
+#define GT_ENTER_GRAM enter_gram_mode_q
 #endif
 #ifdef GT_BANKED
 static
 #endif
-void GT_ENTER_GRAM(void) {
-    if (gt_draw_mode == MODE_GRAM) return;
+void GT_ENTER_GRAM(unsigned char quad) {
+    /* NOTE: no MODE_GRAM fast-path here — the caller may want a DIFFERENT
+     * quadrant than the one already latched, so we always re-latch. The plain
+     * quadrant-0 enter_gram_mode() below keeps the fast path for sset. */
     await_drawing();
     flags_mirror = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY | frameflip;
     *dma_flags = flags_mirror;
     banks_mirror = bankflip | BANK_CLIP_X | BANK_CLIP_Y;
     *bank_reg = banks_mirror;
-    vram[GX] = 0;
-    vram[GY] = 0;
+    vram[GX] = (quad & 1) ? 0x80 : 0;    /* GX bit7 = right quadrant  */
+    vram[GY] = (quad & 2) ? 0x80 : 0;    /* GY bit7 = bottom quadrant */
     vram[VX] = 200;              /* offscreen + clip: no visible pixel */
     vram[VY] = 200;
     vram[WIDTH] = 1;
@@ -159,16 +164,19 @@ void GT_ENTER_GRAM(void) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-static void enter_gram_mode(void) {
-    unsigned char saved_bank;
-    if (gt_draw_mode == MODE_GRAM) return;  /* fast path: no bank switch —
-        a boot-time bake makes thousands of sset calls through here */
-    saved_bank = gt_cur_bank;
+static void enter_gram_mode_q(unsigned char quad) {
+    unsigned char saved_bank = gt_cur_bank;
     gt_bank(0);
-    enter_gram_mode_impl();
+    enter_gram_mode_q_impl(quad);
     gt_bank(saved_bank);
 }
 #endif
+/* quadrant-0 GRAM entry with the sset fast-path (thousands of boot-time sset
+ * calls skip the re-latch + bank switch once we're already in GRAM mode). */
+static void enter_gram_mode(void) {
+    if (gt_draw_mode == MODE_GRAM) return;
+    enter_gram_mode_q(0);
+}
 
 /* framebuffer row start addresses (ROM table: vram is fixed at $4000) */
 #define VR(n) (unsigned char *)(0x4000 + ((n) << 7))
@@ -559,6 +567,38 @@ void gt_sheet_load_packed(const unsigned char *p, unsigned int plen) {
     }
 }
 #endif /* GT_SHEET_PACKED */
+
+#ifdef GT_GSHEET
+/* Load a NATIVE .gtg quadrant into GRAM. A .gtg is the official GameTank sprite
+ * format: 128x128, ONE BYTE PER PIXEL, each byte already a CAPTURE-palette color
+ * index (no nibble unpack, no p8pal lookup — that is the whole point of going
+ * native). `quad` (0=NW 1=NE 2=SW 3=SE) selects which 128x128 quadrant of the
+ * 256x256 GRAM sheet this fills, so a game can pin up to four .gtg quadrants
+ * (foo.gtg / foo_1 / foo_2 / foo_3) into one full sheet. The bytes are stored
+ * packbits-compressed in ROM ([n,b..] literal / [n|0x80,v] repeat) since .gtg
+ * art is mostly transparent (color 0); this is gtlua's stand-in for the official
+ * ROM's zopfli-deflate (the GRAM result is byte-for-byte identical). */
+#ifdef GT_BANKED
+#pragma code-name ("B2CODE")
+#endif
+void gt_gsheet_load_packed(const unsigned char *p, unsigned int plen, unsigned char quad) {
+    const unsigned char *end = p + plen;
+    unsigned int vi = 0;
+    unsigned char n, b;
+    enter_gram_mode_q(quad);
+    while (p < end) {
+        n = *p++;
+        if (n & 0x80) {
+            n &= 0x7F;
+            b = *p++;
+            while (n--) vram[vi++] = b;          /* raw CAPTURE byte, no palette */
+        } else {
+            while (n--) vram[vi++] = *p++;
+        }
+    }
+}
+#endif /* GT_GSHEET */
+
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
 #endif

@@ -204,10 +204,64 @@ function packbits(raw) {
   return out;
 }
 
+const GTG_BYTES = 16384;   // one native .gtg quadrant = 128x128 8bpp
+
+// A native .gtg sheet is 16384 bytes (one 128x128 quadrant). The old PICO-8
+// path is an 8192-byte 4bpp gfx.bin. Detect by size — the extension is not
+// authoritative (a .gtg IS a real GameTank file; a .bin may be either).
+function isGtgSheet(sheetPath) {
+  return !!sheetPath && statSync(sheetPath).size === GTG_BYTES;
+}
+
+// Given foo.gtg, return the ordered list of quadrant files that exist, in the
+// official name / _1 / _2 / _3 order (NW, NE, SW, SE). A single-quadrant sheet
+// is just [foo.gtg]. The sibling quadrants are what `gtlua gfx import` emits
+// when a source image is larger than 128x128.
+function discoverQuadrants(sheetPath) {
+  const stem = sheetPath.replace(/\.gtg$/i, "");
+  const files = [sheetPath];
+  for (let i = 1; i < 4; i++) {
+    const q = `${stem}_${i}.gtg`;
+    if (existsSync(q)) files.push(q);
+  }
+  return files;
+}
+
+// Total packbits-compressed ROM cost of a native .gtg sheet's quadrants (for
+// the FLASH2M bank-capacity accounting).
+function gtgSheetBytes(sheetPath) {
+  return discoverQuadrants(sheetPath)
+    .reduce((n, q) => n + packbits(Array.from(readFileSync(q))).length, 0);
+}
+
+// Emit sheet.c for a NATIVE .gtg sheet: each 16384-byte quadrant is packbits-
+// compressed into its own ROM array and loaded into its GRAM quadrant (0=NW,
+// 1=NE, 2=SW, 3=SE) by gt_gsheet_load_packed. The grid spr(n) draw path reads
+// GRAM the same way regardless of how it was filled, so games keep working with
+// no Lua change — see docs/GRAPHICS.md. `banked` places the blobs in bank 2.
+function makeGSheetC(sheetPath, banked) {
+  const quads = discoverQuadrants(sheetPath);
+  const decls = [];
+  const calls = [];
+  quads.forEach((q, i) => {
+    const pk = packbits(Array.from(readFileSync(q)));
+    decls.push(`static const unsigned char gsheet${i}[${pk.length}] = {${pk.join(",")}};`);
+    calls.push(`gt_gsheet_load_packed(gsheet${i}, ${pk.length}U, ${i});`);
+  });
+  const body = banked ? `gt_bank(2); ${calls.join(" ")}` : calls.join(" ");
+  const rodata = banked
+    ? `#pragma rodata-name ("SHEET")\n${decls.join("\n")}\n#pragma rodata-name ("RODATA")\n`
+    : `${decls.join("\n")}\n`;
+  return `#include "gt_api.h"\n${rodata}void gt_sheet_init(void) { ${body} }\n`;
+}
+
 function makeSheetC(sheetPath, banked, packed) {
   if (!sheetPath) return `void gt_sheet_init(void) {}\n`;
+  if (isGtgSheet(sheetPath)) return makeGSheetC(sheetPath, banked);
   const raw = readFileSync(sheetPath);
-  if (raw.length !== 8192) fail(`--sheet expects an 8192-byte 4bpp gfx.bin (got ${raw.length})`);
+  if (raw.length !== 8192) {
+    fail(`--sheet expects a 16384-byte native .gtg or an 8192-byte 4bpp gfx.bin (got ${raw.length})`);
+  }
   let decl, call;
   if (packed) {
     const pk = packbits(Array.from(raw));
@@ -538,9 +592,13 @@ function build(entry, outPath, sheetPath, num8 = false) {
   const usesAudio = result.c.includes("gt_audio_init(");
   const usesStarfield = result.c.includes("gt_starfield");
   const usesAutocls = result.c.includes("gt_autocls_set(");
-  const usesPackedSheet = !!sheetPath &&
+  // a native .gtg sheet is 8bpp (loaded raw, no palette expansion) — the 4bpp
+  // packbits path (GT_SHEET_PACKED) doesn't apply; it uses GT_GSHEET instead.
+  const gtgSheet = isGtgSheet(sheetPath);
+  const usesPackedSheet = !!sheetPath && !gtgSheet &&
     !(result.c.includes("gt_bg_compose(") || result.c.includes("gt_gspr("));
   const apiDefs = [
+    ...(gtgSheet ? ["-DGT_GSHEET"] : []),
     ...(usesStarfield ? ["-DGT_STARFIELD"] : []),
     ...(result.c.includes("gt_flakes") || result.c.includes("gt_chain") ? ["-DGT_FLAKES"] : []),
     ...(result.c.includes("gt_canvas_view(") ? ["-DGT_CANVAS"] : []),
@@ -676,9 +734,10 @@ function build(entry, outPath, sheetPath, num8 = false) {
     }
   };
   foldRodataSizes(result.c, sizes);
-  const sheetBytes = sheetPath
-    ? (usesBg ? 8192 : packbits(Array.from(readFileSync(sheetPath))).length)
-    : 0;
+  const sheetBytes = !sheetPath ? 0
+    : gtgSheet ? gtgSheetBytes(sheetPath)               // sum of packbits'd quadrants
+    : usesBg ? 8192                                     // 4bpp sheet re-read raw by bg
+    : packbits(Array.from(readFileSync(sheetPath))).length;
   const placement = initialPlacement(result.callGraph);
 
   as(path.join(SDK, "gt_bank.s"), B("gt_bank.o"));
@@ -995,6 +1054,12 @@ if (cmd === "build") {
 } else if (cmd === "c") {
   if (!rest[0]) fail("usage: gtlua c <main.lua>");
   process.stdout.write(compileLua(rest[0]).c);
+} else if (cmd === "gfx") {
+  const { gfxCli } = await import("./gtlua-gfx.mjs");
+  gfxCli(rest);
 } else {
-  fail("usage: gtlua build <main.lua> [--sheet gfx.bin] [-o game.gtr] | gtlua c <main.lua>");
+  fail("usage: gtlua build <main.lua> [--sheet foo.gtg] [-o game.gtr]\n" +
+    "       gtlua gfx import <in.png|in.p8|in.gtg> [-o out.gtg]\n" +
+    "       gtlua gfx export <in.gtg> [-o out.png]\n" +
+    "       gtlua c <main.lua>");
 }

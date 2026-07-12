@@ -173,6 +173,9 @@ int gt_p8_print_int(int v, int x, int y, int c);
 int gt_p8_print_buf(unsigned char *buf, int off, int x, int y, int c);
 void gt_sheet_load(const unsigned char *packed);
 void gt_sheet_load_packed(const unsigned char *p, unsigned int plen); /* packbits */
+/* native .gtg quadrant loader: 128x128 8bpp raw CAPTURE bytes, packbits in ROM,
+ * into GRAM quadrant `quad` (0=NW 1=NE 2=SW 3=SE). See gt_api.c / docs/GRAPHICS.md. */
+void gt_gsheet_load_packed(const unsigned char *p, unsigned int plen, unsigned char quad);
 void gt_sheet_init(void);   /* generated per-build: loads the sheet or no-op */
 void __fastcall__ gt_bank(unsigned char b);  /* FLASH2M: switch the $8000 window */
 
