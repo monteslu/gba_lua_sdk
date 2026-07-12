@@ -149,6 +149,18 @@ export const GT_MEMBERS = {
   // 24px atlas-chunk grid window (racing tracks): grid ints, two decode
   // LUTs (road, decal), a props byte-list out, stride, cell window
   chunks_draw: { kind: "fn", params: [["array", false], ["array8", false], ["array8", false], ["array8", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_chunks_draw" },
+  // torus track cache (GRAM group 3): compose a 256x256 window from a packed
+  // chunk grid ONCE, then restore it each frame with one windowed blit
+  // (gt.track_view) - no per-tile repaint. track_col/track_row2 refresh a single
+  // canvas column/row for incremental scroll; track_props collects the prop
+  // (idx, screenx, screeny) triples for sprites layered over the cached track.
+  // grid/ckdt/ctiles are array (16-bit); props is array8. See gt_bg.c / gt_api.c.
+  track_grid:  { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_track_grid" },
+  track_col:   { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_track_col" },
+  track_row2:  { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_track_row2" },
+  track_props: { kind: "fn", params: [["array", false], ["array8", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_track_props" },
+  track_view:  { kind: "fn", params: [["int", false], ["int", false]], ret: "void", c: "gt_track_view" },
+  track_compose: { kind: "fn", params: [["array8", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_track_compose" },
   // bulk sprite pass: every used slot whose byte field (arg 2, a field
   // name string) is nonzero blits an 8x8 cell at (x>>4, y>>4)
   pool_sprs: { kind: "fn", params: [["pool", false], ["str", false], ["int", true], ["int", true]], ret: "void", c: "gt_pool_sprs", special: "poolsprs" },

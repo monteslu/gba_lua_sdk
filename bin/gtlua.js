@@ -615,6 +615,11 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   const usesAudio = result.c.includes("gt_audio_init(");
   const usesStarfield = result.c.includes("gt_starfield");
   const usesAutocls = result.c.includes("gt_autocls_set(");
+  // torus track cache (gt_track_grid/col/row2/view/props/compose): a racing-track
+  // scroll engine in gt_bg.c + gt_api.c, gated on GT_TRACK_CACHE.
+  const usesTrack = result.c.includes("gt_track_grid(") || result.c.includes("gt_track_col(") ||
+    result.c.includes("gt_track_row2(") || result.c.includes("gt_track_view(") ||
+    result.c.includes("gt_track_props(") || result.c.includes("gt_track_compose(");
   // a native .gtg sheet is 8bpp (loaded raw, no palette expansion) - the 4bpp
   // packbits path (GT_SHEET_PACKED) doesn't apply; it uses GT_GSHEET instead.
   const gtgSheet = isGtgSheet(sheetPath);
@@ -628,9 +633,14 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
     ...(result.c.includes("gt_tiles_draw") ? ["-DGT_TILES"] : []),
     ...(result.c.includes("gt_balls_step") ? ["-DGT_BALLS"] : []),
     ...((result.c.includes("gt_pool_move") || (result.c.includes("gt_cost_decay") || result.c.includes("gt_trail_stamp")) || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs")) ? ["-DGT_POOLMV"] : []),
-    ...(result.c.includes("gt_chunks_draw") ? ["-DGT_CHUNKS"] : []),
+    // gt_track_props lives in gt_api.c behind GT_CHUNKS (shares the chunk decode);
+    // gt_chunks_draw or gt_track_props both need it.
+    ...((result.c.includes("gt_chunks_draw") || result.c.includes("gt_track_props(")) ? ["-DGT_CHUNKS"] : []),
     ...(result.c.includes("gt_hit_scan") ? ["-DGT_HITS"] : []),
-    ...(result.c.includes("gt_bg_compose") ? ["-DGT_BG_COMPOSE_ON"] : []),
+    // the torus track-cache (gt_track_grid/col/row2/view/compose in gt_bg.c) is
+    // gated on GT_TRACK_CACHE; track_compose additionally needs GT_BG_COMPOSE_ON.
+    ...(usesTrack ? ["-DGT_TRACK_CACHE"] : []),
+    ...((result.c.includes("gt_bg_compose") || usesTrack) ? ["-DGT_BG_COMPOSE_ON"] : []),
     ...(usesAutocls ? ["-DGT_AUTOCLS"] : []),
     ...(usesPackedSheet ? ["-DGT_SHEET_PACKED"] : []),
   ];
@@ -643,11 +653,24 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   // that doesn't need it just steals bank-2 space from the game's own code.
   const usesBg = result.c.includes("gt_bg_compose(") || result.c.includes("gt_bg_draw(") ||
     result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(") ||
-    result.c.includes("gt_bg_coln(") || result.c.includes("gt_gspr(");
+    result.c.includes("gt_bg_coln(") || result.c.includes("gt_gspr(") || usesTrack;
   // atlas builders (bg_clear/bg_tile) carry a second bank-2 decode body -
   // only compile + reserve for it when the game actually stamps tiles
   const usesAtlas = result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(") ||
     result.c.includes("gt_bg_coln(");
+  // gt.bg_compose / bg_tile / bg_coln and the track cache (gt.track_*) RE-READ
+  // the raw sheet pixels each compose (via gt_sheet_ptr) to paint into a GRAM
+  // page. The native .gtg loader copies straight into GRAM and leaves
+  // gt_sheet_ptr NULL, so those composers silently draw garbage. Fail loudly:
+  // a game that composes from the sheet needs the 4bpp gfx.bin, not a .gtg.
+  const readsRawSheet = result.c.includes("gt_bg_compose(") ||
+    result.c.includes("gt_bg_tile(") || result.c.includes("gt_bg_coln(") || usesTrack;
+  if (gtgSheet && readsRawSheet) {
+    fail(`this game composes from the sheet (bg_compose / bg_tile / track_*), ` +
+      `which re-reads the raw sheet pixels - that path needs the 4bpp gfx.bin, ` +
+      `not a native .gtg (the .gtg loader copies into GRAM and doesn't keep a ` +
+      `readable copy). Build with --sheet <your>.bin instead of --sheet <your>.gtg.`);
+  }
   writeFileSync(B(`${name}.c`), result.c);
   writeFileSync(B("sheet.c"), makeSheetC(sheetPath, false, false, framesPath));
 
@@ -658,7 +681,8 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   cc(path.join(SDK, "gt_math.c"), B("gt_math.s"));
   if (usesBg) cc(path.join(SDK, "gt_bg.c"), B("gt_bg.s"), [
     ...(usesAtlas ? ["-DGT_BG_ATLAS"] : []),
-    ...(result.c.includes("gt_bg_compose(") ? ["-DGT_BG_COMPOSE_ON"] : []),
+    ...((result.c.includes("gt_bg_compose(") || usesTrack) ? ["-DGT_BG_COMPOSE_ON"] : []),
+    ...(usesTrack ? ["-DGT_TRACK_CACHE"] : []),
   ]);
   if (usesAudio) cc(path.join(SDK, "gt_audio.c"), B("gt_audio.s"));
   if (usesMusic) cc(path.join(SDK, "gt_music.c"), B("gt_music.s"));
@@ -787,7 +811,8 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   if (usesBg) {
     run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_SHEET_BANK=2",
                   ...(usesAtlas ? ["-DGT_BG_ATLAS"] : []),
-                  ...(result.c.includes("gt_bg_compose(") ? ["-DGT_BG_COMPOSE_ON"] : []),
+                  ...((result.c.includes("gt_bg_compose(") || usesTrack) ? ["-DGT_BG_COMPOSE_ON"] : []),
+                  ...(usesTrack ? ["-DGT_TRACK_CACHE"] : []),
                   "-o", B("gt_bg.s"), path.join(SDK, "gt_bg.c")]);
     as(B("gt_bg.s"), B("gt_bg.o"));
   }
