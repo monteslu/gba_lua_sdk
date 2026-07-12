@@ -740,6 +740,24 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
   const as = (src, obj, defs = []) => run(tc.ca65, [...AFLAGS, ...defs, "-o", obj, src]);
   const B = (f) => path.join(buildDir, f);
 
+  // In-RAM object memo (retro objects are a few KB - no filesystem cache
+  // needed). The FLASH2M placement ladder recompiles heavy SDK units like
+  // gt_api.c (~2100 lines) on several attempt-triggers, but usually with the
+  // SAME cc65 flags as the prior attempt - producing an identical .o. Memoize
+  // the compiled .o bytes keyed on (source path + flags) for THIS build; on a
+  // hit, write the remembered bytes to the target and skip cc65+ca65 entirely.
+  const objMemo = new Map();       // key -> Uint8Array(.o bytes)
+  const memoKey = (src, ccFlags) => `${src}\x1f${ccFlags.join("\x1f")}`;
+  // compile C -> .s (peephole) -> assemble -> .o, memoized in RAM by src+flags.
+  const ccAsMemo = (src, sdst, obj, extra = []) => {
+    const key = memoKey(src, [...CFLAGS, ...extra]);
+    const hit = objMemo.get(key);
+    if (hit) { writeFileSync(obj, hit); return; }
+    cc(src, sdst, extra);
+    as(sdst, obj);
+    objMemo.set(key, readFileSync(obj));
+  };
+
   // 1. lua -> C (flat 32 KB attempt first)
   let result = compileLua(entry, { num8 });
   const usesAudio = result.c.includes("gt_audio_init(");
@@ -953,9 +971,7 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
   // circ/line-diagonal, starfield init/move, the glyph table) that exile to
   // bank 2 under GT_BANKED - the fixed window can't hold them all plus the
   // blitter font. Recompile banked so those pragmas take effect.
-  run(tc.cc65, [...CFLAGS, "-DGT_BANKED", ...apiDefs,
-                "-o", B("gt_api.s"), path.join(SDK, "gt_api.c")]);
-  as(B("gt_api.s"), B("gt_api.o"));
+  ccAsMemo(path.join(SDK, "gt_api.c"), B("gt_api.s"), B("gt_api.o"), ["-DGT_BANKED", ...apiDefs]);
   run(tc.cc65, [...CFLAGS, "-DGT_BANKED",
                 "-o", B("gt_fixed.s"), path.join(SDK, "gt_fixed.c")]);
   as(B("gt_fixed.s"), B("gt_fixed.o"));
@@ -997,9 +1013,7 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
       // the b2 relief move backfired (this cart's bank 2 is the tight one):
       // undo it and let the cold bodies go back to bank 0
       apiDefs.splice(apiDefs.indexOf("-DGT_INPUT_B2"), 1);
-      run(tc.cc65, [...CFLAGS, "-DGT_BANKED", ...apiDefs,
-                    "-o", B("gt_api.s"), path.join(SDK, "gt_api.c")]);
-      as(B("gt_api.s"), B("gt_api.o"));
+      ccAsMemo(path.join(SDK, "gt_api.c"), B("gt_api.s"), B("gt_api.o"), ["-DGT_BANKED", ...apiDefs]);
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: b2 relief undone (bank 2 is the tight bank)");
     }
@@ -1024,9 +1038,7 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
       // which bank the SDK input block fits in is per-cart: b0-heavy carts
       // (big update loop + audio firmware) need it in bank 2 and vice versa
       apiDefs.push("-DGT_INPUT_B2");
-      run(tc.cc65, [...CFLAGS, "-DGT_BANKED", ...apiDefs,
-                    "-o", B("gt_api.s"), path.join(SDK, "gt_api.c")]);
-      as(B("gt_api.s"), B("gt_api.o"));
+      ccAsMemo(path.join(SDK, "gt_api.c"), B("gt_api.s"), B("gt_api.o"), ["-DGT_BANKED", ...apiDefs]);
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: input block to bank 2");
     }
@@ -1045,9 +1057,7 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
       // frame (8.5 fps) with ~198k cycles of per-pixel glyphs - so every
       // cheaper rung (including turning inlining off) goes first.
       apiDefs.push("-DGT_NO_BLITFONT");
-      run(tc.cc65, [...CFLAGS, "-DGT_BANKED", ...apiDefs,
-                    "-o", B("gt_api.s"), path.join(SDK, "gt_api.c")]);
-      as(B("gt_api.s"), B("gt_api.o"));
+      ccAsMemo(path.join(SDK, "gt_api.c"), B("gt_api.s"), B("gt_api.o"), ["-DGT_BANKED", ...apiDefs]);
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: dropping the blit font (CPU print fallback)");
     }
