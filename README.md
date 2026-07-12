@@ -58,7 +58,8 @@ PICO-8-style indices `0-15` (`0` black, `1` dark-blue, `10` yellow, `14` pink);
 
 ## Requirements
 
-- [Node.js](https://nodejs.org/) 18+ (runs the compiler)
+- [Node.js](https://nodejs.org/) **24+** (the bundled cc65 + emulator WASM need
+  it for WASM threading / SIMD)
 - **nothing else** - the C toolchain (cc65) and the emulator both come bundled
   as WebAssembly via `npm install`. No native tools to build or install.
 
