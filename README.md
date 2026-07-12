@@ -47,6 +47,11 @@ end
   want the source-clone path - the SDK uses it automatically when present. See
   "Build backends" below.)
 
+`gtlua run` opens a window via the optional `@kmamal/sdl` dependency (pulled by
+`npm install`, prebuilt for the common platforms). On a headless box or an
+unsupported platform it falls back to an external GameTank emulator; `gtlua
+build` never needs it.
+
 ## Quickstart (zero install)
 
 Clone it, install once, and you can **build and run** GameTank games with no
@@ -91,6 +96,13 @@ node bin/gtlua.js build mygame/main.lua -o mygame/game.gtr
 # --num8                     8.8 number mode, faster math (docs/performance.md)
 ```
 
+Test it as you go with `run` (it builds, then opens the game in a window so you
+can play it immediately - the tight edit/build/play loop):
+
+```sh
+node bin/gtlua.js run mygame/main.lua           # same flags as build
+```
+
 `node bin/gtlua.js c <file.lua>` prints the generated C (for debugging).
 
 ### Visual Studio Code
@@ -132,7 +144,7 @@ step-by-step walkthrough (import the art with `gtlua gfx import`, the sound with
 per-function compatibility map is
 [docs/CHEATSHEET_FOR_PICO8_USERS.md](docs/CHEATSHEET_FOR_PICO8_USERS.md).
 
-## API (v0.2)
+## API
 
 | | |
 |---|---|

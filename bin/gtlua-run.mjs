@@ -113,6 +113,9 @@ export async function runRom(romPath, opts = {}) {
   const sampleRate = dv.getFloat64(32, true) || 44100;
 
   // --- window + audio ------------------------------------------------------
+  // 128x128 is unusable on a desktop; default to a 4x (512x512) window and
+  // present with INTEGER scaling + nearest-neighbor so pixels stay crisp and
+  // square (no bilinear blur, no uneven fractional stretch).
   const scale = opts.scale ?? 4;
   const window = sdl.video.createWindow({
     title: opts.title ?? `gtlua - ${path.basename(romPath)}`,
@@ -149,7 +152,16 @@ export async function runRom(romPath, opts = {}) {
         out[o] = src[s + 2]; out[o + 1] = src[s + 1]; out[o + 2] = src[s]; out[o + 3] = 255; // BGRA->RGBA
       }
     }
-    window.render(width, height, width * 4, "rgba32", out);
+    // Integer scaling: draw the framebuffer at the largest whole-number
+    // multiple that fits the current window, centered (letterboxed). node-sdl's
+    // dstRect is the built-in way to do this; combined with 'nearest' it keeps
+    // pixels crisp AND square (a fractional stretch would make some pixels wider
+    // than others). Recomputed each frame so resizing the window stays crisp.
+    const ww = window.width, wh = window.height;
+    const mult = Math.max(1, Math.min(Math.floor(ww / width), Math.floor(wh / height)));
+    const dw = width * mult, dh = height * mult;
+    const dstRect = { x: Math.floor((ww - dw) / 2), y: Math.floor((wh - dh) / 2), width: dw, height: dh };
+    window.render(width, height, width * 4, "rgba32", out, { scaling: "nearest", dstRect });
   };
 
   // --- frame loop ----------------------------------------------------------
