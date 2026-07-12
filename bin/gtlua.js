@@ -1000,6 +1000,18 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
   // generated source bytes so a repeat is a Map lookup, not a ~230ms recompile.
   const gameObjMemo = new Map();
   const stubObjMemo = new Map();
+  // Ladder cycle-skip: the size-relief escalation rungs (integer-rnd off, inline
+  // off, ...) are hardcoded to fire at fixed attempt numbers. Between rungs the
+  // juggle/rebalance can only reproduce placements it already tried (nothing
+  // shrinks the code until the next rung), so it spins - re-linking the SAME
+  // failing placement up to a dozen times waiting for the attempt counter to
+  // reach the next rung. When a link fails on a placement whose generated C we
+  // have ALREADY seen, jump straight to the next rung instead of spinning. This
+  // only skips provably-redundant iterations; the rungs that fire, the distinct
+  // placements tried, and the final cart are all unchanged.
+  const RUNGS = [8, 10, 14, 18, 20, 26, 32];
+  const seenPlacements = new Set();
+  let lastCKey = null;
   // The min/max/mid ternary inlining is a speed-for-size trade. A game at the
   // bank-capacity cliff can fail to place WITH it but link fine WITHOUT it -
   // so if placement is still failing halfway through the attempts, fall back
@@ -1083,6 +1095,7 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
       // same .o, so key the in-RAM memo on a hash of result.c. (RAM only; the
       // game .o is a few KB.) Same for the tiny stubs.s -> stubs.o.
       const cKey = createHash("sha1").update(result.c).digest("hex");
+      lastCKey = cKey;
       const cHit = gameObjMemo.get(cKey);
       if (cHit) {
         writeFileSync(B(`${name}.o`), cHit);
@@ -1205,6 +1218,15 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
       break;
     }
     lastOverflows = link.overflows;
+    // Cycle-skip: this placement's C was already tried and still failed. The
+    // rungs before the next boundary can't change the outcome, so fast-forward
+    // the attempt counter to the next rung (which shrinks code / restarts
+    // placement) instead of re-deriving the same dead end every iteration.
+    if (seenPlacements.has(lastCKey)) {
+      const nextRung = RUNGS.find((r) => r > attempt);
+      if (nextRung !== undefined) { attempt = nextRung - 1; continue; }  // -1: loop's ++ lands on the rung
+    }
+    seenPlacements.add(lastCKey);
     const mapInfo = sdkLoadFromMap(B(`${name}.map`));
     if (mapInfo) calibrateSizes(sizes, workPlacement, mapInfo.port);
     const moved = rebalance(workPlacement, sizes, link.overflows, sheetBytes, result.callGraph, usesBg, usesAudio, usesMusic, usesAtlas, mapInfo?.load ?? null);
