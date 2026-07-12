@@ -1,1 +1,10 @@
-{"name":"gametank-lua-sdk","private":true,"type":"module","bin":{"gtlua":"bin/gtlua.js"},"scripts":{"test":"node --test test/"}}
+{
+  "name": "gametank-lua-sdk",
+  "private": true,
+  "type": "module",
+  "bin": { "gtlua": "bin/gtlua.js" },
+  "scripts": {
+    "test": "node --test 'test/**/*.test.js'",
+    "bench": "node bench/run.mjs"
+  }
+}
