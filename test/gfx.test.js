@@ -116,6 +116,24 @@ test("PICO-8 __gfx__ imports to a single quadrant via P8_PALETTE", () => {
   assert.notEqual(q[1], 0, "index 8 -> a color");
 });
 
+test("4bpp->gtg uses the SAME palette table as the C runtime (parity invariant)", () => {
+  // gfxBinToGtg must expand nibbles through the exact 16 bytes the 4bpp runtime
+  // loader (sdk/gt_api.c p8pal_rom) uses, or a migrated .gtg would not render
+  // identically to the game's current gfx.bin. Pin the table so it can't drift.
+  assert.deepEqual([...P8_PALETTE], [
+    0x00, 0xA9, 0x5A, 0xDB, 0x33, 0x03, 0x06, 0x07,
+    0x5B, 0x3E, 0x1F, 0xFE, 0xBE, 0x8C, 0x5E, 0x2F,
+  ]);
+  // and each of the 16 indices lands where the runtime would put it
+  const bin = Buffer.alloc(8192);
+  for (let n = 0; n < 16; n++) bin[n] = n | (n << 4);   // both nibbles = n
+  const q = gfxBinToGtg(bin).quadrants[0];
+  for (let n = 0; n < 16; n++) {
+    assert.equal(q[n * 2], P8_PALETTE[n]);
+    assert.equal(q[n * 2 + 1], P8_PALETTE[n]);
+  }
+});
+
 test("legacy 4bpp gfx.bin migrates to .gtg via P8_PALETTE (byte-identical to runtime)", () => {
   // two pixels per byte: low nibble = even x, high nibble = odd x.
   const bin = Buffer.alloc(8192);

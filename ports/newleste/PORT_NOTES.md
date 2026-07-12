@@ -199,7 +199,9 @@ generated-array approach and free the RAM the 1024-entry `m` array uses.
 ```sh
 # regenerate map + gfx from the source cart, then build the 2 MB cart
 node ports/newleste/tools/genassets.mjs
-node bin/gtlua.js build ports/newleste/main.lua --sheet ports/newleste/gfx.bin \
+# convert the generated 4bpp gfx.bin to a native .gtg sheet (see docs/GRAPHICS.md)
+node bin/gtlua.js gfx import ports/newleste/gfx.bin -o ports/newleste/gfx.gtg
+node bin/gtlua.js build ports/newleste/main.lua --sheet ports/newleste/gfx.gtg \
   -o ports/newleste/main.gtr
 ```
 

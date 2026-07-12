@@ -13,8 +13,10 @@ sprite sheet).
 ## How to build
 
 ```
+# convert the port's 4bpp gfx.bin to a native .gtg once (see docs/GRAPHICS.md)
+node bin/gtlua.js gfx import ports/combo-pool/gfx.bin -o ports/combo-pool/gfx.gtg
 node bin/gtlua.js build ports/combo-pool/main.lua \
-  --sheet carts/combo-pool-extract/gfx.bin --num8 \
+  --sheet ports/combo-pool/gfx.gtg --num8 \
   -o ports/combo-pool/main.gtr
 ```
 

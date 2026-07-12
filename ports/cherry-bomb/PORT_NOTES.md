@@ -10,8 +10,10 @@ Fly in, survive nine waves, kill the boss.
 ## How to build
 
 ```
+# convert the extracted 4bpp sheet to a native .gtg once (see docs/GRAPHICS.md)
+node bin/gtlua.js gfx import carts/cherrybomb-extract/gfx.bin -o ports/cherry-bomb/gfx.gtg
 node bin/gtlua.js build ports/cherry-bomb/main.lua \
-     --sheet carts/cherrybomb-extract/gfx.bin -o ports/cherry-bomb/main.gtr
+     --sheet ports/cherry-bomb/gfx.gtg -o ports/cherry-bomb/main.gtr
 ```
 
 The source is ~1400 lines and its object code plus the 8 KB sprite sheet
