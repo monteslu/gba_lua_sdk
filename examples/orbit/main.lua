@@ -40,7 +40,7 @@ function _update()
 end
 
 function _draw()
-  cls(1)                          -- p8 dark blue
+  cls(1)                          -- dark blue (the 0-15 literal bakes to a GT byte)
 
   local cx = 64
   local cy = 64
