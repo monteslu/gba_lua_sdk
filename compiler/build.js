@@ -36,7 +36,7 @@
 
 import { compile, formatDiagnostics } from "./index.js";
 import { peephole } from "./peephole.js";
-import { parseGsi, bakeFrameTable } from "./gfx.mjs";
+import { parseGsi, bakeFrameTable } from "./frames.js";
 
 const BANK_SIZE = 0x4000;
 const FLASH_SIZE = 0x200000;

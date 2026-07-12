@@ -9,6 +9,7 @@
     "./compiler/builtins.js": "./compiler/builtins.js",
     "./compiler/gt_palette.js": "./compiler/gt_palette.js",
     "./compiler/gfx.mjs": "./compiler/gfx.mjs",
+    "./compiler/frames.js": "./compiler/frames.js",
     "./compiler/gtm2.mjs": "./compiler/gtm2.mjs",
     "./build": "./compiler/build.js",
     "./package.json": "./package.json"
