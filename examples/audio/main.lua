@@ -1,4 +1,4 @@
--- audio: PICO-8-style sfx() and music() on the GameTank audio coprocessor.
+-- audio: sfx() and music() on the GameTank audio coprocessor (FM synth).
 --   boot         -> looping built-in tune 0
 --   🅾️ (GT A)    -> jump sound        sfx(0)
 --   ❎ (GT B)     -> explosion         sfx(3)

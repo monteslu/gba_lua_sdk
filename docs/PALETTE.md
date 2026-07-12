@@ -93,5 +93,6 @@ different hardware - it copies the art, gameplay and structure, and re-colors to
 the platform's palette.** Document any per-game color surprises in the port's
 `PORT_NOTES.md`.
 
-See also: `AUDIO_ARCHITECTURE.md` (the same "re-voice, don't transplant" logic
-for sound), and the core's `gametank_palette` option for the alternate looks.
+See also: [`MUSIC.md`](MUSIC.md) / [`sfx.md`](sfx.md) (the same "re-voice, don't
+transplant" logic for sound), and the libretro core's `gametank_palette` option
+for the alternate looks.

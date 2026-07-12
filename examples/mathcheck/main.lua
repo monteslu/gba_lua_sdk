@@ -1,4 +1,4 @@
--- mathcheck: computes known PICO-8 fixed-point results at runtime into
+-- mathcheck: computes known 16.16 fixed-point results at runtime into
 -- module variables; the test harness reads them back out of RAM.
 -- Inputs live in variables so the compiler can't constant-fold the math.
 

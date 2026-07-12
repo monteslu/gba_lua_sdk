@@ -1,5 +1,5 @@
 {
-  "name": "gametank-lua-sdk",
+  "name": "gametank_lua_sdk",
   "private": true,
   "type": "module",
   "bin": { "gtlua": "bin/gtlua.js" },

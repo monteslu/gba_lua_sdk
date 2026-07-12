@@ -1,17 +1,22 @@
 # GameTank Lua SDK
 
-Write [GameTank](https://gametank.zone/) games in **PICO-8-flavored Lua**.
-This SDK compiles a statically-typed Lua dialect to C, builds it with cc65
-against a bundled GameTank runtime, and produces a `.gtr` cartridge (a flat
-32 KB EEPROM, or a 2 MB FLASH2M banked cart for bigger games - chosen
-automatically) that runs in the
+Make games for the [**GameTank**](https://gametank.zone/) - Clyde Shaffer's open
+8-bit console (65C02 CPU, hardware blitter, a 128×128 screen) - by writing Lua
+instead of 6502 assembly or C.
+
+Write games in a **PICO-8-flavored Lua** dialect. The SDK compiles it to C,
+builds it with cc65 against a bundled GameTank runtime, and produces a `.gtr`
+cartridge (a flat 32 KB EEPROM, or a 2 MB FLASH2M banked cart for bigger games -
+chosen automatically) that runs in the
 [emulator](https://github.com/clydeshaffer/GameTankEmulator), on
 [gametank.zone](https://gametank.zone/), and on real hardware via
 [GTFO](https://github.com/clydeshaffer/gtfo).
 
 No interpreter, no VM: your Lua becomes native 65C02 machine code. The
-GameTank's 128×128 screen is the same size as PICO-8's, so coordinates,
-sprite sheets, and game feel transfer 1:1.
+screen is the same 128×128 as PICO-8's, and the API is PICO-8-shaped
+(`spr`/`btn`/`_init`/`_update`/`_draw`, Lua syntax), so if you know PICO-8 you'll
+feel at home - but gt-lua is its own thing targeting real GameTank hardware, not
+a PICO-8 clone. If you don't know PICO-8, you don't need to.
 
 ```lua
 local angle = 0
@@ -44,7 +49,7 @@ This is a **clone-and-build SDK** (like the official GameTank C SDK) - not an
 npm package. Clone it, write your game as a `.lua` file, and build:
 
 ```sh
-git clone <this repo> && cd gametank_lua_sdk
+git clone https://github.com/monteslu/gametank_lua_sdk && cd gametank_lua_sdk
 scripts/install_tools.sh                 # builds cc65 into tools/ (once)
 
 # build one of the examples to confirm your setup:

@@ -1,5 +1,5 @@
--- orbit: PICO-8-style demo - a ship orbits with sin/cos turn math,
--- d-pad nudges the orbit, 🅾️ reverses, ❎ changes colors.
+-- orbit: an original gt-lua demo - a planet orbits with sin/cos turn math,
+-- d-pad nudges the orbit, 🅾️ reverses, ❎ cycles the planet color.
 -- Exercises: fixed point, trig, one-line ifs, btnp, circfill, camera.
 
 local angle = 0
