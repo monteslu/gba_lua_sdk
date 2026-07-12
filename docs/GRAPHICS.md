@@ -110,12 +110,13 @@ palette, so the art looks like it did in PICO-8 - and from there you have the
 whole 256-color palette and a 256×256 sheet to grow into if you want. See
 `PORTING.md` for the full PICO-8 → gtlua walkthrough.
 
-## The legacy 4bpp `gfx.bin` (still supported)
+## The legacy 4bpp `gfx.bin` (import input only)
 
-Earlier gtlua games used an 8192-byte 4bpp `gfx.bin` (two 4-bit PICO-8 color
-indices per byte, 128×128). `--sheet` still accepts it - it's detected by size
-(8192 = 4bpp `gfx.bin`, 16384 = native `.gtg`) - so existing games keep building.
-New art should be `.gtg`: it's the console's real format, with 16× the colors.
+Earlier gtlua used an 8192-byte 4bpp `gfx.bin` (two 4-bit PICO-8 color indices
+per byte, 128×128). It is **no longer a sheet format**: `--sheet` accepts only a
+native `.gtg`. `gtlua gfx import` still *reads* a `.bin` (or a `.png`, or a
+PICO-8 cart) to produce a `.gtg`, so old art converts forward with one command:
+`gtlua gfx import old-gfx.bin -o sheet.gtg`.
 
 ## Under the hood (build-time)
 

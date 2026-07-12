@@ -66,10 +66,17 @@ gtlua gfx import cart.p8 -o gfx.gtg      # from a .p8 text cart
 gtlua gfx import sheet.png -o gfx.gtg    # or from an exported PNG
 ```
 
-PICO-8's 16 colors map onto the GameTank palette (the mapping the runtime uses),
-so your art looks like it did in PICO-8. Your `spr(n)` cell numbers keep working
-unchanged - the 8×8 grid is the same. See [`GRAPHICS.md`](GRAPHICS.md) for the
-format and the converter.
+PICO-8's 16 colors are converted to the nearest GameTank bytes at import, so your
+art looks close to the original. Your `spr(n)` cell numbers keep working unchanged
+- the 8×8 grid is the same. See [`GRAPHICS.md`](GRAPHICS.md) for the format and
+the converter.
+
+**Draw-call colors** convert too: a static `0–15` color literal (`cls(1)`,
+`rectfill(...,8)`) is baked to its GameTank byte at build time, so it looks right
+with no change. But a color your code **computes at runtime** (a variable, a
+palette-cycle, a flash) is used as a raw byte and will be the wrong color - fix
+those by computing a GameTank byte or using `gt.rgb`. There is no runtime PICO-8
+palette or `pal()`. See [`PALETTE.md`](PALETTE.md).
 
 **Then you have room to grow.** Once it's a `.gtg`, you're on the GameTank's real
 graphics: the full **256-color** palette (reach it with `gt.rgb`), a sheet up to
@@ -133,7 +140,8 @@ are dealbreakers, but plan for them:
 | PICO-8 feature | On GameTank |
 |---|---|
 | OOP / metatables / closures | rewrite as `kind`-field state machines + named functions |
-| `pal(c,c,1)` full-screen recolor fades | framebuffer bytes **are** colors - no CLUT; needs a redraw-tinted path |
+| `pal()` remap / palette-cycle / flash tints | no runtime palette; pre-author recolored sheet cells, or draw with `gt.rgb` bytes |
+| runtime-computed 0–15 colors | used as raw bytes (wrong color) - compute a GameTank byte instead |
 | Runtime string building (`..`, `sub`) | bake byte buffers today; string ops are on the roadmap |
 | `map`/`mget`/`mset` tilemap API | use `gt.bg_compose`/`gt.bg_draw` (shipped) or `gt.chunks_draw` |
 | `cartdata`/`dget`/`dset` saves | the SAVE hardware exists; the API layer is planned |

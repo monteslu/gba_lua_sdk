@@ -31,16 +31,31 @@ setting). CAPTURE is correct; don't re-litigate this.
 **CAPTURE is muted** compared to a vivid modern palette - that's what real
 GameTank hardware looks like, not a bug.
 
-## Porting PICO-8: convert the 16 colors, don't transplant them
+## Colors are GameTank bytes; PICO-8 literals are converted at build time
 
-PICO-8 has a fixed 16-color palette; GameTank has ~200 muted colors on a
-different gamut. **We do NOT try to reproduce PICO-8's colors** - we map each
-PICO-8 index to the **nearest GameTank byte**, accepting it's a lossy match
-(same class of divergence as sprites, audio, and fixed-point - see
-`AUDIO_ARCHITECTURE.md`). gtlua does this automatically: a `color(n)` /
-`pset(x,y,n)` with a PICO-8 index 0–15 is routed through `P8_PALETTE`
-(`compiler/builtins.js`) to the GameTank byte below. Use `gt.rgb(byte)` to reach
-a raw GameTank color directly.
+A color in gt-lua is a **raw GameTank byte, 0–255** - the same interface the
+official SDK uses. There is no runtime PICO-8 palette or `pal()` remap.
+
+For PICO-8 familiarity, a **static 0–15 color literal** in a draw call (`cls(1)`,
+`rectfill(...,8)`) is treated as a PICO-8 index and **baked to its GameTank byte
+at compile time** through `P8_PALETTE` (`compiler/builtins.js`) - the table
+below. So `cls(1)` compiles to the GameTank byte `0xA9` with zero runtime cost.
+
+`gt.rgb(byte)` gives any GameTank byte directly; `gt.rgb(r,g,b)` picks the
+nearest at compile time. Use these to reach the full palette.
+
+**The caveat - dynamic colors.** A color the game *computes at runtime* (a
+variable, `frame % 2 and 7 or 8`, a value from a table) is used as a **raw
+GameTank byte** - it is NOT re-mapped from a 0–15 index. GameTank's palette
+differs from PICO-8's, so a ported effect that computes a 0–15 index at runtime
+(palette cycling, a flashing damage tint) will render the wrong color. The
+importer converts static colors best-effort; dynamic ones you fix by hand
+(compute a GameTank byte, or `gt.rgb`). This is the deliberate trade for a
+native, PICO-8-bloat-free runtime.
+
+**We do NOT try to reproduce PICO-8's colors** - each PICO-8 index maps to the
+**nearest GameTank byte**, a lossy match (same class of divergence as sprites,
+audio, and fixed-point). The mapping:
 
 ### The conversion table
 

@@ -73,10 +73,11 @@ calls it falsy; gtlua refuses to guess. This also rules out the
 
 ## Builtins (v0.2)
 
-- **graphics** (PICO-8 signatures; colors are P8 indices through a
-  `pal()`-remappable table; trailing color sets the current color; camera
-  offset applies to all): `cls([c])` `camera([x,y])` `color(c)`
-  `pal([c0,c1])` `pset(x,y,[c])` `rect(x0,y0,x1,y1,[c])`
+- **graphics** (PICO-8 signatures; colors are raw GameTank bytes - a static 0–15
+  literal is baked from the PICO-8 palette at compile time, `gt.rgb` for any byte,
+  no runtime `pal()`; trailing color sets the current color; camera offset applies
+  to all): `cls([c])` `camera([x,y])` `color(c)`
+  `pset(x,y,[c])` `rect(x0,y0,x1,y1,[c])`
   `rectfill(x0,y0,x1,y1,[c])` (corner coords, inclusive)
   `circ(x,y,r,[c])` `circfill(x,y,r,[c])` `line(x0,y0,x1,y1,[c])`
 - **input**: `btn(i,[pl])` `btnp(i,[pl])` - 0=⬅️ 1=➡️ 2=⬆️ 3=⬇️ 4=🅾️(GT A)

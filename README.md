@@ -103,15 +103,16 @@ per-function compatibility map is
 | math | `flr` `ceil` `abs` `sgn` `sqrt` `min` `max` `mid` `sin` `cos` `atan2` `rnd` `srand` `t`/`time` |
 | data | `array(n,[v])` - 16-bit elements · `array8(n,[v])` - byte elements 0-255, half the RAM and ~2× faster in counting loops |
 | sound | `sfx(n,[ch])` `music(n,[loop])` (built-in FM effects/tunes - see below); `song(data,[loop])` plays a native `.gtm2` FM song ([docs/MUSIC.md](docs/MUSIC.md)); low-level `gt.note`/`gt.noteoff` |
-| gametank extras | `gt.rgb(b)` - raw palette byte (the GameTank has 256 colors; 0-15 are mapped to the PICO-8 palette), `gt.border(c)`, `gt.ticks()`, `gt.starfield_*`, `gt.bg_compose`/`gt.bg_draw` (see below) |
+| gametank extras | `gt.rgb(b)` - raw palette byte (the GameTank has 256 colors), `gt.border(c)`, `gt.ticks()`, `gt.starfield_*`, `gt.bg_compose`/`gt.bg_draw` (see below) |
 
-Colors are PICO-8 indices (0 black, 7 white, 8 red, 12 blue, …), mapped to
-the closest GameTank palette entries; `pal(c0,c1)` remaps. The GameTank screen
-is 8-bit - ~200 distinct colors, far more than PICO-8's 16 - and `gt.rgb()`
-reaches all of them: `gt.rgb(255,128,0)` picks the nearest hardware color to
-that RGB (resolved at compile time, zero runtime cost), or `gt.rgb(byte)`
-takes a raw palette byte 0–255. Use it anywhere a color is expected:
-`rectfill(x,y,w,h, gt.rgb(255,128,0))`.
+Colors are raw GameTank bytes `0`–`255`. For PICO-8 familiarity, a **static
+0–15 color literal** in a draw call (`cls(1)`, `rectfill(...,8)`) is baked to its
+GameTank byte at compile time (zero runtime cost). `gt.rgb()` reaches the full
+256-color palette: `gt.rgb(255,128,0)` picks the nearest hardware color to that
+RGB, or `gt.rgb(byte)` takes a raw byte. Use it anywhere a color is expected:
+`rectfill(x,y,w,h, gt.rgb(255,128,0))`. A color **computed at runtime** is used
+as a raw byte, not re-mapped from 0–15 (see [docs/PALETTE.md](docs/PALETTE.md));
+there is no runtime `pal()`.
 
 ### Fast backgrounds: `gt.bg_compose` / `gt.bg_draw`
 

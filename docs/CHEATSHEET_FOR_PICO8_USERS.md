@@ -27,11 +27,17 @@ is GameTank-only extras.
 
 ---
 
-## The 16 PICO-8 colors → nearest GameTank byte
+## The 16 PICO-8 colors → GameTank byte
 
-Draw calls take indices `0`–`15` by default (compile-time nearest-match into
-the GameTank's 256-color space). Escape hatch: `gt.rgb(r,g,b)` or
-`gt.rgb(byte)` for the full palette - **P8 devs get more colors, not fewer.**
+Colors are raw GameTank bytes `0`–`255`. A **static 0–15 literal** in a draw
+call (`cls(1)`) is treated as a PICO-8 index and baked to its GameTank byte at
+COMPILE time (no runtime palette). `gt.rgb(r,g,b)` / `gt.rgb(byte)` reach the
+full palette - **P8 devs get more colors, not fewer.**
+
+⚠️ A color your game **computes at runtime** (a variable, `frame%2 and 7 or 8`,
+a table value) is used as a **raw byte**, NOT re-mapped from 0–15 - so a ported
+palette-cycle or flash effect renders wrong colors. Fix by computing a GameTank
+byte or using `gt.rgb`. (No PICO-8 palette layer at runtime; see PALETTE.md.)
 
 | # | name | GT byte | RGB | | # | name | GT byte | RGB |
 |--:|------|--:|------|---|--:|------|--:|------|
@@ -130,14 +136,16 @@ free (Lexaloffle designed it for exactly this class of machine).
 
 | Call | | Notes |
 |---|:--:|---|
-| `pal(c0,c1)` | 🟡 | remaps the 16-entry primitive lookup |
-| `pal(c0,c1,1)` | 🔷 | **can't** recolor already-loaded sprites per-draw |
+| `pal(...)` | ❌ | **removed** - colors are raw GameTank bytes, there is no runtime remap table |
 | `palt(0,on)` | 🟡 | color-0 transparency toggle |
 | `palt(c,true)`, c≠0 | 🔷 | compile error with a fix-it |
 
-GameTank framebuffer bytes **are** colors - no CLUT between GRAM and screen. So
-`pal` hits primitives and **future** sprite loads (remap at load time); the
-full-screen `pal(t,1)` fade idiom needs a `gt.*` redraw-tinted path.
+GameTank framebuffer bytes **are** colors - no CLUT between GRAM and screen, and
+no PICO-8 palette layer. `pal()` (index remap / per-draw sprite recolor) does not
+exist. To recolor: pre-author the recolored sheet cells (the standard GameTank
+idiom - Celeste's blue-hair frames are baked at asset time), or draw with a
+different `gt.rgb` byte. The full-screen `pal(t,1)` fade idiom needs a `gt.*`
+redraw-tinted path.
 
 ## Input
 
@@ -255,7 +263,9 @@ and to the blitter, which these engines feed efficiently.
 
 ## The 6 things to unlearn
 
-1. `pal()` can't recolor already-loaded sprites (framebuffer bytes are colors).
+1. Colors are raw GameTank bytes. A static 0–15 literal is baked from the PICO-8
+   palette at build time; a **runtime-computed** color is a raw byte (a computed
+   0–15 index renders wrong). No `pal()`, no runtime palette.
 2. `palt` is color-0 only.
 3. Conditions must be boolean - `if (n)` on a number is an error (P8 calls 0
    truthy, we won't guess).

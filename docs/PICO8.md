@@ -140,25 +140,27 @@ software-clip rectfill/spr later. `fillp`, `tline`, control codes, custom
 fonts: deferred indefinitely (fake-08 shipped without them and ran "many
 carts").
 
-### Colors: the 16-color PICO-8 palette as the default vocabulary
+### Colors: raw GameTank bytes, PICO-8 literals baked at build time
 
-Draw calls take PICO-8 color indices 0–15 by default, mapped at compile time
-to the nearest GameTank palette bytes (the GameTank has 256 colors - a
-superset; nearest-match table computed against the emulator's CAPTURE
-palette, hand-tuned once, frozen; 0 = black = transparent-for-sprites, same
-as P8). `pal(c0,c1)` remaps the 16-entry lookup for primitives; the **secret
-palette and beyond** is `gt.rgb(idx)` raw-byte colors - P8 devs get *more*
-colors, not fewer, through an escape hatch instead of a poke.
+A color is a raw GameTank byte 0–255. For PICO-8 familiarity, a **static 0–15
+literal** in a draw call is treated as a PICO-8 index and baked to its GameTank
+byte at COMPILE time (nearest-match table computed against the emulator's CAPTURE
+palette, hand-tuned once, frozen; 0 = black = transparent-for-sprites, same as
+P8). `gt.rgb(byte)` / `gt.rgb(r,g,b)` reach the full 256-color palette - P8 devs
+get *more* colors, not fewer. There is no runtime PICO-8 palette layer and no
+`pal()`: a color computed at runtime is a raw byte (a computed 0–15 index renders
+wrong - the documented dynamic-color caveat).
 
 ---
 
 ## 3. Honest divergences (documented up front, never silent)
 
-1. **`pal()` cannot recolor already-loaded sprites per-draw.** GameTank
-   framebuffer bytes ARE colors (no CLUT between GRAM and screen). `pal`
-   affects primitives and *future sprite loads* (remap at GRAM-load time);
-   the P8 full-screen `pal(t,1)` fade idiom needs `gt.*` alternatives
-   (redraw-tinted or load-time remap). This is the largest real gap.
+1. **No runtime palette / `pal()`, and runtime-computed colors are raw bytes.**
+   Colors are GameTank bytes; a static 0–15 literal bakes at build time, but a
+   color a game *computes* at runtime (palette cycle, damage flash, a table
+   value holding a 0–15 index) is used as a raw byte and renders wrong. Recolor
+   by pre-authoring sheet cells or drawing with `gt.rgb`. This is the largest
+   real gap - the deliberate trade for a PICO-8-bloat-free native runtime.
 2. **`palt` is color-0-only.** Hardware transparency = color 0 on/off per
    blit. `palt(c,true)` for c≠0 → compile error pointing at re-authoring the
    sprite with 0 as transparent.
