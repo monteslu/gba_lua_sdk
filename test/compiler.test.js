@@ -269,7 +269,7 @@ test("gt.starfield_* map to the SDK batch primitives", () => {
     "function _update()\n gt.starfield_move(1)\nend\n" +
     "function _draw()\n gt.starfield_draw()\nend\n" +
     "function _init()\n gt.starfield_init(100)\nend\n");
-  assert.match(c, /gt_starfield_init\(100\)/);
+  assert.match(c, /gt_starfield_init\(100, -1, -1, -1\)/);
   assert.match(c, /gt_starfield_move\(1\)/);
   assert.match(c, /gt_starfield_draw\(\)/);
 });

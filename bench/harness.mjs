@@ -30,8 +30,8 @@ const SDK = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // The GT_PROFILE core build (exports gt_mark's cycle-marker ring). Override with
 // GT_BENCH_CORE for a different build path.
 const CORE = process.env.GT_BENCH_CORE ||
-  path.join(SDK, "..", "gametank-libretro", "gametank_libretro.js");
-const SHEET = path.join(SDK, "bench/bench-sheet.bin");
+  path.join(SDK, "..", "gametank-libretro", "gametank_libretro_prof.js");
+const SHEET = path.join(SDK, "bench/bench-sheet.gtg");
 const MARK_ADDR = 0x1000;
 
 function cartSrc({ setup = "", call = "", reps = 1, globals = "" }) {

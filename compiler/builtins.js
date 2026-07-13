@@ -84,6 +84,9 @@ export const GT_MEMBERS = {
   // beyond the 16 PICO-8 indices). gt.rgb(r,g,b) - pick by RGB (0-255 each,
   // constant); resolved to the nearest hardware color at compile time.
   rgb:    { kind: "fn", params: [["int", false]], ret: "int", special: "rgb" },
+  // benchmark/test cycle marker: writes GT_MARK_ADDR so the GT_PROFILE core
+  // build can bracket measured regions. No effect on normal carts.
+  mark: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_mark" },
   ticks:  { kind: "fn", params: [], ret: "int", c: "(int)gt_ticks", isValue: true },
   border: { kind: "fn", params: [["color", false]], ret: "void", c: "gt_p8_border" },
   // frame clear queued after the page flip - its pixel time hides inside the
@@ -196,6 +199,7 @@ export const GT_MEMBERS = {
   gspr: { kind: "fn", params: [
     ["int", false], ["int", false], ["int", false], ["int", false],
     ["coord", false], ["coord", false]], ret: "void", c: "gt_gspr" },
+  gflush: { kind: "fn", params: [], ret: "void", c: "gt_gflush" },
   bg_draw: { kind: "fn", params: [["coord", true], ["coord", true]], ret: "void", c: "gt_bg_draw" },
 };
 

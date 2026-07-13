@@ -101,11 +101,6 @@ const draw = [
     signal: "low", note: "sets the camera offset (zp state); no pixel output",
   },
   {
-    name: "pal", category: "draw", statement: true, reps: 16,
-    call: "pal(8,12)",
-    signal: "low", note: "remaps the runtime palette table; effect shows on the next draw",
-  },
-  {
     name: "border", category: "draw", statement: true, reps: 4,
     call: "gt.border(5)",
     signal: "low", note: "GameTank overscan border color; not in the 128x128 VRAM window",
@@ -232,21 +227,21 @@ const engine = [
   { name: "track_props", category: "bg", statement: true, reps: 2, globals: "local grid = array(900)\nlocal props = array8(48)", call: "gt.track_props(grid, props, 30, 0, 0, 5, 5)", signal: "low", note: "props-only walk (emit idx,sx,sy triples)" },
   // --- ball engine (28-body physics from the ball demo) ---
   {
-    name: "balls_step", category: "engine", statement: true, reps: 1,
+    name: "phys_step", category: "engine", statement: true, reps: 1,
     globals: "local bx = array(28,0.0)\nlocal by = array(28,0.0)\nlocal bvx = array(28,0.0)\nlocal bvy = array(28,0.0)\nlocal bc = array(28)\nlocal bfl = array8(32)\nlocal bp = array8(64)",
-    call: "gt.balls_step(bx, by, bvx, bvy, bc, bfl, bp, 28)",
+    call: "gt.phys_step(bx, by, bvx, bvy, bc, bfl, bp, 28)",
     signal: "low", note: "28-body integrate + collision-pair build (the heavy demo core)",
   },
   {
-    name: "balls_drag", category: "engine", statement: true, reps: 2,
+    name: "phys_drag", category: "engine", statement: true, reps: 2,
     globals: "local bvx = array(28,0.0)\nlocal bvy = array(28,0.0)\nlocal bc = array(28)",
-    call: "gt.balls_drag(bvx, bvy, bc, 28)",
+    call: "gt.phys_drag(bvx, bvy, bc, 28)",
     signal: "low", note: "apply drag to 28 velocities",
   },
   {
-    name: "balls_draw", category: "engine", statement: true, reps: 1,
+    name: "phys_draw", category: "engine", statement: true, reps: 1,
     globals: "local bx = array(28,0.0)\nlocal by = array(28,0.0)\nlocal bcell = array8(32)",
-    call: "gt.balls_draw(bx, by, bcell, 28)",
+    call: "gt.phys_draw(bx, by, bcell, 28)",
     signal: "low", note: "blit 28 ball sprites",
   },
   {
@@ -257,15 +252,9 @@ const engine = [
     signal: "low", note: "integrate a particle pool (needs fixed x,y,vx,vy)",
   },
   {
-    name: "trail_stamp", category: "engine", statement: true, reps: 1,
-    globals: "local bc = array(28)\nlocal bx = array(28,0.0)\nlocal by = array(28,0.0)\nlocal tx = array8(28)\nlocal ty = array8(28)\nlocal ts = array8(7)",
-    call: "gt.trail_stamp(bc, bx, by, tx, ty, ts, 28, 1)",
-    signal: "low", note: "record + stamp motion trails for 28 entities",
-  },
-  {
-    name: "cost_decay", category: "engine", ...R, reps: 2,
+    name: "pool_decay", category: "engine", ...R, reps: 2,
     globals: "local bc = array(28)\nlocal blm = array8(28)\nlocal cost = array8(7)\nlocal res = 0",
-    call: "res = gt.cost_decay(bc, blm, cost, 28)",
+    call: "res = gt.pool_decay(bc, blm, cost, 28, 5)",
     signal: "low", note: "decay per-entity cooldowns, return total (int result)",
   },
   {

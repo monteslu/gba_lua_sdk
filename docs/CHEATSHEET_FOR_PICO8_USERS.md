@@ -256,7 +256,7 @@ there's no VM to poke. Real GameTank hardware registers are reached through
 | `gt.bg_compose` / `gt.bg_draw` | cache a static layer in GRAM, 1 blit/frame |
 | `gt.print_buf(buf,off,x,y,c)` | fast HUD text from byte buffers |
 | `gt.pool_move` / `pool_anim` / `pool_sprs` / `pool_edraw` | bulk entity update/draw in one asm walk |
-| `gt.phys_step` / `balls_draw` / `balls_drag` | physics engine (collision pairs, integrate) |
+| `gt.phys_step` / `phys_draw` / `phys_drag` | physics engine (collision pairs, integrate) |
 | `gt.starfield_*` / `gt.circf` / `gt.chunks_draw` | staged-blit asm draw engines |
 | `hexdata("…")` | compile-time byte blob → ROM |
 

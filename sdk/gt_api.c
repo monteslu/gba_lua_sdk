@@ -32,6 +32,16 @@ extern unsigned char gt_cur_bank;   /* live $8000-window bank (gt_bank.s) */
 char gt_frameflag;
 char gt_draw_busy;
 unsigned int gt_ticks;
+/* track world size: wtiles x wtiles tiles (wchunks = wtiles/3 chunks).
+ * Default 90x90; gt_track_dims resizes for a different map. Unconditional:
+ * the track composers (gt_bg.c) and track_props both read it, under
+ * different feature defines. */
+unsigned char gt_tk_wt = 90;
+unsigned char gt_tk_wc = 30;
+void gt_track_dims(int wtiles) {
+    gt_tk_wt = (unsigned char)wtiles;
+    gt_tk_wc = (unsigned char)(wtiles / 3);
+}
 
 /* per-frame hook: null unless gt_music_init() installs the sfx/music
  * sequencer. Lets gt_endframe() advance audio without hard-linking
@@ -1661,14 +1671,6 @@ void gt_chunks_draw(int *grid, unsigned char *lut, unsigned char *lut2,
  * live sprites drawn over the car each frame - this feeds cprops[] so that pass
  * still runs. Mirrors gt_chunks_z's prop emission (byte triples, 45-byte cap,
  * 0-terminated); sparse cells make it far cheaper than a full chunks_draw. */
-/* track world size: wtiles x wtiles tiles (wchunks = wtiles/3 chunks).
- * Default 90x90; gt_track_dims resizes for a different map. */
-unsigned char gt_tk_wt = 90;
-unsigned char gt_tk_wc = 30;
-void gt_track_dims(int wtiles) {
-    gt_tk_wt = (unsigned char)wtiles;
-    gt_tk_wc = (unsigned char)(wtiles / 3);
-}
 void gt_track_props(int *grid, unsigned char *props, int stride,
                     int cx0, int cy0, int cx1, int cy1) {
     int r, c, p;

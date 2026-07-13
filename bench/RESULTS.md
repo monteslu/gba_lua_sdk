@@ -70,8 +70,8 @@ sweep extended it to abs/sgn, which had been left as cdecl calls.
 
 ## SDK bugs found + fixed by the sweep
 
-The link-gate for `gt_balls.s` only checked `gt_balls_step`, so a cart using
-`balls_drag`, `balls_draw`, or `parts_step` **without** `balls_step` failed to
+The link-gate for `gt_balls.s` only checked `gt_phys_step` (then balls_step), so a cart
+using `phys_drag`, `phys_draw`, or `parts_step` **without** `phys_step` failed to
 link (`unresolved external`). Both the `.s` assemble gate and the `-DGT_BALLS`
 compile gate now check all four. (`bin/gtlua.js`)
 
@@ -94,12 +94,12 @@ Cheapest → most expensive, excluding the blocking multi-frame GRAM ops.
 
 **Cheap (30–200):** gflush 89 · autocls 111 · srand 120 · sin 137 · color 148 ·
 cos 174 · abs 60 · noteoff 361 · pool_anim 355 · pset 391 · pool_sprs 412 · sset
-411 · balls_draw 1094
+411 · phys_draw 1094 (as balls_draw)
 
 **Moderate (200–3,500):** pal 248 · sfx_bank/music_bank 616 · parts_step 708 ·
-rnd 909 · note 996 · sqrt 1133 · pool_edraw 1193 · trail_stamp 1300 · hit_scan
+rnd 909 · note 996 · sqrt 1133 · pool_edraw 1193 · trail_stamp 1300 (deleted in 0.2.3) · hit_scan
 1316 · dbar 1429 · cls 1531 · print 1682 · print_buf 1949 · starfield_draw 2414 ·
-sfx 2798 · atan2 2882 · balls_step 3039 · rect 3364 · rectfill 369
+sfx 2798 · atan2 2882 · phys_step 3039 (as balls_step) · rect 3364 · rectfill 369
 
 **Heavy per-call (3,500–20,000):** starfield_move 3978 · tiles_draw 4496 ·
 chunks_draw 4959 · border 5468 · chain_step_draw 7173 · flakes_draw 8221 ·

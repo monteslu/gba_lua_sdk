@@ -700,7 +700,7 @@ export async function build(entry, opts, env) {
     ...(result.c.includes("gt_flakes") || result.c.includes("gt_chain") ? ["-DGT_FLAKES"] : []),
     ...(result.c.includes("gt_canvas_view(") ? ["-DGT_CANVAS"] : []),
     ...(result.c.includes("gt_tiles_draw") ? ["-DGT_TILES"] : []),
-    ...(result.c.includes("gt_phys_step") ? ["-DGT_BALLS"] : []),
+    ...((result.c.includes("gt_phys_step") || result.c.includes("gt_phys_drag") || result.c.includes("gt_phys_draw") || result.c.includes("gt_phys_bounds") || result.c.includes("gt_phys_sprite") || result.c.includes("gt_parts_step")) ? ["-DGT_BALLS"] : []),
     ...((result.c.includes("gt_pool_move") || result.c.includes("gt_pool_decay") || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs")) ? ["-DGT_POOLMV"] : []),
     // gt_track_props lives in gt_api.c behind GT_CHUNKS (shares the chunk decode);
     // gt_chunks_draw or gt_track_props both need it.
@@ -721,7 +721,8 @@ export async function build(entry, opts, env) {
   // that doesn't need it just steals bank-2 space from the game's own code.
   const usesBg = result.c.includes("gt_bg_compose(") || result.c.includes("gt_bg_draw(") ||
     result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(") ||
-    result.c.includes("gt_bg_coln(") || result.c.includes("gt_gspr(") || usesTrack;
+    result.c.includes("gt_bg_coln(") || result.c.includes("gt_gspr(") ||
+    result.c.includes("gt_gflush(") || usesTrack;
   // atlas builders (bg_clear/bg_tile) carry a second bank-2 decode body -
   // only compile + reserve for it when the game actually stamps tiles
   const usesAtlas = result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(") ||
@@ -773,7 +774,7 @@ export async function build(entry, opts, env) {
   as(env.sdkFile("gt_line.s"), B("gt_line.o"));
   const usesTiles = result.c.includes("gt_tiles_draw");
   if (usesTiles) as(env.sdkFile("gt_tiles.s"), B("gt_tiles.o"));
-  const usesBalls = result.c.includes("gt_phys_step");
+  const usesBalls = (result.c.includes("gt_phys_step") || result.c.includes("gt_phys_drag") || result.c.includes("gt_phys_draw") || result.c.includes("gt_phys_bounds") || result.c.includes("gt_phys_sprite") || result.c.includes("gt_parts_step"));
   if (usesBalls) as(env.sdkFile("gt_balls.s"), B("gt_balls.o"), num8 ? ["-D", "GT_NUM8"] : []);
   const usesPoolmv = (result.c.includes("gt_pool_move") || result.c.includes("gt_pool_decay") || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs"));
   if (usesPoolmv) as(env.sdkFile("gt_poolmv.s"), B("gt_poolmv.o"));

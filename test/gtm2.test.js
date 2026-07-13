@@ -81,12 +81,13 @@ test("delays over 255 split into padding events on encode", () => {
   assert.ok(totalDelay >= 400, "the 400-frame gap survives the split");
 });
 
-test("noteNum: 1-based MIDI, rest is 0", () => {
-  // MIDI c4 = 60; .gtm2 is 1-based so 61
-  assert.equal(noteNum("c4"), 61);
-  assert.equal(noteNum("a4"), 70);   // MIDI 69 + 1
-  assert.equal(noteNum("c#4"), 62);
-  assert.equal(noteNum("db4"), 62);  // enharmonic
+test("noteNum: official pitch-table index (MIDI - 12), rest is 0", () => {
+  // the 0.2.0 music revamp matched the official tools: byte = MIDI - 12,
+  // so A4/440Hz = 57 (the old +1 encode was a semitone off byte-compat)
+  assert.equal(noteNum("c4"), 48);   // MIDI 60 - 12
+  assert.equal(noteNum("a4"), 57);   // MIDI 69 - 12 = 440 Hz
+  assert.equal(noteNum("c#4"), 49);
+  assert.equal(noteNum("db4"), 49);  // enharmonic
   assert.equal(noteNum(48), 48);     // pass-through for raw numbers
 });
 
