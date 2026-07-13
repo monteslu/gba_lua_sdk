@@ -1379,8 +1379,27 @@ extern unsigned char bp_n;
 #pragma zpsym ("bp_pairs")
 #pragma zpsym ("bp_n")
 void gt_balls_z(void);
+/* wall bounds live in plain BSS (zp is scarce); vymin is the 8.8 magnitude a
+ * falling ball needs to bounce off the floor - below it the ball comes to
+ * rest (0 = always bounce). Never calling this = the full screen for a 16x16
+ * ball. */
+extern unsigned char bp_x0, bp_y0, bp_x1, bp_y1, bp_vymin;
+static unsigned char bp_binit;
+void gt_balls_bounds(int x0, int y0, int x1, int y1, GTFIX vymin) {
+    bp_x0 = (unsigned char)x0;
+    bp_y0 = (unsigned char)y0;
+    bp_x1 = (unsigned char)x1;
+    bp_y1 = (unsigned char)y1;
+#ifdef GT_NUM8
+    bp_vymin = (unsigned char)vymin;
+#else
+    bp_vymin = (unsigned char)(vymin >> 8);
+#endif
+    bp_binit = 1;
+}
 void gt_balls_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, int *act,
                    unsigned char *flags, unsigned char *pairs, int n) {
+    if (!bp_binit) gt_balls_bounds(0, 0, 120, 120, 0);
     bp_x = (unsigned char *)x;
     bp_y = (unsigned char *)y;
     bp_vx = (unsigned char *)vx;

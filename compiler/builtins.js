@@ -119,6 +119,7 @@ export const GT_MEMBERS = {
   // one ball-table physics substep in asm: fixed x/y/vx/vy arrays (16.16,
   // engine drives the embedded 8.8 core), int active array, byte bounce
   // flags, byte pair list out (i,j 1-based, 0-terminated)
+  balls_bounds: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false], ["num", false]], ret: "void", c: "gt_balls_bounds" },
   balls_step: { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["array", false], ["array", false], ["array8", false], ["array8", false], ["int", false]], ret: "void", c: "gt_balls_step" },
   // drag pass on the same fixed arrays: v -= (v>>6)+(v>>8) per active ball
   balls_drag: { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["int", false]], ret: "void", c: "gt_balls_drag" },

@@ -27,12 +27,16 @@
 ;   bp_pairs                 : ptr to a byte array; engine writes i,j pairs
 ;                              (1-based) terminated by 0
 ;   bp_n                     : ball count (<= 32)
-; Walls: x clamps to [4,124], y bounces at <4 or (>112 while vy>0.1: the
-; vy>0.1 nuance stays in Lua via the flag - here y>112 bounces when vy>0,
-; > 0.1 in 8.8 is 25; see wall_y for the exact check).
+; Walls are PARAMETERS (gt.balls_bounds / the bp_x0..bp_vymin bytes below):
+; x clamps to [x0,x1] with bounce, y bounces at <y0, and at >=y1 only while
+; vy's 8.8 magnitude >= vymin (vymin=0 -> always bounce; a nonzero cutoff is
+; how balls come to REST on the floor instead of micro-bouncing forever).
+; Defaults (set by the C wrapper on first use) are the full 128px screen for
+; a 16x16 ball: 0,0,120,120, vymin 0.
 ; ---------------------------------------------------------------------------
 .export _gt_balls_z
 .export _bp_x, _bp_y, _bp_vx, _bp_vy, _bp_act, _bp_fl, _bp_pairs, _bp_n
+.export _bp_x0, _bp_y0, _bp_x1, _bp_y1, _bp_vymin
 .import _gt_rng_next
 .PC02
 
@@ -52,6 +56,13 @@ bz_t:      .res 2               ; scratch
 bz_pi:     .res 1               ; pairs write index
 
 .segment "BSS"
+; wall bounds (see the header): plain BSS, zp is too scarce to spend here.
+; cmp abs costs +2 cycles over an immediate = ~0.5% of a 28-ball frame.
+_bp_x0:    .res 1
+_bp_y0:    .res 1
+_bp_x1:    .res 1
+_bp_y1:    .res 1
+_bp_vymin: .res 1
 ; engine-owned spatial grid: 8x8 cells, 8 members each
 bg_cnt:  .res 64
 bg_mem:  .res 512
@@ -111,33 +122,35 @@ act:    ldy     bz_i
         adc     bz_t+1
         tax
         pla                     ; A/X = new x
-        ; ---- wall x: clamp 4..124 int-part (SIGNED 8.8) ----
+        ; ---- wall x: clamp x0..x1 int-part (SIGNED 8.8) ----
         ; The old test used bmi/bpl and a fast ball that overshot the RIGHT wall
-        ; to x>=132 read as NEGATIVE, tripped "x<4", and teleported to x=4 (the
-        ; "balls wrap across the screen" bug). But a ball off the LEFT (negative
-        ; x) ALSO has hi byte >=128, so we must split by sign: bit7 set => off the
-        ; left => clamp x=4; else an unsigned >=124 is the right wall.
+        ; past 128 read as NEGATIVE, tripped "x<x0", and teleported to the left
+        ; wall (the "balls wrap across the screen" bug). But a ball off the LEFT
+        ; (negative x) ALSO has hi byte >=128, so we split by sign: bit7 set =>
+        ; off the left; else an unsigned >=x1 is the right wall.
         cpx     #128
         bcs     xlow            ; hi byte >= 128 => negative x => off the left
-        cpx     #124
-        bcs     xhigh           ; x >= 124 (right wall, incl. overshoot to 127)
-        cpx     #4
-        bcc     xlow            ; x < 4 (left)
+        cpx     _bp_x1
+        bcs     xhigh           ; x >= x1 (right wall, incl. overshoot)
+        cpx     _bp_x0
+        bcc     xlow            ; x < x0 (left)
         bra     xstore
-xlow:   ; x < 4: negate vx, park just INSIDE the wall (x=5, not 4) so a ball
+xlow:   ; x < x0: negate vx, park just INSIDE the wall (x0+1, not x0) so a ball
         ; shoved back by a neighbour's collision push isn't re-clamped onto the
         ; exact boundary every frame - the original nudges inward (b.x += b.vx);
         ; this 1px inset is the cheap equivalent that un-pins wall/corner jams
         ; (the "balls stuck in the corner, stuck bounce sound, particle spam").
         jsr     negvx
         lda     #0
-        ldx     #5
+        ldx     _bp_x0
+        inx
         jsr     hurt
         bra     xstore
-xhigh:  ; x >= 124: negate vx, park just inside at 123 (see xlow)
+xhigh:  ; x >= x1: negate vx, park just inside at x1-1 (see xlow)
         jsr     negvx
         lda     #0
-        ldx     #123
+        ldx     _bp_x1
+        dex
         jsr     hurt
 xstore: ; write x back (A=lo X=hi)
 .ifdef GT_NUM8
@@ -192,25 +205,26 @@ xstore: ; write x back (A=lo X=hi)
         adc     bz_t+1
         tax
         pla
-        ; ---- wall y: <4 bounce; >112 bounce only when vy > 0.1 (25 in 8.8) ----
+        ; ---- wall y: <y0 bounce; >=y1 bounce only when vy >= vymin (8.8 lo) ----
         ; The position is SIGNED 8.8. hi byte bit7 set => y is NEGATIVE => the
-        ; ball punched through the TOP: clamp to y=4 (NOT ">=112", which stranded
-        ; a ball at y=-50 off-screen forever - the earlier unsigned-only fix read
-        ; byte 206 as "bottom" and left it there). Then, for on-screen y, an
-        ; unsigned >=112 catches the bottom incl. a small positive overshoot.
+        ; ball punched through the TOP: clamp to the top wall (NOT ">=y1", which
+        ; stranded a ball at y=-50 off-screen forever - the earlier unsigned-only
+        ; fix read byte 206 as "bottom" and left it there). Then, for on-screen
+        ; y, an unsigned >=y1 catches the bottom incl. a small positive overshoot.
         cpx     #128
         bcs     ylow            ; hi byte >= 128 => negative y => off the top
-        cpx     #112
-        bcs     ymaybe          ; y >= 112 (bottom, incl. overshoot up to 127)
-        cpx     #4
-        bcc     ylow            ; y < 4 (top)
+        cpx     _bp_y1
+        bcs     ymaybe          ; y >= y1 (bottom, incl. overshoot)
+        cpx     _bp_y0
+        bcc     ylow            ; y < y0 (top)
         bra     ystore
 ylow:   jsr     negvy
         lda     #0
-        ldx     #5              ; park just inside the top wall (see xlow inset)
+        ldx     _bp_y0          ; park just inside the top wall (see xlow inset)
+        inx
         jsr     hurt
         bra     ystore
-ymaybe: ; y >= 112: only a wall if vy > 0.1 (hi>0, or hi==0 && lo>25)
+ymaybe: ; y >= y1: only a wall if vy fast enough (hi>0, or hi==0 && lo>=vymin)
         ldy     bz_o
         iny
         lda     (_bp_vy),y      ; vy hi (post-negation state not yet - raw)
@@ -218,11 +232,12 @@ ymaybe: ; y >= 112: only a wall if vy > 0.1 (hi>0, or hi==0 && lo>25)
         bne     ywall
         dey
         lda     (_bp_vy),y
-        cmp     #26
+        cmp     _bp_vymin
         bcc     ystore
 ywall:  jsr     negvy
         lda     #0
-        ldx     #111            ; park just inside the bottom wall (see xlow inset)
+        ldx     _bp_y1          ; park just inside the bottom wall (see xlow inset)
+        dex
         jsr     hurt
 ystore:
 .ifdef GT_NUM8

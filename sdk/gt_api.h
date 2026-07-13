@@ -104,6 +104,7 @@ void gt_tiles_draw(unsigned char *map, unsigned char *flags, int lvlw,
 #else
 #define GTFIX long
 #endif
+void gt_balls_bounds(int x0, int y0, int x1, int y1, GTFIX vymin);
 void gt_balls_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, int *act,
                    unsigned char *flags, unsigned char *pairs, int n);
 void gt_trail_stamp(int *act, GTFIX *x, GTFIX *y, unsigned char *tx,
