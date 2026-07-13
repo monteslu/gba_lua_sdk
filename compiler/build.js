@@ -1127,15 +1127,66 @@ export async function build(entry, opts, env) {
       // ---- hot-edge repair: the packer found A layout; now heal the worst
       // per-frame cross-bank edges (each costs a ~100-cycle stub every call,
       // every frame). Move the callee into the caller's bank; keep every
-      // change that still links and lowers the score, revert the rest.
+      // change that fits and lowers the score, revert the rest.
+      //
+      // Moves are accepted in a CAPACITY MODEL (real per-bin loads from the
+      // winning link's map + calibrated function sizes + a stub-table
+      // estimate) and the repaired layout is verified with ONE link at the
+      // end. The old shape - a compile+link per move plus up to 6 blind
+      // eviction probes per failed move - was ~70 of a cold build's ~73
+      // links (measured on a big port: 2 packer attempts, 20 move links,
+      // 50 eviction links). Feasibility is arithmetic; only the final
+      // layout needs the linker.
       const hot = hotSet(result.callGraph);
       const pinned = new Set(["_update", "_update60", "_draw", "_init"]);
       let bestScore = layoutScore(workPlacement, result.callGraph, hot);
       if (bestScore >= 10) {
+        // per-bin capacity for GAME code, from the map of the link that just
+        // succeeded: bank minus margin minus the immovable SDK load. The
+        // fixed bin gets the current stub-table estimate added back because
+        // load.fixed already contains the REAL stub table (stubs.o) - the
+        // model re-charges stubs itself so a move's stub delta is priced in.
+        const mapNow = sdkLoadFromMap(env, B(`${name}.map`));
+        const STUB_BYTES = 24;
+        const stubLoad = () => {
+          // one far stub per banked callee with at least one caller outside
+          // its bank (same 24-byte convention as rebalance's stubDelta)
+          const need = new Set();
+          for (const [caller, callees] of result.callGraph) {
+            const cb = workPlacement[caller] ?? "fixed";
+            for (const cee of callees) {
+              const eb = workPlacement[cee] ?? "fixed";
+              if (eb !== "fixed" && eb !== cb) need.add(cee);
+            }
+          }
+          return need.size * STUB_BYTES;
+        };
+        let capB = null;
+        if (mapNow) {
+          calibrateSizes(sizes, workPlacement, mapNow.port);
+          capB = {
+            b0: BANK_SIZE - BANK_MARGIN - mapNow.load.b0,
+            b1: BANK_SIZE - BANK_MARGIN - mapNow.load.b1,
+            b2: BANK_SIZE - BANK_MARGIN - mapNow.load.b2,
+            fixed: BANK_SIZE - BANK_MARGIN - mapNow.load.fixed + stubLoad(),
+          };
+        }
+        const SAFETY = 96;         // model-drift margin per bin
+        const fitsModel = () => {
+          if (!capB) return false; // unreadable map: accept nothing, change nothing
+          const used = { b0: 0, b1: 0, b2: 0, fixed: 0 };
+          for (const [fn, b] of Object.entries(workPlacement)) used[b] += sizes.get(fn) ?? 0;
+          used.fixed += stubLoad();
+          return used.b0 + SAFETY <= capB.b0 && used.b1 + SAFETY <= capB.b1 &&
+                 used.b2 + SAFETY <= capB.b2 && used.fixed + SAFETY <= capB.fixed;
+        };
         const attempted = new Set();
-        let dirty = false;
+        const depths0 = hotDepth(result.callGraph);
+        // journal of accepted layouts, oldest first; [0] = the layout that
+        // actually linked, so the verify rollback below always terminates
+        const journal = [{ ...workPlacement }];
         for (let round = 0; round < 40; round++) {
-          const edges = stubbedEdges(workPlacement, result.callGraph, hot, hotDepth(result.callGraph))
+          const edges = stubbedEdges(workPlacement, result.callGraph, hot, depths0)
             .filter((e) => e.w >= 10 && !attempted.has(`${e.caller}>${e.callee}`));
           if (!edges.length) break;
           const e = edges[0];
@@ -1157,54 +1208,48 @@ export async function build(entry, opts, env) {
             if (cand < bestScore && (!best || cand < best.cand)) best = { fn, target, prev, cand };
           }
           if (!best) continue;
+          // accept in the model; if the target bin runs over, plan evictions
+          // there too (deepest-coldest first, rotating destinations - the
+          // same policy the old per-link eviction used, minus the links)
+          const applied = [[best.fn, best.prev]];
           workPlacement[best.fn] = best.target;
-          let relink = compileAndLink(workPlacement);
-          if (!relink.ok) {
-            // make room: the target bank is full - evict its biggest COLD
-            // resident to the roomiest other bank and retry once. (The
-            // repair otherwise can't heal a hot edge whose callee is
-            // squeezed out by cold code, e.g. celeste2's p_update stuck
-            // across a bank from the movement core it calls ~40x/frame.)
-            // deepest-coldest first; rotate destinations so a full first
-            // choice doesn't wedge the whole eviction (RODATA overflows in
-            // particular follow the FN, so moving anything with a string
-            // pool relieves them - code size alone was blind to that)
-            const depthsE = hotDepth(result.callGraph);
+          if (!fitsModel()) {
             const cold = Object.entries(workPlacement)
               .filter(([fn, b]) => b === best.target && !pinned.has(fn) && fn !== best.fn)
               .map(([fn]) => fn)
               .sort((a, b2) => {
-                const da = depthsE.get(a) ?? 99, db = depthsE.get(b2) ?? 99;
+                const da = depths0.get(a) ?? 99, db = depths0.get(b2) ?? 99;
                 if (da !== db) return db - da;
                 return (sizes.get(b2) ?? 0) - (sizes.get(a) ?? 0);
               });
             const dests = ["b2", "b1", "b0", "fixed"].filter((d) => d !== best.target);
-            const evicted = [];
-            for (let e = 0; e < Math.min(6, cold.length); e++) {
-              const evictee = cold[e];
-              const evPrev = workPlacement[evictee];
-              workPlacement[evictee] = dests[e % dests.length];
-              evicted.push([evictee, evPrev]);
-              relink = compileAndLink(workPlacement);
-              if (relink.ok) {
-                if (env.debug) env.warn(`[repair]   evicted ${evicted.map(([f]) => f).join(", ")} from ${best.target}`);
-                break;
-              }
+            for (let i = 0; i < Math.min(6, cold.length) && !fitsModel(); i++) {
+              applied.push([cold[i], workPlacement[cold[i]] ?? "fixed"]);
+              workPlacement[cold[i]] = dests[i % dests.length];
             }
-            if (!relink.ok) for (const [fn, b] of evicted.reverse()) workPlacement[fn] = b;
           }
-          if (relink.ok) {
+          if (fitsModel()) {
             bestScore = layoutScore(workPlacement, result.callGraph, hot);
-            dirty = false;
-            if (env.debug) env.warn(`[repair] ${best.fn} -> ${best.target} (score ${bestScore})`);
+            journal.push({ ...workPlacement });
+            if (env.debug) env.warn(`[repair] ${best.fn} -> ${best.target} (score ${bestScore}, model)`);
           } else {
-            if (env.debug) env.warn(`[repair]   FAILED ${best.fn} -> ${best.target}: ${relink.overflows?.map((o) => `${o.segment}+${o.bytes}`).join(",") ?? "?"}`);
-            workPlacement[best.fn] = best.prev;
-            dirty = true;
+            for (const [fn, b] of applied.reverse()) workPlacement[fn] = b;
+            if (env.debug) env.warn(`[repair]   SKIP ${best.fn} -> ${best.target}: no room in the model`);
           }
         }
-        // artifacts on disk must match the accepted placement
-        if (dirty) compileAndLink(workPlacement);
+        // ONE verify link for the whole repaired layout. If the model was too
+        // optimistic, peel accepted rounds back (newest first) until it links;
+        // journal[0] linked before repair, so this always terminates.
+        if (journal.length > 1) {
+          let relink = compileAndLink(workPlacement);
+          while (!relink.ok && journal.length > 1) {
+            journal.pop();
+            workPlacement = { ...journal[journal.length - 1] };
+            if (env.debug) env.warn(`[repair] verify overflowed; rolling back to ${journal.length - 1} accepted move(s)`);
+            relink = compileAndLink(workPlacement);
+          }
+          bestScore = layoutScore(workPlacement, result.callGraph, hot);
+        }
       }
       saveReplay();   // remember this winning (post-repair) layout for next build
       break;
