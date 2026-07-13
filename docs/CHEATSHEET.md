@@ -40,23 +40,30 @@ Two namespaces:
 
 ---
 
-## Program structure - the 4 callbacks
+## Program structure - the 3 callbacks
 
 ```lua
-function _init()       -- runs ONCE at startup
-function _update60()   -- game logic @ 60 fps (every vsync)
-function _update()     -- game logic @ 30 fps (every 2nd vsync)
-function _draw()       -- draw ONCE per visible frame
+function _init()    -- runs ONCE at startup
+function _update()  -- your game logic, once per frame (30 fps)
+function _draw()    -- your drawing, once per frame
 ```
 
-Pick **one** update rate. `_draw()` **is** the main loop - there's no cartridge
-loop to write. Minimal skeleton:
+Write these three. `_draw()` **is** the main loop - there's no cartridge loop to
+write. Move things by a fixed amount each `_update()`; the runtime paces the
+frames for you (no timers, no delta-time math). Minimal skeleton:
 
 ```lua
 function _init()  x = 64 end
-function _update60()  x += 1  if (x > 127) x = 0 end
+function _update()  x += 1  if (x > 127) x = 0 end
 function _draw()  cls(1)  circfill(x, 64, 5, 8) end
 ```
+
+**30 fps is the default and the right choice for almost every game** - it's what
+the GameTank can actually hold once a game does real work. If your cart is very
+light and you want extra-smooth motion, rename `_update` to `_update60` for 60
+fps; but a game too heavy for 60 that uses `_update60` runs in **slow motion**
+(the logic is paced to the frames it can draw), so reach for it only when you've
+measured room to spare.
 
 ---
 
@@ -413,8 +420,8 @@ bytes - handy for baking level or lookup data straight into the cartridge.
 local angle  = 0
 local radius = 40
 
-function _update60()
-  angle += 0.008
+function _update()
+  angle += 0.016
   if (btn(0)) radius -= 1
   if (btn(1)) radius += 1
   radius = mid(8, radius, 58)

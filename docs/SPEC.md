@@ -15,12 +15,17 @@ A program is one `.lua` file containing, at top level:
 - `local name = <constant expression>` - module state
 - `function name(params...) ... end` - function definitions
 
-**Callbacks (the PICO-8 contract):** define `_update60()` (60 fps) or
-`_update()` (30 fps: logic and draw run every second vblank), plus
-`_draw()`; `_init()` is optional and runs once at boot. The runtime latches
-inputs before each update and ends the frame after `_draw()` (blitter
-drain, vsync, page flip). Top-level statements other than declarations are
-errors; top-level initializers must be compile-time constants.
+**Callbacks (the PICO-8 contract):** define `_update()` plus `_draw()`;
+`_init()` is optional and runs once at boot. `_update()` runs your logic once
+per frame at **30 fps** (the default rate the hardware sustains once a game does
+real work) with a fixed timestep - no delta-time is passed; move things by a
+constant each frame and the runtime paces the frame for you. `_update60()` is
+the same contract at 60 fps for light carts; a cart too heavy for its chosen
+rate runs in slow motion (logic is paced to the frames it can draw), so 30 is
+the sane default and 60 the measured opt-in. The runtime latches inputs before
+each update and ends the frame after `_draw()` (blitter drain, vsync, page
+flip). Top-level statements other than declarations are errors; top-level
+initializers must be compile-time constants.
 
 ## Numbers - PICO-8 16.16 fixed point
 

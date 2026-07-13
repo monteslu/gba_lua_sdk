@@ -111,7 +111,7 @@ research tiers:
 
 | P8 call | GameTank implementation | Fidelity |
 |---|---|---|
-| `_init` / `_update` / `_update60` / `_draw` | ⚠ replaces v0.1 `init/update`. Harness calls `_update60`+`_draw` per vsync (60 Hz native); `_update` = 30 fps mode (logic+draw every 2nd vsync). | exact |
+| `_init` / `_update` / `_update60` / `_draw` | ⚠ replaces v0.1 `init/update`. `_update`+`_draw` = 30 fps (every 2nd vsync) - **the default**; `_update60` = 60 fps (per vsync) for light carts. Fixed timestep, no `dt`. On real 6502, 30 is what most games hold; too-heavy `_update60` carts run in slow motion. | exact |
 | `cls([c])` | full-screen blitter fill, default 0 | exact |
 | `btn(i,[pl])` / `btnp(i,[pl])` | ⚠ replaces mask API. Indices 0–5 (0=⬅️ 1=➡️ 2=⬆️ 3=⬇️ 4=🅾️ 5=❎); **6=GT C** (extra button!), 7=START. 🅾️→GT A, ❎→GT B. `btnp` with P8 auto-repeat (15 frames, then every 4; pokeable off). Two pads via `pl`. | exact + extra button |
 | `spr(n,x,y,[w,h],[flip_x,flip_y])` | n = 8×8 cell 0–255 on the current GRAM sheet (16/row); w,h in cells; flips are **hardware** (blitter bit-7 X/Y mirror); color 0 transparent unless `palt(0,false)` | exact |

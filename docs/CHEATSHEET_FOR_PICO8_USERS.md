@@ -78,11 +78,16 @@ constants 0–5 in source.
 | Call | | Notes |
 |---|:--:|---|
 | `_init()` | ✅ | runs once at startup |
-| `_update60()` | ✅ | logic @ 60 fps (per vsync) |
-| `_update()` | ✅ | logic @ 30 fps (every 2nd vsync) |
+| `_update()` | ✅ | logic @ 30 fps (every 2nd vsync) - **the default; prefer this** |
+| `_update60()` | ✅ | logic @ 60 fps (per vsync) - light carts only |
 | `_draw()` | ✅ | 1× per visible frame |
 
-No cartridge loop / `goto` tweetcart form - `_draw()` **is** the loop.
+No cartridge loop / `goto` tweetcart form - `_draw()` **is** the loop. Same
+fixed-timestep model as PICO-8 (no `dt`; move by a constant per frame). Unlike
+PICO-8's beefier VM, the GameTank's real 6502 rarely holds 60 once a game does
+work, so **30 (`_update`) is the safe default** - a cart too heavy for
+`_update60` runs in slow motion (logic is paced to the frames it can draw),
+exactly like a PICO-8 game that can't hold its target rate.
 
 ## Dialect & syntax
 
@@ -283,8 +288,8 @@ and to the blitter, which these engines feed efficiently.
 local angle = 0
 local radius = 40
 
-function _update60()
-  angle += 0.008
+function _update()
+  angle += 0.016
   if (btn(0)) radius -= 1
   if (btn(1)) radius += 1
   radius = mid(8, radius, 58)
