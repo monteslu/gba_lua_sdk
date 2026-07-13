@@ -1,8 +1,10 @@
 {
   "name": "gtlua",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "bin": { "gtlua": "bin/gtlua.js" },
+  "bin": {
+    "gtlua": "bin/gtlua.js"
+  },
   "exports": {
     "./compiler/index.js": "./compiler/index.js",
     "./compiler/peephole.js": "./compiler/peephole.js",
@@ -14,10 +16,12 @@
     "./build": "./compiler/build.js",
     "./package.json": "./package.json"
   },
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "dependencies": {
     "romdev-toolchain-cc65": "0.1.3",
-    "romdev-core-gametank": "0.2.0"
+    "romdev-core-gametank": "0.3.0"
   },
   "optionalDependencies": {
     "@kmamal/sdl": "^0.11.13"
