@@ -306,6 +306,30 @@ function makeGSheetC(env, sheetPath, banked, framesPath, composes) {
     `void gt_sheet_init(void) { gt_bank(2); ${calls.join(" ")} ${b1} }\n`;
 }
 
+// ---- project song bank ------------------------------------------------------
+// Inject the project's .gtm2 songs into the generated game C: one byte array
+// per song + a pointer table + a gt_song_bank() registration spliced in right
+// after gt_music_init(). music(n) then plays PROJECT song n - the tune the
+// author composed - instead of a built-in demo (see sdk/gt_music.c). Banked
+// builds home the bytes in B3RODATA, the audio unit's private bank, which is
+// exactly the bank mapped whenever the (bank-3) sequencer walks the stream.
+// No-op when the game never pulls in the music runtime (nothing to register).
+function injectSongs(cSource, songs, banked) {
+  if (!songs || !songs.length) return cSource;
+  if (!cSource.includes("gt_music_init();")) return cSource;
+  const decls = ["/* project songs (gt_song_bank: music(n) -> song n) */"];
+  if (banked) decls.push(`#pragma rodata-name ("B3RODATA")`);
+  songs.forEach((bytes, i) => {
+    decls.push(`static const unsigned char gt_songdata_${i}[${bytes.length}] = {${Array.from(bytes).join(",")}};`);
+  });
+  decls.push(`static const unsigned char* const gt_songbank_tab[${songs.length}] = {${songs.map((_, i) => `gt_songdata_${i}`).join(",")}};`);
+  if (banked) decls.push(`#pragma rodata-name ("RODATA")`);
+  decls.push(`void gt_song_bank(const unsigned char* const* songs, unsigned char count);`);
+  return decls.join("\n") + "\n" + cSource.replace(
+    "gt_music_init();",
+    `gt_music_init(); gt_song_bank(gt_songbank_tab, ${songs.length}U);`);
+}
+
 function makeSheetC(env, sheetPath, banked, framesPath, composes) {
   if (!sheetPath) return `void gt_sheet_init(void) {}\n`;
   if (isGtgSheet(env, sheetPath)) return makeGSheetC(env, sheetPath, banked, framesPath, composes);
@@ -599,7 +623,7 @@ function rebalance(env, placement, sizes, overflows, sheetBytes, callGraph, uses
  * @param {BuildEnv} env injected filesystem / toolchain / logging primitives
  */
 export async function build(entry, opts, env) {
-  const { outPath, sheetPath, num8 = false, framesPath = undefined } = opts;
+  const { outPath, sheetPath, num8 = false, framesPath = undefined, songsPaths = [] } = opts;
   const SDK = env.sdk;
   if (!env.exists(entry)) fail(`no such file: ${entry}`);
   const projDir = env.dirname(entry);
@@ -654,7 +678,11 @@ export async function build(entry, opts, env) {
   const flash2mHint = env.exists(env.join(buildDir, ".placement.json"));
 
   // 1. lua -> C (flat 32 KB attempt first)
+  // Project songs: read once, then inject into every generated game C (flat
+  // AND each banked placement attempt) so music(n) plays project song n.
+  const songsBytes = songsPaths.map((p) => env.readFile(p));
   let result = compileLua(env, entry, { num8 });
+  result.c = injectSongs(result.c, songsBytes, false);
   const usesAudio = result.c.includes("gt_audio_init(");
   const usesStarfield = result.c.includes("gt_starfield");
   const usesAutocls = result.c.includes("gt_autocls_set(");
@@ -1045,6 +1073,7 @@ export async function build(entry, opts, env) {
     }
     const compileAndLink = (placementNow) => {
       result = compileLua(env, entry, { banked: true, placement: placementNow, midInline, inliner: fnInline, num8, rndInt });
+      result.c = injectSongs(result.c, songsBytes, true);
       env.writeFile(B(`${name}.c`), result.c);
       // Memoize the game-unit .o by the GENERATED C bytes. The placement ladder
       // recompiles main.c on every attempt, but many placement changes produce

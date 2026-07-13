@@ -11,7 +11,26 @@ PICO-8-style `sfx()`/`music()` path (see [sfx.md](sfx.md)); use whichever fits.
 
 ## Playing a song
 
-Embed a `.gtm2` blob with `hexdata` and play it with `song`:
+**Project songs (the usual path):** pass your `.gtm2` files at build time and
+play them by index - `music(0)` is your first song, `music(1)` the second:
+
+```
+gtlua build main.lua --songs title.gtm2,level.gtm2 -o game.gtr
+```
+
+```lua
+function _init()
+  music(0)            -- play project song 0, looping
+  -- music(0, false)  -- play once; music(-1) stops
+end
+```
+
+When a project carries songs, `music(n)` plays PROJECT song n (registered via
+`gt_song_bank`); the built-in demo tunes remain the fallback for song-less
+carts.
+
+**Raw blobs (advanced):** embed a `.gtm2` with `hexdata` and play it with
+`song`:
 
 ```lua
 local tune = hexdata("000104050100023001a...")  -- your .gtm2 bytes as hex
@@ -66,8 +85,10 @@ A `.gtm2` is a header plus a linear event stream:
 - **Header**: a config byte (bit0 = per-note velocity present) and **four
   instrument indices**, one per FM channel.
 - **Events**: each carries a `delay` (frames before it fires) and, for each of
-  the four channels that changes, a **note** (1-based MIDI; `0` = key off) and,
-  in velocity mode, a velocity. Long gaps split into padding events automatically.
+  the four channels that changes, a **note** (the console's pitch-table index =
+  MIDI − 12, so A4/440 Hz = 57; `0` = key off - the exact bytes the official
+  midiconvert writes) and, in velocity mode, a velocity. Long gaps split into
+  padding events automatically. `noteNum("a4")` does the name → byte conversion.
 
 Four channels play at once. `delay` is in frames (≈60/second on NTSC), so timing
 is exact and independent of how long your game's frame takes.

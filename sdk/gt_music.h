@@ -1,10 +1,13 @@
 /* gt_music.h - PICO-8-style sfx()/music() runtime surface (see gt_music.c).
  *
- * Data model (all indices are 1-based MIDI note numbers, 0 = rest):
+ * Data model for the BUILT-IN SfxStep/SongEvent tables (1-based table indices,
+ * 0 = rest - an internal convention; the N() macro bakes the +1):
  *   SfxStep  { note, dur }      - one step of a sound effect on one channel;
  *                                 `note` plays (or rests) for `dur` frames.
  *   SongEvent{ ch, note, delay }- key channel `ch` (0-3) to `note`; `delay` is
  *                                 the number of frames before the NEXT event.
+ * .gtm2 streams are DIFFERENT: their note bytes are the official format's raw
+ * pitch-table indices, keyed unshifted (A4/440 = 57 = MIDI - 12).
  * The FM Instrument struct is byte-compatible with the upstream tracker. */
 #ifndef GT_MUSIC_H
 #define GT_MUSIC_H
@@ -73,5 +76,10 @@ void gt_music_stop(void);
  * and src/gt/audio/music.c plays). Plays alongside the PICO-8 sfx/pattern path. */
 void gt_gtm2_play(const unsigned char *song, unsigned char loop);
 void gt_gtm2_stop(void);
+
+/* Project song bank: register the build's .gtm2 songs; music(n) then plays
+ * project song n (the composer's tune), not a built-in. The compiler emits the
+ * table + this call when the project carries songs. */
+void gt_song_bank(const unsigned char* const* songs, unsigned char count);
 
 #endif

@@ -23,11 +23,11 @@
 .import _gt_music_tick_impl, _gt_music_run_init_impl
 .import _gt_sfx_impl, _gt_music_impl, _gt_sfx_bank_impl, _gt_music_bank_impl
 .import _gt_sfx_run_impl, _gt_music_play_impl, _gt_music_stop_impl
-.import _gt_gtm2_play_impl, _gt_gtm2_stop_impl
+.import _gt_gtm2_play_impl, _gt_gtm2_stop_impl, _gt_song_bank_impl
 .export _gt_music_tick, _gt_music_run_init
 .export _gt_sfx, _gt_music, _gt_sfx_bank, _gt_music_bank
 .export _gt_sfx_run, _gt_music_play, _gt_music_stop
-.export _gt_gtm2_play, _gt_gtm2_stop
+.export _gt_gtm2_play, _gt_gtm2_stop, _gt_song_bank
 
 GT_MUSIC_BANK = 3
 
@@ -206,3 +206,4 @@ _gt_music_nmi_shim:
         GT_MUSIC_STUB _gt_music_stop,     _gt_music_stop_impl
         GT_MUSIC_STUB _gt_gtm2_play,      _gt_gtm2_play_impl
         GT_MUSIC_STUB _gt_gtm2_stop,      _gt_gtm2_stop_impl
+        GT_MUSIC_STUB _gt_song_bank,      _gt_song_bank_impl

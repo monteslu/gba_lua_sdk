@@ -14,7 +14,10 @@
 //   long gaps (>255 frames) are padding events {u8 time<=128, u8 mask=0}.
 //   trailing 0 byte = terminator.
 //
-// note values are 1-based MIDI (0 = rest / key-off; the player uses note-1).
+// note values are the console's raw PITCH-TABLE indices, keyed unshifted - the
+// exact bytes Clyde's midiconvert.js writes and music.c plays (0 = key-off).
+// The table is tuned so index = MIDI - 12: A4 (440 Hz) = 57. noteNum() below
+// does that conversion, so callers can keep thinking in note names / MIDI.
 //
 // This module parses/encodes that format and offers a hand-authoring helper so
 // you can write a song from a simple event list without needing a MIDI file.
@@ -123,7 +126,10 @@ export function encodeGtm2(song) {
   return Buffer.from(out);
 }
 
-// convenience: 1-based MIDI note from a name like "c4", "a#3", "eb5".
+// convenience: the .gtm2 note byte for a name like "c4", "a#3", "eb5".
+// The byte is the console's pitch-table index = MIDI - 12 (A4/440 = 57), the
+// same value Clyde's midiconvert emits and music.c keys unshifted. Clamped to
+// 1..107 so it never collides with 0 = key-off.
 const SEMI = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
 export function noteNum(name) {
   if (typeof name === "number") return name;
@@ -131,5 +137,11 @@ export function noteNum(name) {
   if (!m) throw new Error(`bad note "${name}" (want like c4, a#3, eb5)`);
   let semi = SEMI[m[1].toLowerCase()] + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0);
   const midi = (parseInt(m[3], 10) + 1) * 12 + semi;   // MIDI: c-1 = 0
-  return midi + 1;   // .gtm2 notes are 1-based (0 = rest)
+  const idx = midi - 12;                               // table index (A4 = 57)
+  return Math.max(1, Math.min(107, idx));
+}
+/** Hz for a .gtm2 note byte (0 = rest -> 0). Table tuning: index 57 = 440 Hz. */
+export function noteHz(note) {
+  if (!note) return 0;
+  return 440 * Math.pow(2, (note - 57) / 12);
 }

@@ -79,6 +79,7 @@
 #define gt_music_stop GT_MB(gt_music_stop)
 #define gt_gtm2_play  GT_MB(gt_gtm2_play)
 #define gt_gtm2_stop  GT_MB(gt_gtm2_stop)
+#define gt_song_bank  GT_MB(gt_song_bank)
 #define gt_music_run_init GT_MB(gt_music_run_init)
 
 /* the MIDI pitch table lives in gt_audio.c (108 notes, 2 bytes each). */
@@ -443,7 +444,12 @@ void gt_music_tick(void) {
                         if (note == 0) {
                             key_off(ch);
                         } else {
-                            key_on(ch, (unsigned char)(note - 1));
+                            /* OFFICIAL .gtm2: the note byte IS the pitch-table
+                             * index, keyed unshifted (Clyde's midiconvert writes
+                             * the raw value; his music.c plays it as-is). The
+                             * old `note - 1` here played every official song a
+                             * semitone flat and broke byte-compatibility. */
+                            key_on(ch, note);
                             if (gtm2_cfg & 1) {   /* velocity -> carrier level */
                                 unsigned char op = (unsigned char)((ch << 2) + 3);
                                 amps[op] = vel;
@@ -673,12 +679,31 @@ static const BuiltinSong builtin_song[GT_NUM_BUILTIN_SONG] = {
 
 #endif /* !GT_NO_BUILTIN_SFX */
 
+/* --- project song bank ------------------------------------------------------
+ * The compiler registers the project's .gtm2 songs here (one pointer per song,
+ * emitted from the build's song assets). When a bank is registered, music(n)
+ * plays PROJECT song n - the tune the author composed in their tracker - which
+ * is what "music(0)" should obviously mean in a project that has songs. The
+ * PICO-8 pattern bank and the built-in demo tunes remain the fallbacks. */
+static const unsigned char* const* song_bank_tab;
+static unsigned char song_bank_count;
+void gt_song_bank(const unsigned char* const* songs, unsigned char count) {
+    song_bank_tab = songs;
+    song_bank_count = count;
+}
+
 void gt_music(int n, int loop) {
 #ifndef GT_NO_BUILTIN_SFX
     const BuiltinSong *s;
 #endif
     if (!audio_on) return;
     if (n < 0) { gt_music_stop(); return; }
+    if (song_bank_tab) {
+        if ((unsigned char)n < song_bank_count) {
+            gt_gtm2_play(song_bank_tab[(unsigned char)n], (unsigned char)(loop ? 1 : 0));
+        }
+        return;
+    }
     if (mus_bank) {
         mus_first = (unsigned char)n;
         mus_loop = (unsigned char)(loop ? 1 : 0);

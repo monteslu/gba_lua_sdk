@@ -272,6 +272,10 @@ sfx(n, [ch])         -- play sound n on channel ch
 music(n, [fade])     -- play song n; music(-1) stops
 ```
 
+`music(n)` plays **your project's song n** when the build carries songs
+(`--songs a.gtm2,b.gtm2`, or the web IDE's tracker songs - song 0 is the first
+tab). Without project songs it falls back to the built-in demo tunes (0-1).
+
 Eight zero-authoring built-in SFX are ready immediately:
 
 ```
