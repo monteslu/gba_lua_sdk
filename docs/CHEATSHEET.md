@@ -1,13 +1,12 @@
 # gt-lua Cheat Sheet
 
-**A friendly Lua that compiles straight to native 65C02 machine code** for the
-[GameTank](https://gametank.zone) - Clyde Shaffer's open 8-bit console. There is
-no interpreter and no VM at runtime: your `.lua` is turned into C, then into real
-6502 assembly, then into a `.gtr` cartridge. You get the whole 3.58 MHz.
+**Write games in Lua for the [GameTank](https://gametank.zone)** - Clyde
+Shaffer's little 8-bit console. You write regular Lua; it gets turned into a real
+`.gtr` game cartridge you can play in the browser or on the actual hardware.
 
-If you've used a fantasy console before, this will feel familiar: a 128×128
-screen, an 8×8 sprite sheet, and `_draw()`/`_update()` callbacks. If you
-haven't - this one page is the whole language.
+It's a small screen (128×128), a sheet of little 8×8 pictures (sprites), and
+three functions you fill in. This one page is the whole language - if you've
+played with something like PICO-8 before, you already get it.
 
 ```
 gtlua build main.lua --sheet gfx.gtg -o game.gtr
@@ -17,53 +16,52 @@ Runs in the emulator, on gametank.zone, and on real hardware via a GTFO cart.
 
 ---
 
-## The machine at a glance
+## Program structure - the 3 functions
 
-```
- ┌──────────────────────────────────────────────────┐
- │  CPU      65C02 @ 3.58 MHz    (native, no VM)      │
- │  Screen   128 × 128 px,  256-color palette         │
- │  Sprites  one 128×128 sheet of 8×8 cells (0-255)   │
- │  Sound    4-op FM on a second 65C02 (the ACP)      │
- │  Input    2 controllers, 6 buttons + START each    │
- │  Numbers  16.16 fixed point  (or 8.8 with --num8)  │
- │  Blitter  hardware rectangle / sprite copier        │
- │  Limit    ROM / RAM size - there is NO cycle cap    │
- └──────────────────────────────────────────────────┘
-```
-
-Two namespaces:
-
-- **Global, unprefixed** - the core language (`spr`, `btn`, `circfill`, `rnd`…).
-- **`gt.*`** - GameTank-only extras and fast asm draw engines (`gt.rgb`,
-  `gt.bg_draw`, `gt.pool_move`…).
-
----
-
-## Program structure - the 3 callbacks
+Every game fills in these three functions:
 
 ```lua
-function _init()    -- runs ONCE at startup
-function _update()  -- your game logic, once per frame (30 fps)
-function _draw()    -- your drawing, once per frame
+function _init()
+  -- runs ONCE when the game starts
+end
+
+function _update()
+  -- your game logic; runs 30 times a second
+end
+
+function _draw()
+  -- your drawing; runs once per frame
+end
 ```
 
-Write these three. `_draw()` **is** the main loop - there's no cartridge loop to
-write. Move things by a fixed amount each `_update()`; the runtime paces the
-frames for you (no timers, no delta-time math). Minimal skeleton:
+That's the whole loop - the GameTank calls `_update()` then `_draw()` over and
+over for you. To move something, add a little to its position each `_update()`.
+Here's a dot that slides across the screen and wraps around:
 
 ```lua
-function _init()  x = 64 end
-function _update()  x += 1  if (x > 127) x = 0 end
-function _draw()  cls(1)  circfill(x, 64, 5, 8) end
+local x = 0
+
+function _update()
+  x += 1              -- move right 1 pixel each update (bigger = faster)
+  if x > 127 then
+    x = 0             -- wrap back to the left edge
+  end
+end
+
+function _draw()
+  cls(1)              -- clear to dark blue
+  circfill(x, 64, 5, 8)  -- a red dot at (x, 64)
+end
 ```
 
-**30 fps is the default and the right choice for almost every game** - it's what
-the GameTank can actually hold once a game does real work. If your cart is very
-light and you want extra-smooth motion, rename `_update` to `_update60` for 60
-fps; but a game too heavy for 60 that uses `_update60` runs in **slow motion**
-(the logic is paced to the frames it can draw), so reach for it only when you've
-measured room to spare.
+You never deal with clocks or timers - just "how much per update," and you tune
+that number until it feels right.
+
+> **Want it smoother?** Name your update `_update60` instead and the GameTank
+> calls it 60 times a second. But 30 is the safe default: it's the speed the
+> GameTank can keep up with once your game is doing a lot. If a busy game uses
+> `_update60` and can't keep up, it runs in **slow motion** - so only reach for
+> 60 on small, simple games.
 
 ---
 
@@ -93,8 +91,7 @@ The glyphs `⬅️ ➡️ ⬆️ ⬇️ 🅾️ ❎` are literal constants `0`�
 
 A color is a raw GameTank byte `0`–`255`. For familiarity, a **static 0–15
 literal** in a draw call is treated as a PICO-8 index and baked to its GameTank
-byte at **compile time** (the table below); `gt.rgb` reaches the whole 256-color
-palette. A color **computed at runtime** is a raw byte, not re-mapped from 0–15
+byte at **compile time** (the table below); `gt.rgb` reaches every color the GameTank has. A color **computed at runtime** is a raw byte, not re-mapped from 0–15
 (a computed index renders wrong) - there is no runtime palette or `pal()`.
 
 | # | name | byte | | # | name | byte |
@@ -338,9 +335,9 @@ blitter can chew through fast.
 
 | Call | Does |
 |---|---|
-| `gt.rgb(r,g,b)` / `gt.rgb(byte)` | the full 256-color palette |
+| `gt.rgb(r,g,b)` / `gt.rgb(byte)` | pick any color the GameTank can show |
 | `gt.border(c)` | overscan border color |
-| `gt.autocls(c)` | auto-clear to color `c` during the post-flip vsync wait (free) |
+| `gt.autocls(c)` | clear to color `c` automatically each frame (free - happens while the screen is between frames) |
 
 **Cached backgrounds & tilemaps** (paint once, blit per frame)
 
@@ -440,6 +437,30 @@ gtlua build main.lua --sheet gfx.gtg -o game.gtr
 ```
 
 ---
+
+## The machine at a glance (reference)
+
+```
+ ┌──────────────────────────────────────────────────┐
+ │  CPU      65C02 @ 3.58 MHz    (native, no VM)      │
+ │  Screen   128 × 128 px,  hundreds of colors        │
+ │  Sprites  one 128×128 sheet of 8×8 cells (0-255)   │
+ │  Sound    4-op FM on a second 65C02 (the ACP)      │
+ │  Input    2 controllers, 6 buttons + START each    │
+ │  Numbers  16.16 fixed point  (or 8.8 with --num8)  │
+ │  Blitter  hardware rectangle / sprite copier        │
+ │  Limit    ROM / RAM size - there is NO cycle cap    │
+ └──────────────────────────────────────────────────┘
+```
+
+Two namespaces:
+
+- **Global, unprefixed** - the core language (`spr`, `btn`, `circfill`, `rnd`…).
+- **`gt.*`** - GameTank-only extras and fast asm draw engines (`gt.rgb`,
+  `gt.bg_draw`, `gt.pool_move`…).
+
+---
+
 
 *Coming from PICO-8? There's a side-by-side mapping in
 [`CHEATSHEET_FOR_PICO8_USERS.md`](CHEATSHEET_FOR_PICO8_USERS.md). This page is
