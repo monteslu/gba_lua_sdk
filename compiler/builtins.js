@@ -65,6 +65,18 @@ export const BUILTINS = {
   sin:   { params: [["num", false]], ret: "fixed", c: "gt_fsin" },
   cos:   { params: [["num", false]], ret: "fixed", c: "gt_fcos" },
   atan2: { params: [["num", false], ["num", false]], ret: "fixed", c: "gt_fatan2" },
+
+  // PICO-8 bitwise FUNCTION forms - exact aliases of the operators gtlua already
+  // has (a & b, a | b, ...). Carts use both spellings interchangeably. Emitted
+  // as the operator, so zero runtime cost. band/bor/bxor/bnot on the raw bits;
+  // shl/shr shift (shr = arithmetic >>, lshr = logical >>>).
+  band:  { params: [["num", false], ["num", false]], ret: "same", c: null, special: "bitop", op: "&" },
+  bor:   { params: [["num", false], ["num", false]], ret: "same", c: null, special: "bitop", op: "|" },
+  bxor:  { params: [["num", false], ["num", false]], ret: "same", c: null, special: "bitop", op: "^^" },
+  bnot:  { params: [["num", false]], ret: "same", c: null, special: "bitop", op: "~" },
+  shl:   { params: [["num", false], ["num", false]], ret: "same", c: null, special: "bitop", op: "<<" },
+  shr:   { params: [["num", false], ["num", false]], ret: "same", c: null, special: "bitop", op: ">>" },
+  lshr:  { params: [["num", false], ["num", false]], ret: "same", c: null, special: "bitop", op: ">>>" },
   rnd:   { params: [["num", true]], ret: "fixed", c: "gt_p8_rnd" },
   srand: { params: [["num", false]], ret: "void", c: "gt_p8_srand" },
   t:     { params: [], ret: "fixed", c: "gt_p8_time", isValue: false },

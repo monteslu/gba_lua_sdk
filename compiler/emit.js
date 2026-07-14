@@ -1061,6 +1061,13 @@ export function emit(chunk, symbols, file, opts = {}) {
         const k = anyFixed ? "fixed" : "int";
         return `${fn}(${expr(e.args[0], k)}, ${expr(e.args[1], k)}, ${expr(e.args[2], k)})`;
       }
+      case "bitop": {
+        // PICO-8 bitwise function form -> reuse the operator lowering exactly
+        // (so ^^, >>>, and int/fixed conversions all match a & b written out).
+        if (b.op === "~") return expr({ kind: "bnot", expr: a0, tk: a0.tk }, a0.tk === "fixed" ? "fixed" : "int");
+        const tk = anyFixed ? "fixed" : "int";
+        return expr({ kind: "binop", op: b.op, left: a0, right: e.args[1], tk }, tk);
+      }
       case "map": {
         // map(cx,cy,sx,sy,cw,ch) over the imported __map__ array (128 wide).
         // PICO-8 defaults: cel 0,0 -> screen 0,0, 128x32 cells.

@@ -134,6 +134,15 @@ test("array table with fractional values is a fixed array", () => {
   assert.match(c, /long gtl_spd\[3\] = \{\s*32768L, 98304L, 131072L\s*\}/);
 });
 
+test("bitwise function forms alias the operators (band/bor/shl/shr)", () => {
+  const c = cOf("local a=13\nlocal b=0\nfunction _update60()\n" +
+                "  b = band(a, 3)\n  b = bor(a, 4)\n  b = shl(a, 2)\n  b = shr(a, 1)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gtl_a & 3/);
+  assert.match(c, /gtl_a \| 4/);
+  assert.match(c, /gtl_a << 2/);
+  assert.match(c, /gtl_a >> 1/);
+});
+
 test("map() draws the imported tilemap; mget() reads a cell", () => {
   const c = cOf("local __p8map = hexdata(\"01020304\")\nfunction _update60()\nend\n" +
                 "function _draw()\n  cls()\n  map(0, 0, 0, 0, 16, 4)\n  local t = mget(2, 0)\nend\n");
