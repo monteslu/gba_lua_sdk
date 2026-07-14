@@ -1183,7 +1183,15 @@ export function emit(chunk, symbols, file, opts = {}) {
           line("}");
           break;
         }
-        // evaluate all RHS first (Lua semantics), then store
+        // evaluate all RHS first (Lua semantics), then store into each target -
+        // which may be a name, a struct field (o.x), or an element (a[i]).
+        const lvalueOf = (t2) => {
+          if (t2.kind === "member" && t2.poolField)
+            return `${t2.poolField.pool.cname}_${t2.poolField.field}[${t2.poolField.forall.slotVar}]`;
+          if (t2.kind === "index")
+            return indexRef(mangle(t2.object.name), t2.index, !!t2.arraySym?.elemBytes);
+          return mangle(t2.name);
+        };
         const temps = s.values.map((v, i) => {
           const k = s.targetKinds[i] ?? "int";
           const tn = `L_t${tempCounter++}`;
@@ -1191,9 +1199,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         });
         line(`{ ${temps.map(({ tn, k, v }) => `${ctype(k)} ${tn} = ${expr(v, k)};`).join(" ")}`);
         indent++;
-        s.targets.forEach((t2, i) => {
-          if (t2.kind === "name") line(`${mangle(t2.name)} = ${temps[i].tn};`);
-        });
+        s.targets.forEach((t2, i) => line(`${lvalueOf(t2)} = ${temps[i].tn};`));
         indent--;
         line("}");
         break;

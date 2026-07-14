@@ -334,7 +334,11 @@ export function parse(tokens, file) {
       const values = [expression()];
       while (at(",")) { next(); values.push(expression()); }
       for (const t of targets) {
-        if (t.kind !== "name") error("cannot assign to this expression", eq);
+        // assignable targets: a plain name, a struct field (o.x), or an element
+        // (a[i]) - the same forms single assignment accepts.
+        if (t.kind !== "name" && t.kind !== "member" && t.kind !== "index") {
+          error("cannot assign to this expression", eq);
+        }
       }
       // a, b, c = f(...) : destructure a multi-return call. Allowed when the RHS
       // is a single call; check.js verifies the callee returns enough values.

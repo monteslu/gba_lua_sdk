@@ -134,6 +134,14 @@ test("array table with fractional values is a fixed array", () => {
   assert.match(c, /long gtl_spd\[3\] = \{\s*32768L, 98304L, 131072L\s*\}/);
 });
 
+test("multiple assignment to struct fields (o.x, o.y = a, b)", () => {
+  const c = cOf("local objs = pool(8)\nfunction _init()\n  add(objs, {x=0, y=0})\nend\n" +
+                "function _update60()\n  for o in all(objs) do\n    o.x, o.y = o.x + 1, o.y + 2\n  end\nend\nfunction _draw()\nend\n");
+  // RHS into temps first, then store into the pool field arrays
+  assert.match(c, /objs_x\[[^\]]+\] = L_t\d+;/);
+  assert.match(c, /objs_y\[[^\]]+\] = L_t\d+;/);
+});
+
 test("multiple return: return a,b,c and destructure a,b,c = f()", () => {
   const c = cOf("local ax=0\nlocal ay=0\nlocal az=0\n" +
                 "function trip(x, y, z)\n  return x, y, z\nend\n" +

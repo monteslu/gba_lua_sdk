@@ -437,17 +437,32 @@ export function check(chunk, file) {
             });
           }
           s.targets.forEach((t2, i) => {
-            if (t2.kind !== "name") return;
-            const sym = lookup(t2.name);
-            if (!sym) {
-              err(s, `'${t2.name}' is not declared - declare it with 'local ${t2.name} = ...'`);
-              return;
+            if (t2.kind === "name") {
+              const sym = lookup(t2.name);
+              if (!sym) {
+                err(s, `'${t2.name}' is not declared - declare it with 'local ${t2.name} = ...'`);
+                return;
+              }
+              widenSlot(sym, kinds[i] ?? "int");
+              s.targetSyms[i] = sym;
+            } else {
+              // struct field (o.x) or element (a[i]) target: type it so the
+              // poolField/arraySym annotations reach the emitter, and widen the
+              // field/element kind to the value kind (same as single assignment).
+              const mt = typeOf(t2);
+              if (mt === "bool") err(t2, "pool fields are numbers");
+              if (t2.poolField && kinds[i] === "fixed") {
+                const fl = t2.poolField.pool.fields.get(t2.poolField.field);
+                if (fl && fl.kind !== "fixed") { fl.kind = "fixed"; changed = true; }
+              }
             }
-            widenSlot(sym, kinds[i] ?? "int");
-            s.targetSyms[i] = sym;
           });
           s.valueKinds = kinds;
-          s.targetKinds = s.targets.map((t2, i) => s.targetSyms[i] ? symKind(s.targetSyms[i]) : "int");
+          s.targetKinds = s.targets.map((t2, i) =>
+            t2.kind === "name"
+              ? (s.targetSyms[i] ? symKind(s.targetSyms[i]) : "int")
+              : (t2.poolField ? t2.poolField.pool.fields.get(t2.poolField.field)?.kind ?? "int"
+                 : t2.arraySym?.elemKind ?? "int"));
           break;
         }
         case "callstmt": callType(s.call, true); break;
