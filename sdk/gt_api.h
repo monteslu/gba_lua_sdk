@@ -208,6 +208,7 @@ void gt_music(int n, int loop);
 void gt_gtm2_play(const unsigned char *song, unsigned char loop);
 void gt_gtm2_stop(void);
 void gt_p8_spr(int n, int x, int y, int w, int h, int flip);
+void gt_p8_map(unsigned char *map, int mapw, int cx, int cy, int sx, int sy, int cw, int ch);
 
 /* PCM audio path (gt_pcm.c) - bit-exact sample playback via the ACP PCM
  * firmware. Only linked when the game calls pcm_init(). */

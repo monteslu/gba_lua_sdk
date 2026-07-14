@@ -751,6 +751,26 @@ void gt_p8_spr(int n, int x, int y, int w, int h, int flip) {
     gt_p8_spr_z();
 }
 
+/* PICO-8 map(cx,cy, sx,sy, cw,ch): draw a cw x ch block of the tilemap,
+ * starting at map cell (cx,cy), to screen pixel (sx,sy). Each cell is one 8x8
+ * sheet sprite whose index is the map byte; PICO-8 skips tile 0 (empty), so we
+ * do too. This is exactly PICO-8's own software model - a spr() loop over an
+ * index array - which is native to the GameTank blitter (no tilemap hardware
+ * needed, and none exists on either machine). `map` is the flat index array
+ * (row-major, MAP_W bytes per row); the caller passes MAP_W as the stride. */
+void gt_p8_map(unsigned char *map, int mapw,
+               int cx, int cy, int sx, int sy, int cw, int ch) {
+    int j, i;
+    for (j = 0; j < ch; j++) {
+        unsigned char *row = map + (unsigned int)((cy + j) * mapw + cx);
+        int py = sy + j * 8;
+        for (i = 0; i < cw; i++) {
+            unsigned char t = row[i];
+            if (t) gt_p8_spr(t, sx + i * 8, py, 8, 8, 0);
+        }
+    }
+}
+
 /* current fill color for the argless draw-core hot path (staging out, no
  * cc65 arg-push). Set by callers before box_raw/hspan_raw/fill_clipped_z. */
 static unsigned char fc_col;

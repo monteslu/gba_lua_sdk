@@ -1061,6 +1061,18 @@ export function emit(chunk, symbols, file, opts = {}) {
         const k = anyFixed ? "fixed" : "int";
         return `${fn}(${expr(e.args[0], k)}, ${expr(e.args[1], k)}, ${expr(e.args[2], k)})`;
       }
+      case "map": {
+        // map(cx,cy,sx,sy,cw,ch) over the imported __map__ array (128 wide).
+        // PICO-8 defaults: cel 0,0 -> screen 0,0, 128x32 cells.
+        const cx = argAt(e, 0, "int", "0"), cy = argAt(e, 1, "int", "0");
+        const sx = argAt(e, 2, "int", "0"), sy = argAt(e, 3, "int", "0");
+        const cw = argAt(e, 4, "int", "128"), ch = argAt(e, 5, "int", "32");
+        return `gt_p8_map(gtl___p8map, 128, ${cx}, ${cy}, ${sx}, ${sy}, ${cw}, ${ch})`;
+      }
+      case "mget": {
+        // mget(x,y) -> the tile index at map cell (x,y) in the 128-wide array
+        return `gtl___p8map[(${argAt(e, 1, "int", "0")}) * 128 + (${argAt(e, 0, "int", "0")})]`;
+      }
       default: return "0";
     }
   }

@@ -27,6 +27,13 @@ export const BUILTINS = {
   // `frame` from a .gsi table (arbitrary size/offset, any 256x256 quadrant).
   // The two flip flags pack into one arg (bit0=X, bit1=Y) for gt_gspr_frame.
   sprf:     { params: [["int", false], ["coord", false], ["coord", false], ["flip", true], ["flip", true]], ret: "void", c: "gt_gspr_frame" },
+  // PICO-8 tilemap: map(cx,cy, sx,sy, cw,ch) draws a cw x ch block of the cart's
+  // __map__ (imported as a byte array) starting at cell (cx,cy) to screen pixel
+  // (sx,sy), one 8x8 sheet sprite per non-zero tile. Software spr()-loop, the
+  // same as PICO-8 (neither machine has tilemap hardware). All six args are
+  // optional in PICO-8 (default 0,0,0,0,128,32-ish); we require none.
+  map:      { params: [["int", true], ["int", true], ["coord", true], ["coord", true], ["int", true], ["int", true]], ret: "void", special: "map" },
+  mget:     { params: [["int", false], ["int", false]], ret: "int", special: "mget" },
 
   // ---- input ---------------------------------------------------------------
   btn:      { params: [["int", false], ["int", true]], ret: "bool", c: "gt_p8_btn" },
