@@ -72,6 +72,27 @@ export function lex(src, file) {
     tokens.push({ type: "number", value, fixed: toFixed(value), isInt, line: l, col: c });
   }
 
+  // Hex/binary literals are BIT PATTERNS for the 16.16 word, not decimal values.
+  // PICO-8 reads `0xffff` as the raw fixed-point bits (which wraps to -1.0 as a
+  // signed 16.16), and `0xf0f0.f0f0` / `0b1010...` as direct masks - all common
+  // in band()/fillp()/poke() code. So build the 16.16 value from the bits and
+  // let it wrap (two's complement), instead of range-checking a huge decimal.
+  function pushBitsNumber(intPart, fracPart, radix, l, c) {
+    const digits = radix === 16 ? 4 : 1;   // bits per hex/bin fractional digit
+    let bits = (parseInt(intPart || "0", radix) & 0xffff) << 16;
+    if (fracPart) {
+      // fractional digits fill the low 16 bits from the top down
+      let frac = 0, shift = 16;
+      for (const d of fracPart) { shift -= digits; if (shift < 0) break; frac |= parseInt(d, radix) << shift; }
+      bits |= frac & 0xffff;
+    }
+    bits |= 0;   // wrap to signed 32-bit
+    const value = bits / 65536;
+    // integral when the low 16 bits are clear; carries the wrapped signed value
+    const isInt = !fracPart && Number.isInteger(value) && value >= -32768 && value <= 32767;
+    tokens.push({ type: "number", value, fixed: bits, isInt, line: l, col: c });
+  }
+
   while (i < src.length) {
     const ch = src[i];
 
@@ -117,9 +138,7 @@ export function lex(src, file) {
           while (i < src.length && isHex(src[i])) { fracPart += src[i]; advance(); }
         }
         if (intPart === "" && fracPart === "") err("malformed hex literal", startLine, startCol);
-        const value = parseInt(intPart || "0", 16) +
-          (fracPart ? parseInt(fracPart, 16) / Math.pow(16, fracPart.length) : 0);
-        pushNumber(value, fracPart === "", startLine, startCol);
+        pushBitsNumber(intPart, fracPart, 16, startLine, startCol);
         continue;
       }
       if (ch === "0" && (src[i + 1] === "b" || src[i + 1] === "B")) {
@@ -131,9 +150,7 @@ export function lex(src, file) {
           while (i < src.length && isBin(src[i])) { fracPart += src[i]; advance(); }
         }
         if (intPart === "" && fracPart === "") err("malformed binary literal", startLine, startCol);
-        const value = parseInt(intPart || "0", 2) +
-          (fracPart ? parseInt(fracPart, 2) / Math.pow(2, fracPart.length) : 0);
-        pushNumber(value, fracPart === "", startLine, startCol);
+        pushBitsNumber(intPart, fracPart, 2, startLine, startCol);
         continue;
       }
       let intPart = "", fracPart = "", sawDot = false;
