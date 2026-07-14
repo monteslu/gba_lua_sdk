@@ -1451,7 +1451,18 @@ export function emit(chunk, symbols, file, opts = {}) {
         if (seg) out.push(`#pragma rodata-name (pop)`);
         continue;
       }
-      if (g.initVal === 0) {
+      if (g.initList) {
+        // constant array table {1, 2, 3} -> a fixed initialized C array.
+        const fmt = (v) => g.elemKind === "fixed"
+          ? `${Math.round(v * FONE) | 0}${FL}`
+          : String(Math.trunc(v));
+        const items = g.initList.map(fmt);
+        const rows = [];
+        for (let k = 0; k < items.length; k += 16) rows.push("    " + items.slice(k, k + 16).join(", "));
+        out.push(`${ct} ${mangle(name)}[${g.size}] = {`);
+        out.push(rows.join(",\n"));
+        out.push(`};`);
+      } else if (g.initVal === 0) {
         out.push(`${ct} ${mangle(name)}[${g.size}];`);
       } else {
         const v = g.elemKind === "fixed"

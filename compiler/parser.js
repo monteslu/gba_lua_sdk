@@ -478,32 +478,39 @@ export function parse(tokens, file) {
       }
       case "{": {
         next();
-        // gtlua tables are structs: fixed named byte/word fields ({x=1, y=2}).
-        // Array-style ({1,2,3}) and computed-key ([i]=v) tables are a different
-        // data model the codegen has no representation for - reject the whole
-        // literal with ONE clear error (skip to the matching `}`, no cascade)
-        // rather than mis-parsing it into a spray of downstream errors. A struct
-        // field is `name = ...`; anything else in the first slot means an
-        // array/computed table: `[k]=`, a bare value, or a nested table element.
-        const firstIsStructField = at("name") && peek(1).type === "=";
-        if (!at("}") && !firstIsStructField) {
-          const bad = at("[")
-            ? "computed-key tables ([k]=v) are not supported; gtlua tables are structs with named fields ({x=1, y=2})"
-            : "array-style tables ({1,2,3} or {{...},{...}}) are not supported; gtlua tables are structs with named fields ({x=1, y=2})";
-          error(bad, tok);
+        // Two table shapes gtlua understands:
+        //   struct: named fields, {x=1, y=2} -> a struct with fixed fields.
+        //   array:  positional values, {1, 2, 3} -> a fixed C array (const data
+        //           at top level; check.js validates the elements are constant).
+        // Computed-key ([i]=v) tables are still a different data model we can't
+        // represent - reject those with one clear error and skip to `}`.
+        if (at("[")) {
+          error("computed-key tables ([k]=v) are not supported; gtlua tables are structs with named fields ({x=1, y=2}) or arrays ({1, 2, 3})", tok);
           skipBalancedBrace();
           return { kind: "table", fields: [], line: tok.line, col: tok.col };
         }
-        const fields = [];
+        const firstIsStructField = at("name") && peek(1).type === "=";
+        if (at("}") || firstIsStructField) {
+          const fields = [];
+          while (!at("}") && !at("eof")) {
+            const fname = expect("name", "field name");
+            expect("=");
+            fields.push({ name: fname.value, expr: expression() });
+            if (at(",")) { next(); continue; }
+            break;
+          }
+          expect("}");
+          return { kind: "table", fields, line: tok.line, col: tok.col };
+        }
+        // array-style: a comma-separated list of positional values
+        const elements = [];
         while (!at("}") && !at("eof")) {
-          const fname = expect("name", "field name");
-          expect("=");
-          fields.push({ name: fname.value, expr: expression() });
+          elements.push(expression());
           if (at(",")) { next(); continue; }
           break;
         }
         expect("}");
-        return { kind: "table", fields, line: tok.line, col: tok.col };
+        return { kind: "arraytable", elements, line: tok.line, col: tok.col };
       }
       case "function": {
         error("anonymous functions are not supported (no closures); define a named function at top level", tok);

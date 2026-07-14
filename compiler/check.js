@@ -158,6 +158,40 @@ export function check(chunk, file) {
           });
           return;
         }
+        // constant array table: local levels = {1, 2, 3}. A fixed C array of
+        // its (constant) values - the read-only data-table idiom (palettes,
+        // level lists, lookup rows). Each element must fold to a constant here;
+        // a runtime value or a nested table is not a flat array we can emit.
+        if (init && init.kind === "arraytable") {
+          if (init.elements.length === 0) {
+            err(s, "empty array table {} has no size - use array(n) for a runtime-filled array");
+            return;
+          }
+          const vals = [];
+          let anyFixed = false, bad = null;
+          for (const el of init.elements) {
+            const v = constEval(el);
+            if (v === null) { bad = el; break; }
+            if (!Number.isInteger(v)) anyFixed = true;
+            vals.push(v);
+          }
+          if (bad) {
+            err(bad, "array table elements must be constants (a number, or arithmetic on numbers); " +
+                     "for a runtime-filled array use array(n) and assign in _init()");
+            return;
+          }
+          const allByte = !anyFixed && vals.every((v) => v >= 0 && v <= 255);
+          globals.set(name, {
+            kind: "array",
+            elemKind: anyFixed ? "fixed" : "int",
+            elemBytes: allByte,
+            size: vals.length,
+            initVal: 0,
+            initList: vals,
+            node: s,
+          });
+          return;
+        }
         const cv = init === null ? 0 : constEval(init);
         if (init !== null && cv === null) {
           err(s, `top-level 'local ${name}' must be initialized with a constant expression ` +
@@ -810,6 +844,10 @@ export function check(chunk, file) {
         }
         case "table":
           err(e, "table literals are only allowed inside add(pool, {...})");
+          return "int";
+        case "arraytable":
+          err(e, "an array table {1, 2, 3} is only allowed as a top-level constant " +
+                 "('local levels = {1, 2, 3}'); it becomes a fixed read-only C array");
           return "int";
         case "string":
           if (!e.inPrint) err(e, "strings can only be used in print() for now");

@@ -113,6 +113,17 @@ test("button glyphs lex as indices", () => {
   assert.match(c, /gt_rpt0 & 4096u/);
 });
 
+test("constant array table {1,2,3} becomes a fixed C array", () => {
+  const c = cOf("local colors = {1, 2, 3, 4}\nlocal r = 0\nfunction _update60()\n  r = colors[1]\nend\nfunction _draw()\nend\n");
+  assert.match(c, /unsigned char gtl_colors\[4\] = \{\s*1, 2, 3, 4\s*\}/);
+  assert.match(c, /gtl_r = gtl_colors\[0\]/);   // colors[1] folds to [0]
+});
+
+test("array table with fractional values is a fixed array", () => {
+  const c = cOf("local spd = {0.5, 1.5, 2.0}\nlocal r = 0\nfunction _update60()\n  r = spd[1]\nend\nfunction _draw()\nend\n");
+  assert.match(c, /long gtl_spd\[3\] = \{\s*32768L, 98304L, 131072L\s*\}/);
+});
+
 test("array8 declares byte elements and reads back as ints", () => {
   const c = cOf("local a = array8(16)\nlocal r = 0\nfunction _update60()\n  a[1] = 200\n  r = a[1] + 100\nend\nfunction _draw()\nend\n");
   assert.match(c, /unsigned char gtl_a\[16\];/);
@@ -360,9 +371,10 @@ const CASES = [
   ["nil", LOOP + "local z = nil\n", /nil is not supported/],
   ["strings outside print", LOOP + 'local q = 0\nfunction f()\n  q = "hi"\nend\n', /only be used in print/],
   ["closures", "function _update60()\n  function inner() end\nend\nfunction _draw()\nend\n", /no closures/],
-  ["array-style table", LOOP + "local q = 0\nfunction f()\n  q = {1, 2, 3}\nend\n", /array-style tables/],
+  ["array table off top level", LOOP + "local q = 0\nfunction f()\n  q = {1, 2, 3}\nend\n", /only allowed as a top-level constant/],
+  ["array table with a runtime value", "local n = 0\nlocal q = {1, n, 3}\n" + LOOP, /elements must be constants/],
   ["computed-key table", LOOP + "local q = 0\nfunction f()\n  q = {[0]=1}\nend\n", /computed-key tables/],
-  ["table of tables", LOOP + "local q = 0\nfunction f()\n  q = { {x=1}, {x=2} }\nend\n", /array-style tables/],
+  ["table of tables (nested)", "local q = { {1,2}, {3,4} }\n" + LOOP, /elements must be constants/],
   ["int condition", "local x = 1\nfunction _update60()\n  if x then\n    x = 0\n  end\nend\nfunction _draw()\nend\n", /conditions must be boolean/],
   ["undeclared assignment", "function _update60()\n  y = 1\nend\nfunction _draw()\nend\n", /not declared.*no implicit globals/],
   ["'or' value idiom", LOOP + "local a = 1\nlocal b = 2\nfunction f()\n  a = a or b\nend\n", /needs boolean operands/],
@@ -388,8 +400,8 @@ for (const [name, src, re] of CASES) {
 const RECOVERY = [
   ["multiple return", "function f()\n  return 1, 2, 3\nend\n" + LOOP, /multiple return values/],
   ["goto label ::continue::", LOOP + "function f()\n  ::continue::\n  goto continue\nend\n", /goto is not supported/],
-  ["array table then more code",
-    LOOP + "local a = 0\nlocal b = 0\nfunction f()\n  a = {1,2,3}\n  b = 7\nend\n", /array-style tables/],
+  ["array table off top level then more code",
+    LOOP + "local a = 0\nlocal b = 0\nfunction f()\n  a = {1,2,3}\n  b = 7\nend\n", /only allowed as a top-level constant/],
 ];
 for (const [name, src, re] of RECOVERY) {
   test(`recovery: ${name} yields few errors`, () => {
