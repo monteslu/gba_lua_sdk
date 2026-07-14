@@ -134,6 +134,13 @@ test("array table with fractional values is a fixed array", () => {
   assert.match(c, /long gtl_spd\[3\] = \{\s*32768L, 98304L, 131072L\s*\}/);
 });
 
+test("map() draws the imported tilemap; mget() reads a cell", () => {
+  const c = cOf("local __p8map = hexdata(\"01020304\")\nfunction _update60()\nend\n" +
+                "function _draw()\n  cls()\n  map(0, 0, 0, 0, 16, 4)\n  local t = mget(2, 0)\nend\n");
+  assert.match(c, /gt_p8_map\(gtl___p8map, 128, 0, 0, 0, 0, 16, 4\)/);
+  assert.match(c, /gtl___p8map\[.*128.*2/);   // mget(2,0) -> [0*128+2]
+});
+
 test("multiple assignment to struct fields (o.x, o.y = a, b)", () => {
   const c = cOf("local objs = pool(8)\nfunction _init()\n  add(objs, {x=0, y=0})\nend\n" +
                 "function _update60()\n  for o in all(objs) do\n    o.x, o.y = o.x + 1, o.y + 2\n  end\nend\nfunction _draw()\nend\n");
