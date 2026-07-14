@@ -1147,6 +1147,53 @@ void gt_p8_pset_z(void) {
     gt_p8_rectfill_z();
 }
 
+/* PICO-8 pget(x,y): read the framebuffer pixel color (a raw GameTank byte). The
+ * framebuffer is directly CPU-readable at $4000 | (y<<7) | x; drain any pending
+ * blits first so we see the finished frame, not a mid-queue state. Off-screen
+ * reads return 0 (PICO-8's out-of-bounds behavior). */
+int gt_p8_pget(int x, int y) {
+    if (x < 0 || x > 127 || y < 0 || y > 127) return 0;
+    await_drawing();
+    return vram[((unsigned int)y << 7) | (unsigned int)x];
+}
+
+/* PICO-8 print(v) / print(v,c) cursor form: no x,y - print at the running text
+ * cursor (starts 0,0), then advance one line (6px) and wrap at the bottom. This
+ * is the minimal faithful cursor; PICO-8's is the same shape (auto-advance down,
+ * scroll at the bottom - we wrap instead of scroll, close enough for HUD/debug). */
+static int gt_cursor_x = 0;
+static int gt_cursor_y = 0;
+static void gt_cursor_advance(void) {
+    gt_cursor_y += 6;
+    if (gt_cursor_y > 122) gt_cursor_y = 0;
+}
+int gt_p8_print_cur_int(int v, int c) {
+    int r = gt_p8_print_int(v, gt_cursor_x, gt_cursor_y, c);
+    gt_cursor_advance();
+    return r;
+}
+int gt_p8_print_cur_num(long v, int c) {
+    int r = gt_p8_print_num(v, gt_cursor_x, gt_cursor_y, c);
+    gt_cursor_advance();
+    return r;
+}
+int gt_p8_print_cur_str(const char *s, int c) {
+    int r = gt_p8_print(s, gt_cursor_x, gt_cursor_y, c);
+    gt_cursor_advance();
+    return r;
+}
+
+/* PICO-8 run()/reset(): restart the cart from power-on. Jumping to the crt0
+ * reset entry (_init, the STARTUP label - NOT the game's _init callback, which
+ * mangles to gtl__init) re-runs zerobss + copydata (so every top-level
+ * initializer returns to its fresh value) and re-enters main(). This is a full
+ * reset, matching PICO-8's run() - the game's own _init() alone would leave
+ * top-level globals and runtime state stale. Never returns. */
+void __fastcall__ _init(void);   /* the crt0 STARTUP entry (crt0.s) */
+void gt_p8_run(void) {
+    __asm__("jmp _init");
+}
+
 
 #ifdef GT_STARFIELD
 /* ---- parallax starfield ----------------------------------------------------

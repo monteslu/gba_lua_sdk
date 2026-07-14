@@ -446,6 +446,11 @@ export function emit(chunk, symbols, file, opts = {}) {
       case "bnot": return cv(`(~${expr(e.expr, "fixed")})`, "fixed", want);
       case "not": return `(!${expr(e.expr, "bool")})`;
       case "call": {
+        if (e.rndList) {
+          // rnd({a,b,c}) -> pick a random element of the hidden const array
+          const rl = e.rndList;
+          return cv(`${mangle(rl.name)}[gt_p8_rnd_int(${rl.len})]`, rl.kind, want);
+        }
         if (want === "int") {
           const ri = rndIntForm(e);
           if (ri) return ri;    // int-context rnd(n): skip the fixed multiply
@@ -892,6 +897,16 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (!b) return "0";
 
     if (b.special === "print") {
+      if (e.cursorForm) {
+        // print(v) / print(v, color) - no x,y, uses the running cursor
+        const c = e.args[1] ? argAt(e, 1, "color") : "-1";
+        if (e.printKind === "str") {
+          const esc = String(e.args[0].value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+          return `gt_p8_print_cur_str("${esc}", ${c})`;
+        }
+        if (e.args[0].tk === "int") return `gt_p8_print_cur_int(${expr(e.args[0], "int")}, ${c})`;
+        return `gt_p8_print_cur_num(${expr(e.args[0], "fixed")}, ${c})`;
+      }
       const x = expr(e.args[1], "int");
       const y = expr(e.args[2], "int");
       // color must be baked p8-index -> GT byte, same as every draw builtin

@@ -34,6 +34,14 @@ export const BUILTINS = {
   // optional in PICO-8 (default 0,0,0,0,128,32-ish); we require none.
   map:      { params: [["int", true], ["int", true], ["coord", true], ["coord", true], ["int", true], ["int", true]], ret: "void", special: "map" },
   mget:     { params: [["int", false], ["int", false]], ret: "int", special: "mget" },
+  // PICO-8 pget(x,y): read a framebuffer pixel (raw GameTank color byte).
+  pget:     { params: [["coord", false], ["coord", false]], ret: "int", c: "gt_p8_pget" },
+  // run()/reset() restart the cart from power-on: a full crt0 reset that reruns
+  // copydata (restores every top-level initializer), zeroes BSS, and re-enters
+  // main() - not just the game's _init(), which would leave top-level state and
+  // the runtime stale. gt_p8_run() jumps to the reset entry (never returns).
+  run:      { params: [], ret: "void", c: "gt_p8_run" },
+  reset:    { params: [], ret: "void", c: "gt_p8_run" },
   // PICO-8 sspr(sx,sy,sw,sh, dx,dy, [dw,dh], [flip_x,flip_y]): scaled sheet blit.
   // dw/dh default to sw/sh (unscaled). Software nearest-neighbor, rounded to an
   // integer scale and cached in GRAM (see gt_p8_sspr). flips pack into one arg.

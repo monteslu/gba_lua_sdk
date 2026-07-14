@@ -21,6 +21,7 @@ export function check(chunk, file) {
   const functions = new Map(); // name -> {params:[names], paramKinds:[], ret, retKind, node}
   let reporting = true;        // pass 1 runs once: report; fixpoint passes: quiet
   let changed = false;         // fixpoint tracker
+  let rndListSeq = 0;          // unique names for rnd({...}) const lists
 
   const err = (node, msg) => {
     if (reporting) diagnostics.push({ file, line: node?.line ?? 0, col: node?.col ?? 0, severity: "error", message: msg });
@@ -322,6 +323,16 @@ export function check(chunk, file) {
         }
         case "assign": {
           if (s.target.kind === "member") {
+            // a `p.field = ...` write to a pool element auto-declares the field
+            // if it wasn't seen in an add(pool, {...}) literal (PICO-8 carts set
+            // fields freely; the pool learns them from any write).
+            if (s.target.object.kind === "name") {
+              const osym = lookup(s.target.object.name);
+              if (osym && osym.poolBinding && !osym.poolBinding.fields.has(s.target.field)) {
+                osym.poolBinding.fields.set(s.target.field, { kind: "int" });
+                changed = true;
+              }
+            }
             const mt = typeOf(s.target);   // annotates poolField or errors
             if (s.value.kind === "nil") s.value.okSentinel = true;   // field = nil -> sentinel
             const vt = typeOf(s.value);
@@ -607,23 +618,26 @@ export function check(chunk, file) {
         for (const f of t.fields) {
           const fk = typeOf(f.expr);
           if (fk === "bool") err(f.expr, "pool fields are numbers (store 0/1)");
-          const slot = pl.fields.get(f.name);
-          if (slot) {
+          let slot = pl.fields.get(f.name);
+          if (!slot) {
+            // union model: an add() field not yet on the pool registers it (the
+            // pool holds every field any add() or p.field write uses; omitted
+            // fields just default to 0).
+            slot = { kind: "int" };
+            pl.fields.set(f.name, slot);
+            changed = true;
+          }
+          {
             const cvv = constEval(f.expr);
             if (!(Number.isInteger(cvv) && cvv >= 0 && cvv <= 255)) slot.notByte = true;
           }
-          if (!slot) {
-            err(call, `field '${f.name}' is not in pool '${call.args[0].name}' ` +
-                      `(the first add() froze its fields: ${[...pl.fields.keys()].join(", ")})`);
-          } else if (fk === "fixed" && slot.kind !== "fixed") {
+          if (fk === "fixed" && slot.kind !== "fixed") {
             slot.kind = "fixed";
             changed = true;
           }
           seen.add(f.name);
         }
-        for (const fname of pl.fields.keys()) {
-          if (!seen.has(fname)) err(call, `add() is missing field '${fname}'`);
-        }
+        /* fields the pool has but this add() omits default to 0 - no error */
         call.poolSym = pl;
         return "void";
       }
@@ -711,13 +725,20 @@ export function check(chunk, file) {
       }
       if (b && b.special === "print") {
         call.sig = b;
-        if (call.args.length < 3 || call.args.length > 4) {
-          err(call, "print(value, x, y, [color]) takes 3-4 arguments (cursor form not supported yet)");
+        if (call.args.length < 1 || call.args.length > 4) {
+          err(call, "print takes 1-4 arguments: print(v), print(v,c), or print(v,x,y,[c])");
         }
+        // 1-2 args = cursor form (no x,y): print(v) or print(v, color)
+        call.cursorForm = call.args.length <= 2;
         if (call.args[0] && call.args[0].kind === "string") call.args[0].inPrint = true;
         const t0 = call.args[0] ? typeOf(call.args[0]) : "int";
         call.printKind = t0 === "str" ? "str" : "num";
         if (t0 === "bool") err(call.args[0], "cannot print a boolean");
+        if (call.cursorForm) {
+          // the optional 2nd arg is the COLOR
+          if (call.args[1]) { const tc = typeOf(call.args[1]); if (tc === "bool" || tc === "str") err(call.args[1], "print color must be a number"); }
+          return "int";
+        }
         call.args.slice(1).forEach((a) => {
           const t = typeOf(a);
           if (t === "bool" || t === "str") err(a, "print coordinates/color must be numbers");
@@ -727,6 +748,31 @@ export function check(chunk, file) {
       if (b && (b.special === "add" || b.special === "del")) {
         call.sig = b;
         return addDelType(call, b.special, asStatement);
+      }
+      // rnd({a,b,c}) - PICO-8 "pick a random element". The list must be constant;
+      // we materialize it as a hidden top-level const array and emit a random
+      // index into it. (rnd of a plain number stays the normal builtin below.)
+      if (callee.name === "rnd" && call.args.length === 1 && call.args[0].kind === "arraytable") {
+        if (call.rndList) return call.rndList.kind;   // already built (fixpoint re-pass)
+        const el = call.args[0].elements;
+        const vals = [];
+        let anyFixed = false, bad = null;
+        for (const e2 of el) {
+          const v = constEval(e2);
+          if (v === null) { bad = e2; break; }
+          if (!Number.isInteger(v)) anyFixed = true;
+          vals.push(v);
+        }
+        if (el.length === 0) { err(call, "rnd({}) has no elements to pick from"); return "int"; }
+        if (bad) { err(bad, "rnd({...}) needs a constant list of numbers"); return "int"; }
+        const nm = `__rndlist${rndListSeq++}`;
+        const allByte = !anyFixed && vals.every((v) => v >= 0 && v <= 255);
+        globals.set(nm, {
+          kind: "array", elemKind: anyFixed ? "fixed" : "int", elemBytes: allByte,
+          size: vals.length, initVal: 0, initList: vals, node: call,
+        });
+        call.rndList = { name: nm, len: vals.length, kind: anyFixed ? "fixed" : "int" };
+        return anyFixed ? "fixed" : "int";
       }
       if (b) {
         if (b.audio) { usesAudio.flag = true; usesMusic.flag = true; }
@@ -863,10 +909,13 @@ export function check(chunk, file) {
           if (e.object.kind === "name") {
             const sym = lookup(e.object.name);
             if (sym && sym.poolBinding) {
-              const fl = sym.poolBinding.fields.get(e.field);
+              let fl = sym.poolBinding.fields.get(e.field);
               if (!fl) {
-                err(e, `pool has no field '${e.field}'`);
-                return "int";
+                // auto-declare an unseen field (PICO-8 carts read/write pool
+                // fields freely; the pool takes the union of all fields used).
+                fl = { kind: "int" };
+                sym.poolBinding.fields.set(e.field, fl);
+                changed = true;
               }
               e.poolField = { pool: sym.poolBinding, field: e.field, forall: sym.forall };
               return fl.kind;

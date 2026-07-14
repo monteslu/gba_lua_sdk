@@ -210,6 +210,11 @@ void gt_gtm2_stop(void);
 void gt_p8_spr(int n, int x, int y, int w, int h, int flip);
 void gt_p8_map(unsigned char *map, int mapw, int cx, int cy, int sx, int sy, int cw, int ch);
 void gt_p8_sspr(int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh, int flip);
+int gt_p8_pget(int x, int y);
+void gt_p8_run(void);
+int gt_p8_print_cur_int(int v, int c);
+int gt_p8_print_cur_num(long v, int c);
+int gt_p8_print_cur_str(const char *s, int c);
 
 /* PCM audio path (gt_pcm.c) - bit-exact sample playback via the ACP PCM
  * firmware. Only linked when the game calls pcm_init(). */

@@ -46,13 +46,24 @@ test("!= is ~=", () => {
 });
 
 test("paren-less string call desugars to a normal call", () => {
-  // sugar for f("hi") - PICO-8 idiom, "trivial grammar, heavily used". The
-  // grammar must produce the SAME AST as the parenthesized form, so both spell
-  // the identical diagnostic (here: print's cursor form isn't supported yet).
+  // sugar for f("hi") - PICO-8 idiom. The grammar must produce the SAME AST as
+  // the parenthesized form. print("hi") is now the valid cursor form, so both
+  // print"hi" and print("hi") compile identically (0 errors).
   const bare = errorsOf('function _update60()\nend\nfunction _draw()\n  print"hi"\nend\n');
   const paren = errorsOf('function _update60()\nend\nfunction _draw()\n  print("hi")\nend\n');
   assert.deepEqual(bare, paren);
-  assert.ok(bare.length > 0);
+  // an undefined paren-less call still desugars and yields the SAME diagnostic
+  const b2 = errorsOf('function _update60()\n  nope"x"\nend\nfunction _draw()\nend\n');
+  const p2 = errorsOf('function _update60()\n  nope("x")\nend\nfunction _draw()\nend\n');
+  assert.deepEqual(b2, p2);
+  assert.ok(b2.length > 0);
+});
+
+test("print cursor form: print(v) and print(v, color) compile", () => {
+  const c = cOf('local n = 5\nfunction _update60()\nend\nfunction _draw()\n  print(n)\n  print(n, 8)\n  print("hi")\nend\n');
+  assert.match(c, /gt_p8_print_cur_int\(gtl_n, -1\)/);   // print(n)
+  assert.match(c, /gt_p8_print_cur_int\(gtl_n, /);        // print(n, color)
+  assert.match(c, /gt_p8_print_cur_str\("hi", -1\)/);     // print("hi")
 });
 
 test("long string [[ ... ]] lexes as a string", () => {
