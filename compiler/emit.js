@@ -111,8 +111,13 @@ const BANK_SEGMENTS = {
   b0: ["B0CODE", "B0RODATA"],
   b1: ["B1CODE", "B1RODATA"],
   b2: ["B2CODE", "B2RODATA"],
+  // XL spill banks (bank 3 is the audio unit's private bank, so code spills to
+  // 4/5). Only used when the placer escalates to the XL layout; a 3-bank cart
+  // never places a function here.
+  b4: ["B4CODE", "B4RODATA"],
+  b5: ["B5CODE", "B5RODATA"],
 };
-const BANK_NUMBER = { b0: 0, b1: 1, b2: 2 };
+const BANK_NUMBER = { b0: 0, b1: 1, b2: 2, b4: 4, b5: 5 };
 
 // Draw builtins with a zero-page fastcall entry point (sdk/gt_blitq.s owns
 // the gt_a* slots; gt_api.h declares the _z functions).
@@ -1536,7 +1541,7 @@ export function emit(chunk, symbols, file, opts = {}) {
           throw new Error(`hexdata '${name}' is read from functions in different banks (${[...rbanks].join(", ")}) - banked blobs need a single home; wrap the reads in one function`);
         }
         const home = banked ? ([...rbanks].find((b) => b !== "fixed") ?? "fixed") : "fixed";
-        const seg = { b0: "B0RODATA", b1: "B1RODATA", b2: "B2RODATA", b3: "B3RODATA" }[home];
+        const seg = { b0: "B0RODATA", b1: "B1RODATA", b2: "B2RODATA", b3: "B3RODATA", b4: "B4RODATA", b5: "B5RODATA" }[home];
         const rows = [];
         for (let k = 0; k < g.hexdata.length; k += 16) {
           rows.push("    " + g.hexdata.slice(k, k + 16).map((b) => "0x" + b.toString(16).padStart(2, "0")).join(", "));
@@ -1629,7 +1634,7 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (bankOf(s.name) === "fixed") emitFunction(s);
   }
   if (banked) {
-    for (const bank of ["b0", "b1", "b2"]) {
+    for (const bank of ["b0", "b1", "b2", "b4", "b5"]) {
       const group = fnStmts.filter((s) => bankOf(s.name) === bank);
       if (!group.length) continue;
       const [codeSeg, rodataSeg] = BANK_SEGMENTS[bank];

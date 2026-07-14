@@ -86,6 +86,9 @@ function runLink(env, tool, args) {
 const MAP_SEG_BIN = {
   B0CODE: "b0", B0RODATA: "b0", B1CODE: "b1", B1RODATA: "b1",
   B2CODE: "b2", B2RODATA: "b2", SHEET: "b2",
+  // XL spill code banks (b3 is audio, never a game bin). Empty of SDK, so their
+  // sdkLoad sums to 0 and they get full 16KB-margin capacity in the model.
+  B4CODE: "b4", B4RODATA: "b4", B5CODE: "b5", B5RODATA: "b5",
   CODE: "fixed", RODATA: "fixed", DATA: "fixed",
 };
 function sdkLoadFromMap(env, mapPath) {
@@ -93,8 +96,8 @@ function sdkLoadFromMap(env, mapPath) {
   try { txt = env.readText(mapPath); } catch { return null; }
   const sec = txt.split("Modules list:")[1]?.split("Segment list:")[0];
   if (!sec) return null;
-  const load = { b0: 0, b1: 0, b2: 0, fixed: 0 };
-  const port = { b0: 0, b1: 0, b2: 0, fixed: 0 };
+  const load = { b0: 0, b1: 0, b2: 0, b4: 0, b5: 0, fixed: 0 };
+  const port = { b0: 0, b1: 0, b2: 0, b4: 0, b5: 0, fixed: 0 };
   let mod = null;
   for (const ln of sec.split("\n")) {
     // module headers: "path/foo.o:" AND library members "none.lib(bar.o):"
@@ -114,7 +117,7 @@ function sdkLoadFromMap(env, mapPath) {
 // ld65 measured - the ~2 bytes/line heuristic runs ~10% off, which is the
 // whole gap between converging and thrashing on carts at the capacity cliff
 function calibrateSizes(sizes, placement, realPort) {
-  const est = { b0: 0, b1: 0, b2: 0, fixed: 0 };
+  const est = { b0: 0, b1: 0, b2: 0, b4: 0, b5: 0, fixed: 0 };
   for (const [n, bin] of Object.entries(placement)) est[bin] += sizes.get(n) ?? 0;
   for (const [n, bin] of Object.entries(placement)) {
     if (!est[bin] || !realPort[bin]) continue;
@@ -378,6 +381,7 @@ function initialPlacement(callGraph) {
 
 // segment name -> placement bin
 const SEG_BIN = { B0CODE: "b0", B1CODE: "b1", B2CODE: "b2", CODE: "fixed", RODATA: "fixed", B0RODATA: "b0", B1RODATA: "b1", B2RODATA: "b2",
+  B4CODE: "b4", B4RODATA: "b4", B5CODE: "b5", B5RODATA: "b5",
   // a VECTORS overflow means the fixed window ran past its end
   VECTORS: "fixed", DATA: "fixed" };
 
@@ -449,7 +453,7 @@ function stubbedEdges(placement, callGraph, hot, depths) {
 // fixedHeadroom is the fixed-bank packing margin, owned by build() and passed
 // in (build rebinds it across the ladder rungs).
 function rebalance(env, placement, sizes, overflows, sheetBytes, callGraph, usesBg, usesAudio, usesMusic, usesAtlas, sdkLoad, fixedHeadroom) {
-  const bins = { b0: [], b1: [], b2: [], fixed: [] };
+  const bins = { b0: [], b1: [], b2: [], b4: [], b5: [], fixed: [] };
   for (const [name, bin] of Object.entries(placement)) bins[bin].push(name);
   const estUsed = (bin) => bins[bin].reduce((a, n) => a + (sizes.get(n) ?? 0), 0);
 
@@ -471,12 +475,17 @@ function rebalance(env, placement, sizes, overflows, sheetBytes, callGraph, uses
         b0: BANK_SIZE - BANK_MARGIN - sdkLoad.b0,
         b1: BANK_SIZE - BANK_MARGIN - sdkLoad.b1,
         b2: BANK_SIZE - BANK_MARGIN - sdkLoad.b2,
+        // XL spill banks: empty of SDK (sdkLoad.b4/b5 are 0), so full capacity
+        b4: BANK_SIZE - BANK_MARGIN - sdkLoad.b4,
+        b5: BANK_SIZE - BANK_MARGIN - sdkLoad.b5,
         fixed: BANK_SIZE - BANK_MARGIN - sdkLoad.fixed,
       }
     : { // first-attempt estimates (no map yet)
         b0: BANK_SIZE - BANK_MARGIN - (usesAudio ? 4400 : 0) - 3400,
         b1: BANK_SIZE - BANK_MARGIN - 1450,
         b2: BANK_SIZE - BANK_MARGIN - sheetBytes - B2_SDK_RESERVE,
+        b4: BANK_SIZE - BANK_MARGIN,
+        b5: BANK_SIZE - BANK_MARGIN,
         fixed: estUsed("fixed") + 2500,
       };
 
@@ -520,9 +529,11 @@ function rebalance(env, placement, sizes, overflows, sheetBytes, callGraph, uses
         .filter((n) => !CALLBACKS.has(n))
         .map((n) => {
           const size = sizes.get(n) ?? 0;
-          const target = ["b0", "b1", "b2"]
+          const pick = (bnks) => bnks
             .filter((t) => capacity[t] - estUsed(t) >= size)
             .sort((x, y) => stubDelta(n, x) - stubDelta(n, y))[0];
+          // base banks first; the XL spill banks only if none of them fit
+          const target = pick(["b0", "b1", "b2"]) ?? pick(["b4", "b5"]);
           return target ? { n, size, target, net: size - stubDelta(n, target) } : null;
         })
         .filter(Boolean)
@@ -590,11 +601,18 @@ function rebalance(env, placement, sizes, overflows, sheetBytes, callGraph, uses
       // move: our size estimates run ~10% light, and a model that vetoes on
       // its own arithmetic wedges the loop repeating the same overflow while
       // ld65 (the ground truth) keeps rejecting the link
-      const targets = ["b2", bin === "b0" ? "b1" : "b0", "fixed"]
+      // primary targets (the base 3-bank layout), roomiest first; then the XL
+      // spill banks b4/b5 as a fallback TAIL so a cart that fits the base layout
+      // never touches them (byte-identical placement) - they only receive a
+      // function when no base bank can. Pick the first target that FITS.
+      const primary = ["b2", bin === "b0" ? "b1" : "b0", "fixed"]
         .filter((t) => t !== bin && !(t === "fixed" && CALLBACKS.has(n)))
         .sort((x, y) => (capacity[y] - estUsed(y)) - (capacity[x] - estUsed(x)));
-      if (!targets.length) continue;
-      const target = targets[0];
+      const spill = ["b4", "b5"].filter((t) => t !== bin);
+      const ordered = [...primary, ...spill];
+      if (!ordered.length) continue;
+      const fitHead = (t) => (capacity[t] - estUsed(t)) >= sz + (t === "fixed" ? fixedHeadroom : 0);
+      const target = ordered.find(fitHead) ?? ordered[0];
       // fit-check the roomiest target, but keep scanning smaller candidates
       // rather than giving up: a too-big function is not a reason to wedge.
       // FIXED gets a safety margin: the estimates run light, and unlike the
@@ -1106,7 +1124,10 @@ export async function build(entry, opts, env) {
       if (sHit) env.writeFile(B("stubs.o"), sHit);
       else { as(B("stubs.s"), B("stubs.o")); stubObjMemo.set(sKey, env.readFile(B("stubs.o"))); }
       return runLink(env, "ld65", [
-        "-C", env.sdkFile("gametank_flash2m.cfg"),
+        // the XL cfg is a strict superset of the base FLASH2M layout (adds the
+        // optional B4/B5 code banks); using it always is safe - unused banks
+        // emit empty and the placer only spills into b4/b5 on overflow.
+        "-C", env.sdkFile("gametank_flash2m_xl.cfg"),
         "-o", B(`${name}.banks`),
         "-m", B(`${name}.map`),
         "-Ln", B(`${name}.lbl`), "--dbgfile", B(`${name}.dbg`),
@@ -1176,17 +1197,20 @@ export async function build(entry, opts, env) {
             b0: BANK_SIZE - BANK_MARGIN - mapNow.load.b0,
             b1: BANK_SIZE - BANK_MARGIN - mapNow.load.b1,
             b2: BANK_SIZE - BANK_MARGIN - mapNow.load.b2,
+            b4: BANK_SIZE - BANK_MARGIN - (mapNow.load.b4 || 0),
+            b5: BANK_SIZE - BANK_MARGIN - (mapNow.load.b5 || 0),
             fixed: BANK_SIZE - BANK_MARGIN - mapNow.load.fixed + stubLoad(),
           };
         }
         const SAFETY = 96;         // model-drift margin per bin
         const fitsModel = () => {
           if (!capB) return false; // unreadable map: accept nothing, change nothing
-          const used = { b0: 0, b1: 0, b2: 0, fixed: 0 };
+          const used = { b0: 0, b1: 0, b2: 0, b4: 0, b5: 0, fixed: 0 };
           for (const [fn, b] of Object.entries(workPlacement)) used[b] += sizes.get(fn) ?? 0;
           used.fixed += stubLoad();
           return used.b0 + SAFETY <= capB.b0 && used.b1 + SAFETY <= capB.b1 &&
-                 used.b2 + SAFETY <= capB.b2 && used.fixed + SAFETY <= capB.fixed;
+                 used.b2 + SAFETY <= capB.b2 && used.fixed + SAFETY <= capB.fixed &&
+                 used.b4 + SAFETY <= capB.b4 && used.b5 + SAFETY <= capB.b5;
         };
         const attempted = new Set();
         const depths0 = hotDepth(result.callGraph);
@@ -1230,7 +1254,7 @@ export async function build(entry, opts, env) {
                 if (da !== db) return db - da;
                 return (sizes.get(b2) ?? 0) - (sizes.get(a) ?? 0);
               });
-            const dests = ["b2", "b1", "b0", "fixed"].filter((d) => d !== best.target);
+            const dests = ["b2", "b1", "b0", "fixed", "b4", "b5"].filter((d) => d !== best.target);
             for (let i = 0; i < Math.min(6, cold.length) && !fitsModel(); i++) {
               applied.push([cold[i], workPlacement[cold[i]] ?? "fixed"]);
               workPlacement[cold[i]] = dests[i % dests.length];
@@ -1294,28 +1318,31 @@ export async function build(entry, opts, env) {
   if (!linked) fail("FLASH2M bank placement did not converge; last overflows: " +
     lastOverflows.map((o) => `${o.segment} over by ${o.bytes}`).join(", "));
 
-  // 5. lay the four 16 KB pieces into the 2 MB flash image:
-  //    bank n at n*0x4000, the fixed bank last (offset 0x1FC000)
+  // 5. lay the 16 KB pieces into the 2 MB flash image. The XL cfg emits, in
+  //    MEMORY order, BANK0..BANK5 then ROM (the fixed bank) = 7 pieces. Bank n
+  //    goes at n*0x4000; the fixed bank (last piece) goes to bank 127 (0x1FC000).
   const pieces = env.readFile(linked);
-  if (pieces.length !== 5 * BANK_SIZE) {
-    fail(`unexpected banked link output size ${pieces.length}`);
+  const XL_PIECES = 7;   // BANK0-5 + fixed
+  if (pieces.length !== XL_PIECES * BANK_SIZE) {
+    fail(`unexpected banked link output size ${pieces.length} (expected ${XL_PIECES * BANK_SIZE})`);
   }
   // Uint8Array (not Buffer) so build.js stays free of node globals - the
   // browser env has no Buffer. Same bytes: a 0xff-filled 2 MB flash image.
   const img = new Uint8Array(FLASH_SIZE).fill(0xff);
-  img.set(pieces.subarray(0 * BANK_SIZE, 1 * BANK_SIZE), 0x000000);
-  img.set(pieces.subarray(1 * BANK_SIZE, 2 * BANK_SIZE), 0x004000);
-  img.set(pieces.subarray(2 * BANK_SIZE, 3 * BANK_SIZE), 0x008000);
-  img.set(pieces.subarray(3 * BANK_SIZE, 4 * BANK_SIZE), 0x00C000);
-  img.set(pieces.subarray(4 * BANK_SIZE, 5 * BANK_SIZE), FLASH_SIZE - BANK_SIZE);
+  const nBanks = XL_PIECES - 1;   // switchable banks (the last piece is fixed)
+  for (let bk = 0; bk < nBanks; bk++) {
+    img.set(pieces.subarray(bk * BANK_SIZE, (bk + 1) * BANK_SIZE), bk * BANK_SIZE);
+  }
+  img.set(pieces.subarray(nBanks * BANK_SIZE, (nBanks + 1) * BANK_SIZE), FLASH_SIZE - BANK_SIZE);
   env.writeFile(gtr, img);
 
   // save the placement the successful link ACTUALLY used - the ladder rungs
   // rebind workPlacement, and saving the original seed object poisoned the
   // next build's starting point with a stale layout
   env.writeFile(B("banks.json"), JSON.stringify(workPlacement, null, 1));
-  const counts = { fixed: 0, b0: 0, b1: 0, b2: 0 };
+  const counts = { fixed: 0, b0: 0, b1: 0, b2: 0, b4: 0, b5: 0 };
   for (const b of Object.values(workPlacement)) counts[b]++;
+  const xl = counts.b4 || counts.b5 ? ` bank4:${counts.b4} bank5:${counts.b5}` : "";
   env.log(`${gtr} (${env.size(gtr)} bytes, FLASH2M; ` +
-    `functions fixed:${counts.fixed} bank0:${counts.b0} bank1:${counts.b1} bank2:${counts.b2})`);
+    `functions fixed:${counts.fixed} bank0:${counts.b0} bank1:${counts.b1} bank2:${counts.b2}${xl})`);
 }

@@ -713,8 +713,9 @@ export function check(chunk, file) {
         return "int";
       }
 
-      // builtins
-      const b = BUILTINS[callee.name];
+      // builtins - but a user-defined function of the same name WINS (a cart may
+      // define its own map/mget/etc.; the builtin must not shadow it).
+      const b = functions.has(callee.name) ? undefined : BUILTINS[callee.name];
       if (b && b.special === "array") {
         err(call, "array(n) is only allowed as a top-level initializer: 'local pool = array(16)'");
         return "int";
