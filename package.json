@@ -17,6 +17,11 @@
   "engines": {
     "node": ">=24"
   },
+  "dependencies": {
+    "romdev-maxmod": "0.1.0",
+    "romdev-platform-gba": "0.10.0",
+    "romdevtools": "0.93.0"
+  },
   "scripts": {
     "test": "node --test 'test/**/*.test.js'"
   }

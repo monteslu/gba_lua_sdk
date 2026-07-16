@@ -8,24 +8,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { createRequire } from "node:module";
+// romdev-maxmod (a dependency) is the pure-JS mmutil port.
+import { soundbankFromModule } from "romdev-maxmod";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-// romdev-maxmod is the pure-JS mmutil (lives in the romdev monorepo; we only
-// READ from it). Resolve it from romdev's node_modules / workspace.
-const require = createRequire(import.meta.url);
-let soundbankFromModule;
-const candidates = [
-  "romdev-maxmod",
-  join(process.env.HOME || "", "code/cliemu/romdev/packages/romdev-maxmod/src/index.js"),
-];
-for (const c of candidates) {
-  try { ({ soundbankFromModule } = await import(c)); break; } catch { /* try next */ }
-}
-if (!soundbankFromModule) {
-  throw new Error("could not load romdev-maxmod (the pure-JS mmutil). Ensure the romdev repo is at ~/code/cliemu/romdev.");
-}
 
 const xmBytes = readFileSync(join(__dirname, "music.xm"));
 // name 'chiptune' keeps the generated define MOD_CHIPTUNE = 0 so music(0) and
