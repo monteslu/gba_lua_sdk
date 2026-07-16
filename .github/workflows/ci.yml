@@ -1,0 +1,40 @@
+# CI: the SDK must stand alone — fresh checkout, registry deps, no romdev
+# server, no sibling checkouts. Tests + every example built end-to-end through
+# the in-process WASM toolchain (cc1-arm -> as -> ld -> objcopy).
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: unit tests
+        run: npm test
+
+      - name: build every example (in-process WASM toolchain, no server)
+        run: |
+          set -e
+          for ex in hello effects mode7 windows anim hwtest starfall showcase; do
+            args=""
+            [ "$ex" = "starfall" ] && args="--sheet examples/starfall/shmup_sheet.png"
+            [ "$ex" = "showcase" ] && args="--mode7 examples/showcase/plane.png"
+            [ -f "examples/$ex/plane.png" ] && [ "$ex" != "showcase" ] && args="--mode7 examples/$ex/plane.png"
+            echo "== $ex =="
+            node bin/gtlua.js build "examples/$ex/main.lua" $args -o "$RUNNER_TEMP/$ex.gba"
+            test -s "$RUNNER_TEMP/$ex.gba"
+          done
+
+      - name: soundbank determinism (regen must match committed bytes)
+        run: |
+          node assets/build_soundbank.mjs
+          git diff --exit-code -- assets/soundbank.bin assets/soundbank_ids.h

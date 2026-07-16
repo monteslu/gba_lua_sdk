@@ -59,16 +59,15 @@ colors) at runtime when you want more.
 ## Requirements
 
 - [Node.js](https://nodejs.org/) **24+**
-- the GBA toolchain from [`romdevtools`](https://www.npmjs.com/package/romdevtools)
-  — arm-gcc, libtonc, and maxmod, all **as WebAssembly**. No devkitPro, no
-  native tools to build or install.
+- **nothing else** — `npm install` brings the whole toolchain as dependencies:
+  arm-gcc + libtonc + maxmod, all **as WebAssembly** (via
+  [`romdevtools`](https://www.npmjs.com/package/romdevtools) /
+  `romdev-platform-gba`). No devkitPro, no native tools to build or install.
 
 The build runs the WASM toolchain in-process (`cc1-arm` → `as` → `ld` →
-`objcopy`). It finds `romdevtools` via the `$ROMDEVTOOLS` env var, an installed
-`romdevtools` package, or a sibling checkout; it can also talk to a running
-romdev server instead (`GBALUA_BACKEND=mcp`). See `compiler/build-gba.mjs`.
-Note: `npm install romdevtools` pulls romdev's full multi-platform suite (the
-GBA toolchain is ~58 MB of it); a leaner GBA-only package is planned.
+`objcopy`) — no server, no daemons. It can also talk to a running romdev
+server instead (`GBALUA_BACKEND=mcp`, faster for rapid rebuilds since the
+server keeps warm toolchain workers). See `compiler/build-gba.mjs`.
 
 ## The screen and the two rendering modes
 
