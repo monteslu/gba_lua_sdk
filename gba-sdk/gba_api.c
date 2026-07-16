@@ -1,4 +1,4 @@
-// gba_api.c — gba-lua runtime. Thin libtonc wrappers; the GBA hardware does the
+// gba_api.c — gbalua runtime. Thin libtonc wrappers; the GBA hardware does the
 // work, so this is glue, not an engine (no asm, no software rasterizers beyond
 // the small circle loop libtonc happens not to ship).
 //
@@ -52,7 +52,7 @@ static int affine_used;
 
 // ---- input latch -----------------------------------------------------------
 static u16 key_curr, key_prev;
-// gba-lua btn index -> KEY_ mask. PICO-8 order for 0-5 (LEFT/RIGHT/UP/DOWN/A/B),
+// gbalua btn index -> KEY_ mask. PICO-8 order for 0-5 (LEFT/RIGHT/UP/DOWN/A/B),
 // then the GBA's extra buttons: 6=L 7=R shoulders, 8=START 9=SELECT. All ten
 // physical GBA buttons are reachable (a menu needs both shoulders + select).
 #define BTN_COUNT 10

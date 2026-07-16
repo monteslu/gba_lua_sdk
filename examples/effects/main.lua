@@ -3,7 +3,7 @@
 -- fade-to-black then fade-to-white; press A to instead ghost the sprites
 -- (semi-transparent) over the scene. No per-pixel CPU — the PPU does it all.
 --
--- build: gtlua build --target gba examples/effects/main.lua \
+-- build: gbalua build --target gba examples/effects/main.lua \
 --          --sheet examples/effects/blob.png
 
 local t = 0

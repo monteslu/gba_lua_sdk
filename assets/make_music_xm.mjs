@@ -217,9 +217,9 @@ const drumInst = instrument("drum", noiseSample(128, 58), {
 
 // ── file header ─────────────────────────────────────────────────────
 const id = padStr("Extended Module: ", 17);
-const title = padStr("gba-lua theme      ", 20);
+const title = padStr("gbalua theme      ", 20);
 const marker = u8(0x1a);
-const tracker = padStr("gba-lua             ", 20);
+const tracker = padStr("gbalua             ", 20);
 const version = u16(0x0104);
 
 // song order: play the 4 patterns twice (0,1,2,3,0,1,2,3) → an 8-bar loop.

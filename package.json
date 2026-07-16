@@ -1,10 +1,10 @@
 {
-  "name": "gba-lua",
+  "name": "gbalua",
   "version": "0.1.0",
   "description": "Write Game Boy Advance games in a PICO-8-flavored Lua that compiles to native ARM.",
   "type": "module",
   "bin": {
-    "gba-lua": "bin/gtlua.js"
+    "gbalua": "bin/gbalua.js"
   },
   "exports": {
     "./compiler/index.js": "./compiler/index.js",

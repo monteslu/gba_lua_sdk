@@ -9,7 +9,7 @@
 // The classic uses: a spotlight/iris (reveal a box, hide the rest), a HUD panel
 // that only shows certain layers, or clipping blending to a region.
 //
-// gba-lua verbs (layer ids match gba_fx: 0..2 tiles, 3 text/HUD, 4 sprites):
+// gbalua verbs (layer ids match gba_fx: 0..2 tiles, 3 text/HUD, 4 sprites):
 //   window(x0,y0,x1,y1)          — SPOTLIGHT: show everything inside the box, hide
 //                                  everything outside. The one-call reveal/iris.
 //   window_inside(x0,y0,x1,y1, layers) — general win0: `layers` bitmask picks what
@@ -18,11 +18,11 @@
 //   window_off()                 — disable windowing (full screen back to normal).
 //
 // `layers` is a bitmask: bit0=BG0 bit1=BG1 bit2=BG2 bit3=text(BG3) bit4=sprites.
-// gba-lua exposes the handy constant ALL (=31) and per-name bits via win_layer().
+// gbalua exposes the handy constant ALL (=31) and per-name bits via win_layer().
 
 #include "gba_api.h"
 
-// gba-lua layer bitmask (bit L) -> GBA WIN_* bits. Our text layer is BG3 (bit 3),
+// gbalua layer bitmask (bit L) -> GBA WIN_* bits. Our text layer is BG3 (bit 3),
 // sprites are bit 4. The GBA bits happen to line up 1:1 (WIN_BG0..WIN_OBJ), so the
 // low 5 bits pass through; we just mask to them and always keep WIN_BLD on inside
 // so blending (fade/blend) still works within a window.

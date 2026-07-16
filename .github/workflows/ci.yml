@@ -30,7 +30,7 @@ jobs:
             [ "$ex" = "showcase" ] && args="--mode7 examples/showcase/plane.png"
             [ -f "examples/$ex/plane.png" ] && [ "$ex" != "showcase" ] && args="--mode7 examples/$ex/plane.png"
             echo "== $ex =="
-            node bin/gtlua.js build "examples/$ex/main.lua" $args -o "$RUNNER_TEMP/$ex.gba"
+            node bin/gbalua.js build "examples/$ex/main.lua" $args -o "$RUNNER_TEMP/$ex.gba"
             test -s "$RUNNER_TEMP/$ex.gba"
           done
 

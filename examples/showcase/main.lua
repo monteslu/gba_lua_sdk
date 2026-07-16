@@ -1,4 +1,4 @@
--- showcase: a scene-cycling tour of the gba-lua feature set.
+-- showcase: a scene-cycling tour of the gbalua feature set.
 -- Press L / R (shoulder buttons) to change scenes. The scene name is at the top.
 
 local scene = 0

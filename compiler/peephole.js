@@ -1,4 +1,4 @@
-// gtlua peephole optimizer - pattern rewrites over cc65-generated .s output.
+// gbalua peephole optimizer - pattern rewrites over cc65-generated .s output.
 //
 // cc65's own optimizer (-Osr) leaves classic slack on the table; this pass
 // runs between cc65 and ca65 on EVERY compiled C unit (game code and the SDK

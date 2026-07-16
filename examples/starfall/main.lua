@@ -1,10 +1,10 @@
--- STARFALL — a complete little shmup for the GBA, in gba-lua.
+-- STARFALL — a complete little shmup for the GBA, in gbalua.
 -- Move with the d-pad, fire with A. Clear all the invaders to win; don't let one
 -- reach the bottom or touch you. Uses: hardware tile starfield (scrolling),
 -- hardware sprites (ship/enemies/explosions), 8x8 bullet sprites, maxmod music +
 -- sfx, score/lives text, and win/lose states.
 --
--- build: gtlua build --target gba examples/starfall/main.lua \
+-- build: gbalua build --target gba examples/starfall/main.lua \
 --          --sheet examples/starfall/shmup_sheet.png --map examples/starfall/space_bg.png
 
 -- ---- state -----------------------------------------------------------------

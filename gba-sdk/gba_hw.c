@@ -2,7 +2,7 @@
 //
 // SAVE: the cart's battery-backed SRAM (0x0E000000, 64 KB) persists across power
 // cycles — high scores, unlocks, progress. SRAM is 8-bit-write ONLY (a 16/32-bit
-// store there corrupts), so we copy byte-by-byte. A gba-lua game keeps its state
+// store there corrupts), so we copy byte-by-byte. A gbalua game keeps its state
 // in an array8 and calls save(slot, arr)/load(slot, arr); each slot is a fixed
 // 1 KB region so slots never collide.
 //

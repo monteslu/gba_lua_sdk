@@ -9,7 +9,7 @@ The screen is **240×160**. You fill in three functions, and the GBA hardware do
 the heavy lifting (128 sprites, four scrolling layers, rotate/scale, blending).
 
 ```
-node bin/gtlua.js build --target gba main.lua --sheet gfx.png -o game.gba
+node bin/gbalua.js build --target gba main.lua --sheet gfx.png -o game.gba
 ```
 
 ---
@@ -177,7 +177,7 @@ Hardware DMA3 block copy/fill - far faster than a Lua loop for big buffers.
 
 | Call | What |
 |---|---|
-| `dma(dst,src,n)` | copy `n` 32-bit words `src`→`dst` (both gba-lua arrays) |
+| `dma(dst,src,n)` | copy `n` 32-bit words `src`→`dst` (both gbalua arrays) |
 | `dma_fill(dst,value,n)` | fill `n` words of `dst` with `value` |
 
 For an `array` (16.16) `n` = element count; for `array8` pass a word count (bytes/4).
@@ -344,14 +344,14 @@ end
 ## Assets & building
 
 ```sh
-node bin/gtlua.js build --target gba main.lua \
+node bin/gbalua.js build --target gba main.lua \
   --sheet sprites.png   \  # sprite art (PNG -> tiles)
   --map level.png       \  # a tilemap
   --mode7 plane.png     \  # an affine plane
   -o game.gba              # output ROM (use an absolute path)
 ```
 
-`node bin/gtlua.js c main.lua` prints the generated C for debugging.
+`node bin/gbalua.js c main.lua` prints the generated C for debugging.
 
 ---
 

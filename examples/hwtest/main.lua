@@ -14,7 +14,7 @@ function _init()
   hgradient(sky)                    -- install the per-line gradient
 
   -- restore persisted hi-score if present, else start fresh.
-  -- (gba-lua arrays are 1-indexed, PICO-8 style: st[1] is the first byte.)
+  -- (gbalua arrays are 1-indexed, PICO-8 style: st[1] is the first byte.)
   if load(0, st, 8) > 0 then
     hi = st[1] + st[2]*256
   else

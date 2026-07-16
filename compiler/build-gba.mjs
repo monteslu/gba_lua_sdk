@@ -1,6 +1,6 @@
-// build-gba.mjs — build a gba-lua game to a .gba ROM.
+// build-gba.mjs — build a gbalua game to a .gba ROM.
 //
-// Pipeline: Lua --(gba-lua compiler)--> GBA C, bundled with the gba_api.c runtime
+// Pipeline: Lua --(gbalua compiler)--> GBA C, bundled with the gba_api.c runtime
 // + the sprite art, then compiled/linked to a .gba by the romdev GBA toolchain
 // (arm-none-eabi-gcc + libtonc, all WASM: cc1-arm -> as -> ld -> objcopy).
 //
@@ -173,7 +173,7 @@ export async function buildGba(entryLua, outPath, opts = {}) {
   if (warnings.length) process.stderr.write(formatDiagnostics(warnings) + "\n");
   if (!res.ok) {
     const errs = res.diagnostics.filter((d) => d.severity === "error");
-    throw new Error("gba-lua: compile failed\n" + formatDiagnostics(errs));
+    throw new Error("gbalua: compile failed\n" + formatDiagnostics(errs));
   }
 
   // the runtime sources + headers that ship with the SDK
@@ -243,7 +243,7 @@ export async function buildGba(entryLua, outPath, opts = {}) {
   const forced = process.env.GBALUA_BACKEND;   // "local" | "mcp" | unset
   const toolsDir = forced === "mcp" ? null : resolveRomdevtools();
   if (forced === "local" && !toolsDir) {
-    throw new Error("gba-lua: GBALUA_BACKEND=local but romdevtools not found — set $ROMDEVTOOLS, `npm i romdevtools`, or keep a sibling romdev checkout.");
+    throw new Error("gbalua: GBALUA_BACKEND=local but romdevtools not found — set $ROMDEVTOOLS, `npm i romdevtools`, or keep a sibling romdev checkout.");
   }
   return toolsDir
     ? buildLocal({ toolsDir, sources, includes, maxmod, soundbankPath, outPath })
@@ -285,10 +285,10 @@ async function buildLocal({ toolsDir, sources, includes, maxmod, soundbankPath, 
 async function buildMcp({ sources, includes, maxmod, soundbankPath, outPath }) {
   const init = await rpc(null, {
     jsonrpc: "2.0", id: 1, method: "initialize",
-    params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "gba-lua", version: "1" } },
+    params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "gbalua", version: "1" } },
   });
   if (!init.sidOut) {
-    throw new Error(`gba-lua: no local romdevtools found AND no romdev server at ${MCP_URL}. Install romdevtools (or set $ROMDEVTOOLS), or start the server / set ROMDEV_URL.`);
+    throw new Error(`gbalua: no local romdevtools found AND no romdev server at ${MCP_URL}. Install romdevtools (or set $ROMDEVTOOLS), or start the server / set ROMDEV_URL.`);
   }
   const sid = init.sidOut;
   await rpc(sid, { jsonrpc: "2.0", method: "notifications/initialized" });

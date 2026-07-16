@@ -4,7 +4,7 @@
 --   d-pad up/down    : drive forward / back (in the direction you're facing)
 --   A / B            : zoom in / out
 --
--- build: gtlua build --target gba examples/mode7/main.lua --mode7 examples/mode7/plane.png
+-- build: gbalua build --target gba examples/mode7/main.lua --mode7 examples/mode7/plane.png
 
 local cx = 128        -- camera world position (center of the 256x256 plane)
 local cy = 128

@@ -1,4 +1,4 @@
-// gtlua parser - recursive descent, PICO-8-flavored Lua.
+// gbalua parser - recursive descent, PICO-8-flavored Lua.
 //
 // Dialect (PICO8.md): one-line `if (cond) stmt [else stmt]` / `while (cond)
 // stmt` shorthand (parens required, newline ends the body), `\` floor
@@ -431,7 +431,7 @@ export function parse(tokens, file) {
     if (at("^")) {
       const caret = next();
       const exp = unary();
-      // gtlua has no float pow; expand a CONSTANT small integer exponent into
+      // gbalua has no float pow; expand a CONSTANT small integer exponent into
       // repeated multiplication (x^2 -> x*x). This is the only ^ real carts use
       // (distance-squared, etc). Non-constant or big exponents stay an error.
       if (exp.kind === "number" && exp.isInt && exp.value >= 1 && exp.value <= 8) {
@@ -494,7 +494,7 @@ export function parse(tokens, file) {
       // whose fields are readable (pool fields are SoA arrays indexed by slot,
       // not a passable object). So this stays unsupported - see GTLUA_CORPUS_B.
       if (at(":")) {
-        error("method calls (a:b()) are not supported: gtlua has no objects to dispatch on - rewrite b as a top-level function b(a, ...) and call it directly");
+        error("method calls (a:b()) are not supported: gbalua has no objects to dispatch on - rewrite b as a top-level function b(a, ...) and call it directly");
         next();
         if (at("name")) next();
         continue;
@@ -513,7 +513,7 @@ export function parse(tokens, file) {
       case "true": next(); return { kind: "bool", value: true, line: tok.line, col: tok.col };
       case "false": next(); return { kind: "bool", value: false, line: tok.line, col: tok.col };
       case "nil":
-        // gtlua has no dynamic typing, but the nil-as-sentinel idiom
+        // gbalua has no dynamic typing, but the nil-as-sentinel idiom
         // (x = nil / x == nil / x != nil, where nil marks "empty/inactive") is
         // extremely common and DOES compile: nil becomes a reserved sentinel
         // value. check.js allows it only in those sentinel positions and rejects
@@ -533,14 +533,14 @@ export function parse(tokens, file) {
       }
       case "{": {
         next();
-        // Two table shapes gtlua understands:
+        // Two table shapes gbalua understands:
         //   struct: named fields, {x=1, y=2} -> a struct with fixed fields.
         //   array:  positional values, {1, 2, 3} -> a fixed C array (const data
         //           at top level; check.js validates the elements are constant).
         // Computed-key ([i]=v) tables are still a different data model we can't
         // represent - reject those with one clear error and skip to `}`.
         if (at("[")) {
-          error("computed-key tables ([k]=v) are not supported; gtlua tables are structs with named fields ({x=1, y=2}) or arrays ({1, 2, 3})", tok);
+          error("computed-key tables ([k]=v) are not supported; gbalua tables are structs with named fields ({x=1, y=2}) or arrays ({1, 2, 3})", tok);
           skipBalancedBrace();
           return { kind: "table", fields: [], line: tok.line, col: tok.col };
         }

@@ -1,6 +1,6 @@
-// gba_api.h — the gba-lua runtime surface (thin libtonc wrappers).
+// gba_api.h — the gbalua runtime surface (thin libtonc wrappers).
 //
-// The C the compiler emits calls into these. Every gba-lua builtin resolves to
+// The C the compiler emits calls into these. Every gbalua builtin resolves to
 // a gba_* symbol here (the emitter remaps the shared builtins table's gt_* names
 // to gba_*). This first slice covers the frame harness + cls + spr; the affine
 // sprite-handle API and the rest of the verb set land on top of this.
@@ -127,7 +127,7 @@ void gba_mode7_cam(long x, long y, long angle, long zoom); // per-frame camera o
 void gba_mode7_off(void);                                // hide the affine layer
 
 // ---- color effects (hardware blend unit — FREE, no per-pixel CPU) ----------
-// The GBA composites layers with an alpha/fade unit in the PPU. gba-lua exposes
+// The GBA composites layers with an alpha/fade unit in the PPU. gbalua exposes
 // it as two friendly verbs. `layer` ids: 0..2 tile BGs, 3 text/HUD, 4 sprites.
 // Amounts are PICO-8-style 0.0..1.0 in 16.16 fixed (like sin/parallax factors).
 void gba_blend(int layer, long alpha);  // blend(layer,a): draw layer at `a` opacity over the scene
@@ -170,7 +170,7 @@ unsigned int gba_realframes(void);   // realframes(): true 60 Hz frame count
 long gba_realsecs(void);             // realsecs(): elapsed real seconds (16.16)
 
 // ---- parity odds & ends (gba_more.c) ---------------------------------------
-// DMA bulk moves (DMA3): copy/fill n 32-bit words between gba-lua arrays.
+// DMA bulk moves (DMA3): copy/fill n 32-bit words between gbalua arrays.
 void gba_dma(void *dst, const void *src, int n);
 void gba_dma_fill(void *dst, int value, int n);
 // 16-bit direct-color bitmap (Mode 5, double-buffered 160x128, raw BGR555).

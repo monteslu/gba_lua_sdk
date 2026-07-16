@@ -7,7 +7,7 @@ with a lot more room: **128 hardware sprites, affine (rotate/scale) sprites, fou
 scrolling tile layers, Mode 7, windows, blend/fade, a real save chip, and module
 music.** Measured against PICO-8 v0.2.7.
 
-Build: `node bin/gtlua.js build --target gba main.lua --sheet gfx.png -o game.gba`
+Build: `node bin/gbalua.js build --target gba main.lua --sheet gfx.png -o game.gba`
 
 > **New to PICO-8?** This page maps the GBA SDK *against* PICO-8. If you don't
 > already know PICO-8, read [`CHEATSHEET.md`](CHEATSHEET.md) - the full reference
@@ -295,7 +295,7 @@ function _draw()
 end
 ```
 
-`node bin/gtlua.js build --target gba main.lua -o game.gba` → runs in mGBA and on
+`node bin/gbalua.js build --target gba main.lua -o game.gba` → runs in mGBA and on
 real hardware.
 
 ---

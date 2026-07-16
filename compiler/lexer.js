@@ -1,4 +1,4 @@
-// gtlua lexer - PICO-8-flavored Lua tokens.
+// gbalua lexer - PICO-8-flavored Lua tokens.
 //
 // Dialect notes (see PICO8.md):
 //  - `//` starts a comment (PICO-8/C style); `\` is floor division

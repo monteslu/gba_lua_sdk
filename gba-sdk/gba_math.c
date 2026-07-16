@@ -1,4 +1,4 @@
-// gba_math.c — the 16.16 fixed-point math runtime for gba-lua.
+// gba_math.c — the 16.16 fixed-point math runtime for gbalua.
 //
 // PICO-8 number model: 16.16 fixed point. On the ARM7TDMI these are cheap —
 // hardware multiply + fast divide — so fmul/fdiv are plain C with a 64-bit

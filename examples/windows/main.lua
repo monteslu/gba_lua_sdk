@@ -7,7 +7,7 @@
 -- The scene under the light is the Mode-7 affine plane, so you also see the
 -- window compose with another hardware effect.
 --
--- build: gtlua build --target gba examples/windows/main.lua --mode7 examples/windows/plane.png
+-- build: gbalua build --target gba examples/windows/main.lua --mode7 examples/windows/plane.png
 
 local wx = 120        -- spotlight center
 local wy = 80

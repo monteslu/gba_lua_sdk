@@ -1,4 +1,4 @@
-// gtlua compiler entry - source text in, C text (or diagnostics) out.
+// gbalua compiler entry - source text in, C text (or diagnostics) out.
 
 import { lex } from "./lexer.js";
 import { parse } from "./parser.js";
@@ -10,7 +10,7 @@ import { emit } from "./emit.js";
  */
 
 /**
- * Compile gtlua source to C.
+ * Compile gbalua source to C.
  * @param {string} source
  * @param {string} file name used in diagnostics
  * @param {object} [opts] - {banked:true, placement:{fnName:"fixed"|"b0"|"b1"|"b2"}}

@@ -1,4 +1,4 @@
-// gtlua builtin functions - the PICO-8 global API surface (v0.2 slice) plus
+// gbalua builtin functions - the PICO-8 global API surface (v0.2 slice) plus
 // the gt.* GameTank extras.
 //
 // Param kinds:
@@ -130,7 +130,7 @@ export const BUILTINS = {
   abg_cam:   { params: [["num", false], ["num", false], ["num", false], ["num", true]], ret: "void", c: "gba_abg_cam", gbaOnly: true },
   abg_off:   { params: [], ret: "void", c: "gba_abg_off", gbaOnly: true },
 
-  // ---- DMA bulk moves (DMA3 — fast block copy/fill of gba-lua arrays) ---------
+  // ---- DMA bulk moves (DMA3 — fast block copy/fill of gbalua arrays) ---------
   // dma(dst, src, n): copy n 32-bit words src->dst. dma_fill(dst, value, n): fill.
   // For `array` (16.16) n = element count; for array8 pass a word count (bytes/4).
   dma:      { params: [["array", false], ["array", false], ["int", false]], ret: "void", c: "gba_dma", gbaOnly: true },
@@ -225,7 +225,7 @@ export const BUILTINS = {
   cos:   { params: [["num", false]], ret: "fixed", c: "gt_fcos" },
   atan2: { params: [["num", false], ["num", false]], ret: "fixed", c: "gt_fatan2" },
 
-  // PICO-8 bitwise FUNCTION forms - exact aliases of the operators gtlua already
+  // PICO-8 bitwise FUNCTION forms - exact aliases of the operators gbalua already
   // has (a & b, a | b, ...). Carts use both spellings interchangeably. Emitted
   // as the operator, so zero runtime cost. band/bor/bxor/bnot on the raw bits;
   // shl/shr shift (shr = arithmetic >>, lshr = logical >>>).

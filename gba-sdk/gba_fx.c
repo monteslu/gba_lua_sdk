@@ -8,7 +8,7 @@
 //                  in alpha mode: out = top*eva + bot*evb.
 //   REG_BLDY     — the fade strength (ey, 0..16 == 0.0..1.0) for fade modes.
 //
-// gba-lua exposes this as two friendly verbs:
+// gbalua exposes this as two friendly verbs:
 //   blend(layer, alpha)  — make a layer semi-transparent over what's behind it.
 //   fade(amount, [white]) — darken (or whiten) the WHOLE screen; the transition
 //                           workhorse (level wipes, hit flashes, menu dims).
@@ -16,7 +16,7 @@
 
 #include "gba_api.h"
 
-// gba-lua layer ids -> BLDCNT layer bits. 0..2 = tile BGs, 3 = the text/HUD
+// gbalua layer ids -> BLDCNT layer bits. 0..2 = tile BGs, 3 = the text/HUD
 // layer (BG3), 4 = sprites (OBJ). Anything else -> nothing (safe no-op target).
 static u16 layer_bld_bit(int layer)
 {
@@ -42,7 +42,7 @@ static int fx_coeff(long amount16)
 
 // blend(layer, alpha): draw `layer` at `alpha` opacity (0.0 = invisible-ish,
 // 1.0 = solid) over everything behind it. The classic GBA see-through effect —
-// glass, ghosts, shadows, a dimmed UI panel over the game. `layer` is a gba-lua
+// glass, ghosts, shadows, a dimmed UI panel over the game. `layer` is a gbalua
 // layer id (0..2 tiles, 3 text, 4 sprites). alpha arrives as 16.16 fixed.
 //
 // Hardware: the layer is the "top" target at weight eva=alpha; EVERYTHING else
@@ -153,7 +153,7 @@ void gba_spr_col(int idx, int r, int g, int b)
 // a fire glow behind a HUD. The IRQ reads one table entry per line (cheap). The
 // table is an array of BGR555 colors (use gt.rgb / a color(...) helper); a game
 // fills it in Lua and passes it once.
-// the table is a gba-lua `array` (int, holding raw BGR555 color values 0..0x7FFF
+// the table is a gbalua `array` (int, holding raw BGR555 color values 0..0x7FFF
 // — a game fills it with rgb()/color numbers). NULL = off.
 static const int *hgrad_table;
 

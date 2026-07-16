@@ -1,4 +1,4 @@
-// gtlua semantic checker - scopes, arity, and the numeric-kind system.
+// gbalua semantic checker - scopes, arity, and the numeric-kind system.
 //
 // Numbers are PICO-8 16.16 fixed point semantically. The compiler tracks two
 // KINDS underneath: "int" (provably integral, 16-bit C int - fast on the
@@ -396,7 +396,7 @@ export function check(chunk, file) {
           }
           const sym = lookup(s.target.name);
           if (!sym) {
-            err(s, `'${s.target.name}' is not declared - gtlua has no implicit globals; ` +
+            err(s, `'${s.target.name}' is not declared - gbalua has no implicit globals; ` +
                    `declare it with 'local ${s.target.name} = ...'`);
             break;
           }
@@ -679,7 +679,7 @@ export function check(chunk, file) {
       const t = typeOf(e);
       if (t !== "bool") {
         err(e, "conditions must be boolean - PICO-8 Lua treats 0 as true but compiled C does not, " +
-               "so gtlua requires an explicit comparison (write 'x ~= 0' or 'x > 0')");
+               "so gbalua requires an explicit comparison (write 'x ~= 0' or 'x > 0')");
       }
     }
 
@@ -871,7 +871,7 @@ export function check(chunk, file) {
           const sym = lookup(e.name);
           if (!sym) {
             if (functions.has(e.name)) {
-              err(e, `'${e.name}' is a function - functions are not values in gtlua (no closures); call it`);
+              err(e, `'${e.name}' is a function - functions are not values in gbalua (no closures); call it`);
             } else if (BUILTINS[e.name]) {
               err(e, `'${e.name}' is a builtin function - call it: ${e.name}(...)`);
             } else if (e.name === "gt") {
@@ -969,7 +969,7 @@ export function check(chunk, file) {
       if (op === "and" || op === "or") {
         const lt = typeOf(e.left), rt = typeOf(e.right);
         if (lt !== "bool" || rt !== "bool") {
-          err(e, `'${op}' needs boolean operands (PICO-8's 'x or default' value idiom needs nil, which gtlua doesn't have)`);
+          err(e, `'${op}' needs boolean operands (PICO-8's 'x or default' value idiom needs nil, which gbalua doesn't have)`);
         }
         return "bool";
       }

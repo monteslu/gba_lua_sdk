@@ -45,7 +45,7 @@ end
 Build it to a `.gba` ROM:
 
 ```sh
-node bin/gtlua.js build examples/hello/main.lua -o hello.gba
+node bin/gbalua.js build examples/hello/main.lua -o hello.gba
 ```
 
 Then run `hello.gba` in [mGBA](https://mgba.io/) (or any GBA emulator), or flash
@@ -135,7 +135,7 @@ See **[docs/CHEATSHEET.md](docs/CHEATSHEET.md)** for every verb with signatures.
 (`compiler/png-tiles.mjs`). They're CLI flags on `build`:
 
 ```sh
-node bin/gtlua.js build --target gba mygame/main.lua \
+node bin/gbalua.js build --target gba mygame/main.lua \
   --sheet mygame/sprites.png --map mygame/level.png -o mygame/game.gba
 ```
 
@@ -190,7 +190,7 @@ importer (`png-tiles.mjs`) · `gba-sdk/` the C runtime (thin libtonc/maxmod
 wrappers: `gba_api.c` frame+sprites+input, `gba_bg.c` tile layers, `gba_mode7.c`,
 `gba_win.c`, `gba_fx.c` effects, `gba_sound.c`, `gba_hw.c` save+timer,
 `gba_text.c`, `gba_anim.c`, `gba_math.c`) · `assets/` the default soundbank +
-its generators · `bin/gtlua.js` CLI · `examples/`.
+its generators · `bin/gbalua.js` CLI · `examples/`.
 
 ## Docs
 

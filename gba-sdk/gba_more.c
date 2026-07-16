@@ -10,7 +10,7 @@
 
 // ---- DMA bulk moves (DMA3) -------------------------------------------------
 // dma(dst, src, n): copy n WORDS (the array element size) from src to dst using
-// DMA3 — far faster than a CPU loop for big buffers. Both are gba-lua arrays
+// DMA3 — far faster than a CPU loop for big buffers. Both are gbalua arrays
 // (int/16.16 => 32-bit words, or array8 => the runtime passes the byte pointer;
 // count is in the caller's element units, so it "just works" for either type).
 // dma_fill(dst, value, n): fill n words of dst with `value`.
@@ -92,7 +92,7 @@ void gba_flip15(void) { }
 //
 // Affine BGs use 8bpp tiles and a square map (16/32/64/128 tiles per side). The
 // game supplies tile pixels + palette + a map. To keep ONE simple verb, tiles and
-// palette come in as 8bpp bytes and BGR555 halfwords packed into gba-lua arrays;
+// palette come in as 8bpp bytes and BGR555 halfwords packed into gbalua arrays;
 // the map is an array8 of tile indices. Tiles -> char-block 0, map -> screen-block
 // 8 (past the text/BG char-blocks). Call abg_setup once, then abg_cam each frame.
 //

@@ -5,7 +5,7 @@
 --   middle : anim_pingpong() — bounces 0->3->0
 --   right  : anim_once()     — plays once on A, holds on the last frame
 --
--- build: gtlua build --target gba examples/anim/main.lua \
+-- build: gbalua build --target gba examples/anim/main.lua \
 --          --sheet examples/anim/critter.png --map examples/anim/bg.png
 
 function _init()

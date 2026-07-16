@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// gtlua CLI - compile a .lua game to a Game Boy Advance .gba ROM.
+// gbalua CLI - compile a .lua game to a Game Boy Advance .gba ROM.
 //
-//   gtlua build <main.lua> [--sheet sprites.png] [--map level.png] [--mode7 plane.png] [-o game.gba]
-//   gtlua c     <main.lua>                      print the generated C (debugging)
+//   gbalua build <main.lua> [--sheet sprites.png] [--map level.png] [--mode7 plane.png] [-o game.gba]
+//   gbalua c     <main.lua>                      print the generated C (debugging)
 //
 // The build lowers Lua -> C (compiler/) and hands the C + the gba-sdk/ runtime to
 // the bundled ARM toolchain (arm-gcc / libtonc / maxmod) via compiler/build-gba.mjs,
@@ -32,8 +32,8 @@ function compileLuaCli(entry) {
 }
 
 const USAGE =
-  "usage: gtlua build <main.lua> [--sheet sprites.png] [--map level.png] [--mode7 plane.png] [-o game.gba]\n" +
-  "       gtlua c     <main.lua>                      print the generated C (debugging)";
+  "usage: gbalua build <main.lua> [--sheet sprites.png] [--map level.png] [--mode7 plane.png] [-o game.gba]\n" +
+  "       gbalua c     <main.lua>                      print the generated C (debugging)";
 
 const [, , cmd, ...rest] = process.argv;
 
@@ -60,10 +60,10 @@ if (cmd === "build") {
   if (r.issues?.length) {
     for (const iss of r.issues) console.error(`${iss.severity ?? "error"}: ${iss.file ?? ""}:${iss.line ?? ""} ${iss.message}`);
   }
-  if (!r.ok) { if (r.log) console.error(r.log); fail("gba-lua: build failed"); }
+  if (!r.ok) { if (r.log) console.error(r.log); fail("gbalua: build failed"); }
   console.log(`${r.outPath} (GBA ROM)`);
 } else if (cmd === "c") {
-  if (!rest[0]) fail("usage: gtlua c <main.lua>");
+  if (!rest[0]) fail("usage: gbalua c <main.lua>");
   process.stdout.write(compileLuaCli(rest[0]).c);
 } else {
   fail(USAGE);
