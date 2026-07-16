@@ -2,14 +2,23 @@
 //
 // Pipeline: Lua --(gba-lua compiler)--> GBA C, bundled with the gba_api.c runtime
 // + the sprite art, then compiled/linked to a .gba by the romdev GBA toolchain
-// (arm-none-eabi-gcc + libtonc, all WASM). We delegate the C->ROM step to romdev
-// rather than re-implement the arm-gcc/libtonc link chain here — romdev already
-// does it correctly, and it's the project's build+run+inspect instrument anyway.
+// (arm-none-eabi-gcc + libtonc, all WASM: cc1-arm -> as -> ld -> objcopy).
 //
-// Requires the romdev server running (default http://127.0.0.1:7331/mcp).
+// TWO BACKENDS for the C->ROM step (same toolchain code either way, so the ROM
+// bytes are identical):
+//   local (default when available) — import romdevtools' buildGbaC() and run the
+//     WASM toolchain IN-PROCESS. No server needed. Resolved from, in order:
+//     $ROMDEVTOOLS (path to the romdevtools package dir), a normal npm install
+//     of `romdevtools`, or a sibling ../romdev/packages/romdevtools checkout.
+//   mcp — POST the sources to a running romdev server (default
+//     http://127.0.0.1:7331/mcp). The original path; still useful because the
+//     server keeps warm toolchain workers (faster for rapid rebuilds).
+// Force one with GBALUA_BACKEND=local|mcp.
 
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { compile, formatDiagnostics } from "./index.js";
 import { pngToSheet, pngToTilemap, pngToAffineMap } from "./png-tiles.mjs";
@@ -17,6 +26,23 @@ import { pngToSheet, pngToTilemap, pngToAffineMap } from "./png-tiles.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SDK_DIR = path.resolve(__dirname, "..", "gba-sdk");
 const MCP_URL = process.env.ROMDEV_URL || "http://127.0.0.1:7331/mcp";
+
+// Locate the romdevtools package for the in-process (no-server) backend.
+// Returns its package dir, or null (-> fall back to the MCP server).
+function resolveRomdevtools() {
+  // 1. explicit env override (a checkout or an installed package dir)
+  const envDir = process.env.ROMDEVTOOLS;
+  if (envDir && existsSync(path.join(envDir, "src", "toolchains", "gba-c", "gba-c.js"))) return envDir;
+  // 2. a normal npm install of `romdevtools`
+  try {
+    const require = createRequire(import.meta.url);
+    return path.dirname(require.resolve("romdevtools/package.json"));
+  } catch { /* not installed */ }
+  // 3. cliemu-workspace convenience: a sibling romdev checkout next to this repo
+  const sibling = path.resolve(__dirname, "..", "..", "romdev", "packages", "romdevtools");
+  if (existsSync(path.join(sibling, "src", "toolchains", "gba-c", "gba-c.js"))) return sibling;
+  return null;
+}
 
 async function rpc(sid, body) {
   const headers = { "Content-Type": "application/json", "Accept": "application/json, text/event-stream" };
@@ -174,17 +200,6 @@ export async function buildGba(entryLua, outPath, opts = {}) {
   // it rides a generated header both include (like gba_assets.h).
   const usesSound = /\bgba_music\b|\bgba_sfx\b/.test(res.c);
 
-  // MCP handshake
-  const init = await rpc(null, {
-    jsonrpc: "2.0", id: 1, method: "initialize",
-    params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "gba-lua", version: "1" } },
-  });
-  if (!init.sidOut) {
-    throw new Error(`gba-lua: could not reach the romdev server at ${MCP_URL}. Start it (see internal-romdev), or set ROMDEV_URL.`);
-  }
-  const sid = init.sidOut;
-  await rpc(sid, { jsonrpc: "2.0", method: "notifications/initialized" });
-
   const sources = { "main.c": res.c, "gba_api.c": apiC, "gba_math.c": mathC, "gba_bg.c": bgC, "gba_text.c": textC, "gba_fx.c": fxC, "gba_mode7.c": m7C, "gba_win.c": winC, "gba_anim.c": animC, "gba_hw.c": hwC, "gba_more.c": moreC };
   const includes = { "gba_api.h": apiH, "gba_math.h": mathH, "alien_sprite.h": alienH, "gba_sintab.h": sintabH, "gba_font.h": fontH };
 
@@ -193,16 +208,15 @@ export async function buildGba(entryLua, outPath, opts = {}) {
     `#ifndef GBA_CONFIG_H\n#define GBA_CONFIG_H\n${usesSound ? "#define GBA_HAVE_SOUND 1\n" : ""}#endif\n`;
 
   // sound: link maxmod + the soundbank when the game uses music()/sfx().
-  const buildExtra = {};
+  let maxmod = false;
+  let soundbankPath = null;
   if (usesSound) {
     sources["gba_sound.c"] = await rd("gba_sound.c");
-    // the default soundbank: romdev's bundled chiptune (MOD_CHIPTUNE = music 0).
-    // A game can override with its own soundbank later. romdev auto-emits the
-    // .incbin stub for a binaryInclude named "soundbank.bin" when maxmod is on.
-    const sbPath = path.resolve(SDK_DIR, "..", "assets", "soundbank.bin");
-    buildExtra.maxmod = true;
-    buildExtra.binaryIncludePaths = { "soundbank.bin": sbPath };
-    // the soundbank IDs header (MOD_CHIPTUNE etc.) for reference (not required to build).
+    // the default soundbank (MOD_CHIPTUNE = music 0). A game can override with
+    // its own soundbank later. The toolchain auto-emits the .incbin stub for a
+    // binaryInclude named "soundbank.bin" when maxmod is on.
+    maxmod = true;
+    soundbankPath = path.resolve(SDK_DIR, "..", "assets", "soundbank.bin");
   }
 
   // Asset conversion: --sheet foo.png -> real 4bpp sprite tiles, generated into
@@ -210,7 +224,7 @@ export async function buildGba(entryLua, outPath, opts = {}) {
   // falls back to the built-in alien. gba_assets.h is generated EVERY build so
   // both main.c and gba_api.c (separate TUs) see the same asset.
   includes["gba_assets.h"] = opts.sheetPath
-    ? await convertSheet(sid, path.resolve(opts.sheetPath), "sheet")
+    ? await convertSheet(null, path.resolve(opts.sheetPath), "sheet")
     : alienAssetsHeader();
 
   // --map level.png -> a background tilemap (deduped tiles + map) for map_show().
@@ -225,6 +239,65 @@ export async function buildGba(entryLua, outPath, opts = {}) {
     ? await convertMode7(path.resolve(opts.mode7Path))
     : emptyMode7Header();
 
+  // ---- backend dispatch ------------------------------------------------------
+  const forced = process.env.GBALUA_BACKEND;   // "local" | "mcp" | unset
+  const toolsDir = forced === "mcp" ? null : resolveRomdevtools();
+  if (forced === "local" && !toolsDir) {
+    throw new Error("gba-lua: GBALUA_BACKEND=local but romdevtools not found — set $ROMDEVTOOLS, `npm i romdevtools`, or keep a sibling romdev checkout.");
+  }
+  return toolsDir
+    ? buildLocal({ toolsDir, sources, includes, maxmod, soundbankPath, outPath })
+    : buildMcp({ sources, includes, maxmod, soundbankPath, outPath });
+}
+
+// ---- local backend: run the WASM toolchain in-process (no server) -----------
+// Imports the SAME buildGbaC() the romdev server uses, so ROM bytes are
+// byte-identical to the MCP path by construction. binaryIncludes travel as
+// Uint8Array (the native in-process contract — no base64 round-trip to get
+// wrong). Warm-up note: each CLI invocation compiles the tool WASM once
+// (cc1-arm is ~38 MB), so a one-shot build pays a small startup cost the warm
+// MCP server doesn't; the bytes are the same either way.
+async function buildLocal({ toolsDir, sources, includes, maxmod, soundbankPath, outPath }) {
+  const toolUrl = pathToFileURL(path.join(toolsDir, "src", "toolchains", "gba-c", "gba-c.js")).href;
+  const parseUrl = pathToFileURL(path.join(toolsDir, "src", "toolchains", "parse-errors.js")).href;
+  const [{ buildGbaC }, { parseBuildLog }] = await Promise.all([import(toolUrl), import(parseUrl)]);
+
+  const binaryIncludes = {};
+  if (maxmod && soundbankPath) {
+    binaryIncludes["soundbank.bin"] = new Uint8Array(await readFile(soundbankPath));
+  }
+
+  const r = await buildGbaC({
+    sources, headers: includes, binaryIncludes,
+    runtime: "libtonc", maxmod,
+  });
+  const issues = parseBuildLog(r.log || "");
+  const log = (r.log || "").slice(-4000);
+  if (!r.ok || !r.binary) return { ok: false, outPath: null, issues, log };
+
+  const abs = path.resolve(outPath);
+  await mkdir(path.dirname(abs), { recursive: true });
+  await writeFile(abs, r.binary);
+  return { ok: true, outPath: abs, issues, log };
+}
+
+// ---- mcp backend: POST the sources to a running romdev server ---------------
+async function buildMcp({ sources, includes, maxmod, soundbankPath, outPath }) {
+  const init = await rpc(null, {
+    jsonrpc: "2.0", id: 1, method: "initialize",
+    params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "gba-lua", version: "1" } },
+  });
+  if (!init.sidOut) {
+    throw new Error(`gba-lua: no local romdevtools found AND no romdev server at ${MCP_URL}. Install romdevtools (or set $ROMDEVTOOLS), or start the server / set ROMDEV_URL.`);
+  }
+  const sid = init.sidOut;
+  await rpc(sid, { jsonrpc: "2.0", method: "notifications/initialized" });
+
+  const buildExtra = {};
+  if (maxmod && soundbankPath) {
+    buildExtra.maxmod = true;
+    buildExtra.binaryIncludePaths = { "soundbank.bin": soundbankPath };
+  }
   const b = await rpc(sid, {
     jsonrpc: "2.0", id: 2, method: "tools/call",
     params: {
