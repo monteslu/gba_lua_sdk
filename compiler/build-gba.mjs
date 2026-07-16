@@ -6,19 +6,16 @@
 //
 // TWO BACKENDS for the C->ROM step (same toolchain code either way, so the ROM
 // bytes are identical):
-//   local (default when available) — import romdevtools' buildGbaC() and run the
-//     WASM toolchain IN-PROCESS. No server needed. Resolved from, in order:
-//     $ROMDEVTOOLS (path to the romdevtools package dir), a normal npm install
-//     of `romdevtools`, or a sibling ../romdev/packages/romdevtools checkout.
+//   local (default) — `import { buildGbaC } from "romdev-platform-gba"` (the
+//     package's own public entry since 0.11.0 — driver + WASM toolchain in one
+//     dep, the same pipeline the romdev server runs) and build IN-PROCESS.
 //   mcp — POST the sources to a running romdev server (default
-//     http://127.0.0.1:7331/mcp). The original path; still useful because the
-//     server keeps warm toolchain workers (faster for rapid rebuilds).
+//     http://127.0.0.1:7331/mcp). Still useful because the server keeps warm
+//     toolchain workers (faster for rapid rebuilds).
 // Force one with GBALUA_BACKEND=local|mcp.
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { compile, formatDiagnostics } from "./index.js";
 import {
@@ -34,21 +31,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SDK_DIR = path.resolve(__dirname, "..", "gba-sdk");
 const MCP_URL = process.env.ROMDEV_URL || "http://127.0.0.1:7331/mcp";
 
-// Locate the romdevtools package for the in-process (no-server) backend.
-// Returns its package dir, or null (-> fall back to the MCP server).
-function resolveRomdevtools() {
-  // 1. explicit env override (a checkout or an installed package dir)
-  const envDir = process.env.ROMDEVTOOLS;
-  if (envDir && existsSync(path.join(envDir, "src", "toolchains", "gba-c", "gba-c.js"))) return envDir;
-  // 2. a normal npm install of `romdevtools`
+// The in-process backend: romdev-platform-gba's public entry (a hard dep, so
+// it resolves unless the install is broken). Imported lazily so the mcp
+// backend still works even if the platform package is somehow absent.
+async function resolvePlatformGba() {
   try {
-    const require = createRequire(import.meta.url);
-    return path.dirname(require.resolve("romdevtools/package.json"));
-  } catch { /* not installed */ }
-  // 3. cliemu-workspace convenience: a sibling romdev checkout next to this repo
-  const sibling = path.resolve(__dirname, "..", "..", "romdev", "packages", "romdevtools");
-  if (existsSync(path.join(sibling, "src", "toolchains", "gba-c", "gba-c.js"))) return sibling;
-  return null;
+    const { buildGbaC, parseBuildLog } = await import("romdev-platform-gba");
+    return { buildGbaC, parseBuildLog };
+  } catch {
+    return null;
+  }
 }
 
 async function rpc(sid, body) {
@@ -224,26 +216,26 @@ export async function buildGba(entryLua, outPath, opts = {}) {
 
   // ---- backend dispatch ------------------------------------------------------
   const forced = process.env.GBALUA_BACKEND;   // "local" | "mcp" | unset
-  const toolsDir = forced === "mcp" ? null : resolveRomdevtools();
-  if (forced === "local" && !toolsDir) {
-    throw new Error("gbalua: GBALUA_BACKEND=local but romdevtools not found — set $ROMDEVTOOLS, `npm i romdevtools`, or keep a sibling romdev checkout.");
+  const platform = forced === "mcp" ? null : await resolvePlatformGba();
+  if (forced === "local" && !platform) {
+    throw new Error("gbalua: GBALUA_BACKEND=local but romdev-platform-gba didn't import — reinstall deps (`npm i`).");
   }
-  return toolsDir
-    ? buildLocal({ toolsDir, sources, includes, maxmod, soundbankPath, soundbankBytes, outPath })
+  return platform
+    ? buildLocal({ platform, sources, includes, maxmod, soundbankPath, soundbankBytes, outPath })
     : buildMcp({ sources, includes, maxmod, soundbankPath, soundbankBytes, outPath });
 }
 
 // ---- local backend: run the WASM toolchain in-process (no server) -----------
-// Imports the SAME buildGbaC() the romdev server uses, so ROM bytes are
-// byte-identical to the MCP path by construction. binaryIncludes travel as
-// Uint8Array (the native in-process contract — no base64 round-trip to get
-// wrong). Warm-up note: each CLI invocation compiles the tool WASM once
-// (cc1-arm is ~38 MB), so a one-shot build pays a small startup cost the warm
-// MCP server doesn't; the bytes are the same either way.
-async function buildLocal({ toolsDir, sources, includes, maxmod, soundbankPath, soundbankBytes, outPath }) {
-  const toolUrl = pathToFileURL(path.join(toolsDir, "src", "toolchains", "gba-c", "gba-c.js")).href;
-  const parseUrl = pathToFileURL(path.join(toolsDir, "src", "toolchains", "parse-errors.js")).href;
-  const [{ buildGbaC }, { parseBuildLog }] = await Promise.all([import(toolUrl), import(parseUrl)]);
+// buildGbaC comes from romdev-platform-gba's public entry (0.11.0+): the
+// package vendors THE build driver, and romdevtools itself imports it from
+// there — one pipeline, so ROM bytes are byte-identical to the MCP path by
+// construction. binaryIncludes travel as Uint8Array (the native in-process
+// contract — no base64 round-trip to get wrong). Warm-up note: each CLI
+// invocation compiles the tool WASM once (cc1-arm is ~38 MB), so a one-shot
+// build pays a small startup cost the warm MCP server doesn't; the bytes are
+// the same either way.
+async function buildLocal({ platform, sources, includes, maxmod, soundbankPath, soundbankBytes, outPath }) {
+  const { buildGbaC, parseBuildLog } = platform;
 
   const binaryIncludes = {};
   if (maxmod && (soundbankBytes || soundbankPath)) {
@@ -271,7 +263,7 @@ async function buildMcp({ sources, includes, maxmod, soundbankPath, soundbankByt
     params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "gbalua", version: "1" } },
   });
   if (!init.sidOut) {
-    throw new Error(`gbalua: no local romdevtools found AND no romdev server at ${MCP_URL}. Install romdevtools (or set $ROMDEVTOOLS), or start the server / set ROMDEV_URL.`);
+    throw new Error(`gbalua: romdev-platform-gba didn't import AND no romdev server at ${MCP_URL}. Reinstall deps (\`npm i\`), or start the server / set ROMDEV_URL.`);
   }
   const sid = init.sidOut;
   await rpc(sid, { jsonrpc: "2.0", method: "notifications/initialized" });

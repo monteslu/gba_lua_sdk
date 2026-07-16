@@ -61,8 +61,9 @@ colors) at runtime when you want more.
 - [Node.js](https://nodejs.org/) **24+**
 - **nothing else** — `npm install` brings the whole toolchain as dependencies:
   arm-gcc + libtonc + maxmod, all **as WebAssembly** (via
-  [`romdevtools`](https://www.npmjs.com/package/romdevtools) /
-  `romdev-platform-gba`). No devkitPro, no native tools to build or install.
+  [`romdev-platform-gba`](https://www.npmjs.com/package/romdev-platform-gba) +
+  [`romdev-maxmod`](https://www.npmjs.com/package/romdev-maxmod)). No
+  devkitPro, no native tools to build or install.
 
 The build runs the WASM toolchain in-process (`cc1-arm` → `as` → `ld` →
 `objcopy`) — no server, no daemons. It can also talk to a running romdev
