@@ -1,298 +1,192 @@
-# GameTank Lua SDK
+# GBA Lua SDK
 
-Make games for the [**GameTank**](https://gametank.zone/) - Clyde Shaffer's open
-8-bit console (65C02 CPU, hardware blitter, a 128×128 screen) - by writing Lua
-instead of 6502 assembly or C.
+Make games for the **Game Boy Advance** by writing a **PICO-8-flavored Lua**
+instead of C or ARM assembly.
 
-Write games in a **PICO-8-flavored Lua** dialect. The SDK compiles it to C,
-builds it with cc65 against a bundled GameTank runtime, and produces a `.gtr`
-cartridge (a flat 32 KB EEPROM, or a 2 MB FLASH2M banked cart for bigger games -
-chosen automatically) that runs in the
-[emulator](https://github.com/clydeshaffer/GameTankEmulator), on
-[gametank.zone](https://gametank.zone/), and on real hardware via
-[GTFO](https://github.com/clydeshaffer/gtfo).
+The SDK compiles your Lua to C, builds it with a bundled ARM toolchain against a
+libtonc + maxmod runtime, and produces a `.gba` ROM that runs in
+[mGBA](https://mgba.io/) and on real hardware. No interpreter, no VM: your Lua
+becomes native ARM machine code.
 
-No interpreter, no VM: your Lua becomes native 65C02 machine code. The
-screen is the same 128×128 as PICO-8's, and the API is PICO-8-shaped
-(`spr`/`btn`/`_init`/`_update`/`_draw`, Lua syntax), so if you know PICO-8 you'll
-feel at home - but gt-lua is its own thing targeting real GameTank hardware, not
-a PICO-8 clone. If you don't know PICO-8, you don't need to.
+If you know PICO-8 you'll feel at home (`spr`/`btn`/`_init`/`_update`/`_draw`,
+Lua syntax) - but this SDK leans into what the GBA can do that a fantasy console
+can't: **128 hardware sprites, rotate/scale (affine) sprites, four scrolling tile
+layers, Mode 7, hardware windows, alpha blending and fades, mosaic, per-scanline
+raster effects, battery saves, and streamed module music.** Familiarity, not
+compatibility.
+
+This is a fork of the [GameTank Lua SDK](https://github.com/monteslu/gametank_lua_sdk);
+it reuses that compiler front-end and PICO-8 number model, and retargets the
+back end to native ARM.
 
 ## Your first game
 
-This is a complete GameTank game. No assets, no boilerplate - one `main.lua`:
+A complete GBA game - one `main.lua`, no assets:
 
 ```lua
+-- The screen is 240x160. cls clears it; print and the shapes draw on top.
+-- Colors are PICO-8-style indices 0-15 (0 black, 1 dark-blue, 10 yellow, 14 pink).
 function _draw()
-  cls(1)                          -- dark blue background
+  cls(1)                                -- dark blue background
+  print("hello gba", 92, 20, 14)        -- title, pink, near the top
 
-  print("hello gametank", 38, 14, 14)   -- title text, pink, near the top
-
-  -- a smiley face, drawn entirely with shapes (no sprite sheet needed)
-  circfill(64, 72, 26, 10)        -- head: a big yellow circle
-  rectfill(53, 62, 58, 68, 0)     -- left eye: a black square
-  rectfill(70, 62, 75, 68, 0)     -- right eye
-  circfill(64, 82, 9, 0)          -- mouth: a black circle
+  circfill(120, 84, 30, 10)             -- head: a big yellow circle
+  rectfill(104, 72, 112, 80, 0)         -- left eye
+  rectfill(128, 72, 136, 80, 0)         -- right eye
+  circfill(120, 96, 10, 0)              -- mouth
 end
 ```
 
-Build it and play it in a window:
+Build it to a `.gba` ROM:
 
 ```sh
-node bin/gtlua.js run examples/hello/main.lua
+node bin/gtlua.js build --target gba examples/hello/main.lua -o hello.gba
 ```
 
-<p align="center">
-  <img src="docs/img/hello.png" width="384" alt="hello gametank: a yellow smiley face on a dark blue screen">
-</p>
+Then run `hello.gba` in [mGBA](https://mgba.io/) (or any GBA emulator), or flash
+it to a cartridge. That's the whole loop: write `main.lua`, build the `.gba`,
+ship it.
 
-Or compile it to a `.gtr` cartridge (to run in an emulator or flash to hardware):
-
-```sh
-node bin/gtlua.js build examples/hello/main.lua -o hello.gtr
-```
-
-That's the whole loop: write `main.lua`, `run` it, ship the `.gtr`. Colors are
-PICO-8-style indices `0-15` (`0` black, `1` dark-blue, `10` yellow, `14` pink);
-`gt.rgb()` reaches the full 256-color GameTank palette when you want more.
+Colors are PICO-8-style indices `0-15` (`0` black, `1` dark-blue, `10` yellow,
+`14` pink); `pal()` / `spr_col()` reach the full 15-bit BGR555 palette (32768
+colors) at runtime when you want more.
 
 ## Requirements
 
-- [Node.js](https://nodejs.org/) **24+** (the bundled cc65 + emulator WASM need
-  it for WASM threading / SIMD)
-- **nothing else** - the C toolchain (cc65) and the emulator both come bundled
-  as WebAssembly via `npm install`. No native tools to build or install.
+- [Node.js](https://nodejs.org/) **24+**
+- **nothing else** - the ARM toolchain (arm-gcc), libtonc, maxmod, and the
+  emulator all come bundled as WebAssembly. No devkitPro, no native tools to
+  build or install.
 
-  (Optional: if you'd rather use a native cc65 - because you already have one, or
-  want the source-clone path - the SDK uses it automatically when present. See
-  "Build backends" below.)
+The build talks to the bundled toolchain over a local build service; see
+`compiler/build-gba.mjs`. Output paths passed with `-o` should be **absolute**
+(the build service resolves them on its side).
 
-`gtlua run` opens a window via the optional `@kmamal/sdl` dependency (pulled by
-`npm install`, prebuilt for the common platforms). On a headless box or an
-unsupported platform it falls back to an external GameTank emulator; `gtlua
-build` never needs it.
+## The screen and the two rendering modes
 
-## Quickstart (zero install)
+The GBA screen is **240×160**. Two ways to draw, and they are one either-or (a
+hardware mode bit); sprites, sound, and all the color effects compose over both.
 
-Clone it, install once, and you can **build and run** GameTank games with no
-native toolchain and no separate emulator:
+- **Tile mode (Mode 0)** - the real game path. Four hardware tile layers that
+  scroll for free, plus 128 hardware sprites on top. This is how scrolling GBA
+  games work; it's what the flagship example (`starfall`) uses.
+- **Bitmap mode (Mode 4)** - an immediate-mode 8bpp framebuffer for
+  `pset`/`rect`/`circ`/`line` + text. Simplest to start with (the hello above),
+  single-buffered, slower per-pixel. Sprites still compose on top.
 
-```sh
-git clone https://github.com/monteslu/gametank_lua_sdk && cd gametank_lua_sdk
-npm install                              # pulls the bundled cc65 WASM + emulator
-
-# build one of the examples to a .gtr cartridge:
-node bin/gtlua.js build examples/orbit/main.lua
-# -> examples/orbit/main.gtr, in ~2 s (first) / instant after
-
-# ...or build AND play it in a window, no emulator install needed:
-node bin/gtlua.js run examples/orbit/main.lua
-```
-
-`gtlua run` opens a window (arrows move, Z/X/C are the buttons, Enter is start).
-The `.gtr` it builds also runs in the
-[GameTankEmulator](https://github.com/clydeshaffer/GameTankEmulator), on
-[gametank.zone](https://gametank.zone/), or flashed to a real cartridge via
-[GTFO](https://github.com/clydeshaffer/gtfo).
-
-### Build backends
-
-By default the build uses **native cc65 if it's on your `PATH` or built into
-`tools/` (via `scripts/install_tools.sh`), otherwise the bundled WASM cc65** from
-`npm install`. Both produce byte-for-byte identical carts. Force one with
-`GTLUA_TOOLCHAIN=wasm` or `GTLUA_TOOLCHAIN=native`. So this works as a pure
-clone-and-build SDK (like the official GameTank C SDK) too - install a native
-cc65 and skip `npm install` if you prefer.
-
-### Start your own game
-
-Copy an example as a starting point and build your `main.lua`:
-
-```sh
-cp -r examples/orbit mygame
-node bin/gtlua.js build mygame/main.lua -o mygame/game.gtr
-# --sheet mygame/gfx.gtg     add a sprite sheet (see docs/GRAPHICS.md)
-# --frames mygame/gfx.gsi    add a frame table for sprf (docs/SPRITES.md)
-# --num8                     8.8 number mode, faster math (docs/performance.md)
-```
-
-Test it as you go with `run` (it builds, then opens the game in a window so you
-can play it immediately - the tight edit/build/play loop):
-
-```sh
-node bin/gtlua.js run mygame/main.lua           # same flags as build
-```
-
-`node bin/gtlua.js c <file.lua>` prints the generated C (for debugging).
-
-### Visual Studio Code
-
-The repo ships VS Code tasks for one-key build & run. Open the folder in VS
-Code, open any `.lua`, and:
-
-- **Ctrl+Shift+B** (Cmd+Shift+B on macOS) runs **gtlua: Build** on the open file,
-  producing `<name>.gtr` next to it.
-- **gtlua: Build & Run** (from *Terminal → Run Task…*) builds, then launches the
-  ROM in a detected emulator.
-
-The **Run** task finds an emulator the same way the `run_emulator` scripts do:
-the `GAMETANK_EMULATOR` env var first, then `gte` or `GameTankEmulator` on your
-`PATH`. Point `GAMETANK_EMULATOR` at your
-[GameTankEmulator](https://github.com/clydeshaffer/GameTankEmulator) build if
-it isn't on `PATH`.
+You don't pick a mode explicitly - using tile-layer verbs (`map_show`,
+`tileset`, `layer_*`, `mode7`) puts you in tile mode; the immediate draw verbs
+use bitmap mode.
 
 ## The PICO-8 contract
 
 Define `_update60()` (60 fps) or `_update()` (30 fps), plus `_draw()`, and
-optionally `_init()`. The runtime latches inputs before each update and ends
-the frame after `_draw()` (blitter drain, vblank, page flip).
+optionally `_init()`. The runtime latches input before each update and ends the
+frame after `_draw()` (OAM flush, vblank).
 
-**Numbers are PICO-8 numbers**: 16.16 fixed point, −32768 to 32767.99998,
-wrap on overflow, division by zero saturates. `sin`/`cos`/`atan2` use turns
-(0..1) with PICO-8's screen-space-inverted sin. Under the hood the compiler
-infers which values stay integral and keeps them in fast 16-bit ints - an
-optimization, never a semantic change.
+**Numbers are PICO-8 numbers**: 16.16 fixed point. `sin`/`cos`/`atan2` use turns
+(0..1) with PICO-8's screen-space-inverted sin. The compiler infers which values
+stay integral and keeps them in fast 32-bit ints - an optimization, never a
+semantic change.
 
-**The dialect** keeps PICO-8's syntax: `+=`-style compound assignment,
-one-line `if (cond) stmt` / `while (cond) stmt`, `!=`, `\` floor division,
-`//` comments, hex/binary literals with fractions (`0x11.4`, `0b101.1`),
-button glyphs (`⬅️➡️⬆️⬇️🅾️❎`), and multiple assignment (`x, y = 64, 32`).
+**The dialect** keeps PICO-8's syntax: `+=`-style compound assignment, one-line
+`if (cond) stmt` / `while (cond) stmt`, `!=`, `\` floor division, `//` comments,
+hex/binary literals with fractions, and multiple assignment (`x, y = 64, 32`).
 
-**Have a PICO-8 cart to bring over?** [docs/PORTING.md](docs/PORTING.md) is the
-step-by-step walkthrough (import the art with `gtlua gfx import`, the sound with
-`p8sfx`, and what changes because the GameTank is different hardware); the
-per-function compatibility map is
-[docs/CHEATSHEET_FOR_PICO8_USERS.md](docs/CHEATSHEET_FOR_PICO8_USERS.md).
+**Arrays are 1-indexed** (Lua/PICO-8 style): `a = array(8)`, then `a[1]` is the
+first element (`a[0]` is out of bounds).
 
-## API
+## API at a glance
 
 | | |
 |---|---|
 | lifecycle | `_init` `_update` `_update60` `_draw` |
-| graphics | `cls` `camera` `color` `pset` `rect` `rectfill` `circ` `circfill` `line` `sset` `spr(n,x,y,[w,h],[flip_x,flip_y])` - flips are free (hardware blitter mirror) |
-| sprites | 8×8-grid `spr(n)` off a `.gtg` sheet (`--sheet`, [docs/GRAPHICS.md](docs/GRAPHICS.md)); `sprf(frame,x,y,[fx],[fy])` for arbitrary-size / animated frames off a `.gsi` table ([docs/SPRITES.md](docs/SPRITES.md)) |
-| input | `btn(i,[pl])` `btnp(i,[pl])` - indices 0-3 d-pad, 4=🅾️(GT A), 5=❎(GT B), **6=GT C**, 7=START; `btnp` has PICO-8 auto-repeat |
-| math | `flr` `ceil` `abs` `sgn` `sqrt` `min` `max` `mid` `sin` `cos` `atan2` `rnd` `srand` `t`/`time` |
-| data | `array(n,[v])` - 16-bit elements · `array8(n,[v])` - byte elements 0-255, half the RAM and ~2× faster in counting loops |
-| sound | `sfx(n,[ch])` `music(n,[loop])` (built-in FM effects/tunes - see below); `song(data,[loop])` plays a native `.gtm2` FM song ([docs/MUSIC.md](docs/MUSIC.md)); low-level `gt.note`/`gt.noteoff` |
-| gametank extras | `gt.rgb(b)` - raw palette byte (the GameTank has 256 colors), `gt.border(c)`, `gt.ticks()`, `gt.starfield_*`, `gt.bg_compose`/`gt.bg_draw` (see below) |
+| bitmap draw | `cls` `camera` `color` `pset` `rect` `rectfill` `circ` `circfill` `line` `sset` |
+| sprites | `spr(n,x,y,[w,h],[fx,fy])` hardware OBJ · `spr8(t,x,y,[flip])` · `sprf` · `spr_pal` `spr_prio` |
+| affine sprites | `sprr(n,x,y,angle,scale)` rotate+scale · `sprr2(n,x,y,angle,sx,sy)` non-uniform |
+| tile layers | `map_show` `tileset` `tilemap` `layer_show` `layer_pri` `layer_scroll` `parallax` `camera` `mget`/`tget`/`tset` |
+| mode 7 | `mode7()` · `mode7_cam(x,y,angle,[zoom])` · `mode7_off()` - an affine plane on BG2 |
+| windows | `window(x0,y0,x1,y1)` spotlight · `window_inside`/`window_outside`/`window_obj` · `window_off` |
+| color effects | `fade(amount,[white])` · `blend(layer,alpha)` · `blend_off` · `mosaic`/`mosaic2` · `backdrop` · `screen_off`/`screen_on` |
+| palette | `pal(i,r,g,b)` BG · `spr_col(i,r,g,b)` OBJ · `hgradient(table)` per-scanline backdrop |
+| animation | `anim(slot,first,last,fps)` loop · `anim_once` · `anim_pingpong` · `anim_reset` · `anim_done` |
+| input | `btn(i,[pl])` `btnp(i,[pl])` - 0-3 d-pad, 4=A, 5=B, 6=L, 7=R, 8=START, 9=SELECT |
+| math | `flr` `ceil` `abs` `sgn` `sqrt` `min` `max` `mid` `sin` `cos` `atan2` `rnd` `srand` `t`/`time` + bit ops |
+| data | `array(n,[v])` 16.16 · `array8(n,[v])` bytes 0-255 · `pool(n)` |
+| save | `save(slot,array8,n)` · `load(slot,array8,n)` - battery SRAM, 16 slots × 1 KB |
+| timer | `timer_start()` · `timer_read()` - free-running Timer 3, sub-frame profiling |
+| sound | `music(n,[loop])` module music · `sfx(n,[ch])` · `sfx_ex(n,vol,pan,pitch)` · `sfx_volume` |
 
-Colors are raw GameTank bytes `0`–`255`. For PICO-8 familiarity, a **static
-0–15 color literal** in a draw call (`cls(1)`, `rectfill(...,8)`) is baked to its
-GameTank byte at compile time (zero runtime cost). `gt.rgb()` reaches the full
-256-color palette: `gt.rgb(255,128,0)` picks the nearest hardware color to that
-RGB, or `gt.rgb(byte)` takes a raw byte. Use it anywhere a color is expected:
-`rectfill(x,y,w,h, gt.rgb(255,128,0))`. A color **computed at runtime** is used
-as a raw byte, not re-mapped from 0–15 (see [docs/PALETTE.md](docs/PALETTE.md));
-there is no runtime `pal()`.
+See **[docs/CHEATSHEET.md](docs/CHEATSHEET.md)** for every verb with signatures.
 
-### Fast backgrounds: `gt.bg_compose` / `gt.bg_draw`
+## Assets
 
-Drawing a tilemap with a per-tile `spr()` loop costs one blit per visible
-tile, and on the GameTank a blit is ~1200 cycles of setup *regardless of
-size* - a screenful of tiles blows the ~50-blit/frame budget for 30fps. The
-GameTank has 512 KB of sprite RAM (32 pages of 128×128) and the SDK normally
-uses only one (the sheet), so you can pre-render a static background into a
-spare page **once** and blit the whole thing as a single cheap blit each frame:
+`--sheet sprites.png` imports a sprite sheet, `--map level.png` a tilemap, and
+`--mode7 plane.png` an affine plane, via a self-contained PNG → tile converter
+(`compiler/png-tiles.mjs`). They're CLI flags on `build`:
 
-```lua
-local map = array(16*16)          -- your tile indices (0 = empty)
-function _init()
-  -- ... fill map from your level data ...
-  gt.bg_compose(map, 16, 0, 0, 16, 16)  -- (map, cols, cx, cy, cw, ch) -> bg page
-end
-function _draw()
-  gt.bg_draw()                    -- one big blit of the composed page
-  -- then draw your moving sprites on top with spr()
-end
+```sh
+node bin/gtlua.js build --target gba mygame/main.lua \
+  --sheet mygame/sprites.png --map mygame/level.png -o mygame/game.gba
 ```
 
-`gt.bg_compose` reads tiles from the loaded `--sheet` (cell N is at sheet cell
-`(N%16, N//16)`), clears the page to color 0, and paints the `cw×ch` window
-starting at map cell `(cx,cy)`; tile 0 is left empty. It's a one-time cost of
-up to a second or so of CPU time (the canvas clear alone is 64 KB of writes) -
-call it at level load, not every frame, and expect the screen to sit black
-until `_init` returns.
+The `examples/` directory shows each subsystem in use:
 
-The bg page is a **256×256 canvas** (`cw`/`ch` up to 32 cells), so a level
-bigger than one screen composes once and **scrolls for free**: `gt.bg_draw(sx,
-sy)` blits a 128×128 window at source offset `(sx,sy)` (0–128 in each axis),
-seamlessly across the internal page boundaries - pass your camera position to
-scroll. Moving/animated tiles still want `spr()` on top.
+| example | shows |
+|---|---|
+| `starfall` | a complete shmup - tile mode, sprite HUD, module music + SFX |
+| `effects` | `blend` / `fade` in bitmap mode |
+| `mode7` | an affine plane you rotate, zoom, and drive over |
+| `windows` | a hardware spotlight over the Mode 7 plane |
+| `anim` | frame-range animation helpers |
+| `hwtest` | `hgradient` raster gradient, SRAM `save`/`load`, the `timer` |
 
-### Sound: `sfx` / `music`
+## Sound
 
-The GameTank has a second 65C02 audio coprocessor (a 4-channel, 4-operator FM
-synth). PICO-8 style, you trigger sound by index - no tracker files to author:
+Music is a streamed module (maxmod), and SFX are sampled one-shots - trigger
+both by index, PICO-8 style:
 
 ```lua
 function _init()
-  music(0)              -- start built-in tune 0, looping
+  music(0)                       -- start module 0, looping
 end
 function _update60()
-  if btnp(4) then sfx(0) end     -- 🅾️ -> jump sound
-  if btnp(5) then sfx(3) end     -- ❎ -> explosion
+  if btnp(4) then sfx(0) end      -- A -> a sound effect
+  if btnp(5) then sfx_ex(1, 512, 200, 1.5) end  -- B -> louder, panned, +pitch
 end
 ```
 
-Built-in **effects** (`sfx(n,[ch])`, n = 0–7): `0` jump · `1` pickup · `2`
-shoot · `3` explode · `4` blip · `5` powerup · `6` hurt · `7` select. Omit
-`ch` to auto-assign one of the 4 channels, or pass `0–3` to pin it. Built-in
-**tunes** (`music(n,[loop])`, n = 0–1): loops by default; `music(-1)` stops,
-`music(n,false)` plays once. A per-frame sequencer (ported from the upstream
-GameTank tracker) advances envelopes + steps the song automatically - it costs
-almost nothing when nothing is playing. For a single raw tone, the low-level
-`gt.note(ch,note,vol)` / `gt.noteoff(ch)` primitives are still there.
-
-Shipped since: native `.gtg` sprite sheets + `.gsi`/`sprf` frame tables, native
-`.gtm2` FM songs, a `gtlua gfx` converter, and a PICO-8 art/sound importer.
-Coming next (see [docs/PICO8.md](docs/PICO8.md) for the full roadmap): `map`/
-`mget`/`fget` tile APIs, `print`-time string building, and `cartdata` saves.
+`music(-1)` stops; `music(n, false)` plays once. `sfx_ex(n, vol, pan, pitch)`
+gives per-shot volume (0-1024), pan (0-255, 128 center), and pitch (a 16.16
+multiplier); `sfx_volume(v)` sets the master SFX level. The default soundbank
+(`assets/soundbank.bin`) ships a chiptune as module 0; regenerate it from
+`assets/make_music_xm.mjs` → `assets/build_soundbank.mjs` to use your own.
 
 ## Not-Lua walls (loud, never silent)
 
 Conditions must be boolean (`if x ~= 0 then`, not `if x then` - Lua calls 0
-truthy, C doesn't, gtlua refuses to guess). No `nil`, closures, metatables,
-coroutines, or `goto`. Every unsupported feature is a compile-time error
-that says what to write instead.
+truthy, C doesn't, and the compiler refuses to guess). No `nil`, closures,
+metatables, coroutines, string concatenation, or `goto`. Every unsupported
+feature is a compile-time error that says what to write instead.
 
 ## Repo layout
 
-`compiler/` Lua→C compiler (plain JS ESM) · `sdk/` the C/asm runtime
-(register protocols, fixed-point core, math tables, interrupt handlers,
-cc65 startup/linker files) · `bin/gtlua.js` CLI · `tools/` cc65 (built by
-`scripts/install_tools.sh`) · `examples/` · `test/` (`node --test`).
+`compiler/` Lua→C compiler + the GBA build driver (`build-gba.mjs`) and PNG
+importer (`png-tiles.mjs`) · `gba-sdk/` the C runtime (thin libtonc/maxmod
+wrappers: `gba_api.c` frame+sprites+input, `gba_bg.c` tile layers, `gba_mode7.c`,
+`gba_win.c`, `gba_fx.c` effects, `gba_sound.c`, `gba_hw.c` save+timer,
+`gba_text.c`, `gba_anim.c`, `gba_math.c`) · `assets/` the default soundbank +
+its generators · `bin/gtlua.js` CLI · `examples/`.
 
 ## Docs
 
 | doc | what |
 |---|---|
-| [docs/CHEATSHEET.md](docs/CHEATSHEET.md) | the full gt-lua API reference |
-| [docs/CHEATSHEET_FOR_PICO8_USERS.md](docs/CHEATSHEET_FOR_PICO8_USERS.md) | per-function PICO-8 compatibility map |
-| [docs/PORTING.md](docs/PORTING.md) | bringing a PICO-8 cart over, step by step |
-| [docs/GRAPHICS.md](docs/GRAPHICS.md) | the `.gtg` sprite-sheet format + `gtlua gfx` converter |
-| [docs/SPRITES.md](docs/SPRITES.md) | frame tables (`.gsi`) + `sprf` |
-| [docs/MUSIC.md](docs/MUSIC.md) · [docs/sfx.md](docs/sfx.md) | native `.gtm2` FM songs · PICO-8 sfx import |
-| [docs/PALETTE.md](docs/PALETTE.md) | the GameTank color palette |
-| [docs/performance.md](docs/performance.md) | making it fast (`--num8`, blit budget, the `gt.*` engines) |
-| [docs/SPEC.md](docs/SPEC.md) · [docs/PICO8.md](docs/PICO8.md) | language spec · design doc + roadmap |
-| [PROVENANCE.md](PROVENANCE.md) | attribution (Clyde Shaffer's GameTank SDK) |
-
-The `examples/` in this repo are small, self-contained gt-lua programs (orbit,
-mathcheck, pad-square, audio) - the quickest way to see the API in use. Full
-games built with gt-lua live in their own repos (each a derivative work under
-its own license): Combo Pool, newleste, Cherry Bomb, and more.
-
-## Making it fast
-
-The GameTank is ~1000× slower than the machine PICO-8 runs on, so a naive port
-can drop to single-digit fps. **[docs/performance.md](docs/performance.md)** is
-the field guide: the two things that dominate a frame (blit count and
-fixed-point math), the ~19,000-cycle fixed-point `%` / `/` footgun and how to
-dodge it, per-primitive blit budgets, and how to profile a slow cart by
-bisection. Read it before optimizing - measure, don't guess.
+| [docs/CHEATSHEET.md](docs/CHEATSHEET.md) | the full GBA Lua API reference |
+| [docs/CHEATSHEET_FOR_PICO8_USERS.md](docs/CHEATSHEET_FOR_PICO8_USERS.md) | per-function PICO-8 → GBA map |
 
 ## License
 
-MIT. `sdk/` hardware files adapted from
-[clydeshaffer/gametank_sdk](https://github.com/clydeshaffer/gametank_sdk) (MIT).
+MIT. `gba-sdk/` wraps [libtonc](https://github.com/devkitPro/libtonc) and
+[maxmod](https://github.com/devkitPro/maxmod) (both zlib/BSD-style); the compiler
+front-end derives from the GameTank Lua SDK (MIT).

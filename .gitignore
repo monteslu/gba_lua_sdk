@@ -12,3 +12,6 @@ ports/**/build-debug/
 
 # scratch / spike experiments (throwaway probes, not part of the SDK)
 spike0/
+
+# internal fork notes (local dev only, references internal paths)
+SEED.md

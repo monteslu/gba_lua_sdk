@@ -1,15 +1,17 @@
-# gt-lua Cheat Sheet - for PICO-8 users
+# GBA Lua Cheat Sheet - for PICO-8 users
 
-**PICO-8-flavored Lua that compiles to native 65C02** for the GameTank. No
-interpreter, no VM - your Lua becomes machine code. The GameTank's 128×128
-screen is the same size as PICO-8's, so coordinates and sprite sheets transfer
-1:1. Measured against PICO-8 v0.2.7.
+**PICO-8-flavored Lua that compiles to native ARM** for the Game Boy Advance. No
+interpreter, no VM - your Lua becomes machine code. Familiar verbs
+(`spr`/`btn`/`_init`/`_update`/`_draw`, 16.16 numbers, the dialect), on hardware
+with a lot more room: **128 hardware sprites, affine (rotate/scale) sprites, four
+scrolling tile layers, Mode 7, windows, blend/fade, a real save chip, and module
+music.** Measured against PICO-8 v0.2.7.
 
-Build: `gtlua build main.lua --sheet gfx.gtg -o game.gtr`
+Build: `node bin/gtlua.js build --target gba main.lua --sheet gfx.png -o game.gba`
 
-> **New to PICO-8?** This page maps gt-lua *against* PICO-8. If you don't already
-> know PICO-8, read the standalone [`CHEATSHEET.md`](CHEATSHEET.md) instead - it's
-> the full gt-lua reference with no PICO-8 assumed.
+> **New to PICO-8?** This page maps the GBA SDK *against* PICO-8. If you don't
+> already know PICO-8, read [`CHEATSHEET.md`](CHEATSHEET.md) - the full reference
+> with no PICO-8 assumed.
 
 **Status legend**
 
@@ -18,58 +20,48 @@ Build: `gtlua build main.lua --sheet gfx.gtg -o game.gtr`
 | ✅ **exact** | works, PICO-8 semantics |
 | 🟡 **partial** | works with documented limits |
 | 🔷 **differs** | works but different by hardware |
-| 🔵 **planned** | on the roadmap (`PICO8.md`), not yet built |
-| ❌ **n/a** | no VM to emulate / deferred indefinitely |
-| ➕ **gt extra** | GameTank-only, beyond PICO-8 |
+| ❌ **n/a** | no VM to emulate / intentionally cut |
+| ➕ **GBA extra** | beyond PICO-8, uses GBA hardware |
 
-Names are **global and unprefixed**, exactly like PICO-8. The `gt.*` namespace
-is GameTank-only extras.
+Names are **global and unprefixed**, exactly like PICO-8. There is no `gba.*`
+escape-hatch namespace - the extras are first-class verbs.
 
 ---
 
-## The 16 PICO-8 colors → GameTank byte
+## Two things that differ from PICO-8 up front
 
-Colors are raw GameTank bytes `0`–`255`. A **static 0–15 literal** in a draw
-call (`cls(1)`) is treated as a PICO-8 index and baked to its GameTank byte at
-COMPILE time (no runtime palette). `gt.rgb(r,g,b)` / `gt.rgb(byte)` reach the
-full palette - **P8 devs get more colors, not fewer.**
+1. **The screen is 240×160**, not 128×128. Coordinates and sprite layouts do
+   **not** transfer 1:1 - you have ~2.7× the pixels. Center is `(120, 80)`.
+2. **Two draw modes.** Immediate `pset`/`rect`/`circ`/`line`/`print` draw to a
+   bitmap (Mode 4); using tile-layer verbs (`map_show`, `tileset`, `mode7`) puts
+   you in tile mode (Mode 0) with four hardware layers + 128 sprites. Sprites,
+   sound, and every color effect compose over both. Tile mode is the real
+   scrolling-game path; bitmap is the quick-draw path.
 
-⚠️ A color your game **computes at runtime** (a variable, `frame%2 and 7 or 8`,
-a table value) is used as a **raw byte**, NOT re-mapped from 0–15 - so a ported
-palette-cycle or flash effect renders wrong colors. Fix by computing a GameTank
-byte or using `gt.rgb`. (No PICO-8 palette layer at runtime; see PALETTE.md.)
+---
 
-| # | name | GT byte | RGB | | # | name | GT byte | RGB |
-|--:|------|--:|------|---|--:|------|--:|------|
-| 0 | black | 0 | `#1a1a1a` | | 8 | red | 91 | `#a64a5e` |
-| 1 | dark-blue | 169 | `#1f334a` | | 9 | orange | 62 | `#d69b4b` |
-| 2 | dark-purple | 90 | `#8e3348` | | 10 | yellow | 31 | `#b9c541` |
-| 3 | dark-green | 219 | `#17725d` | | 11 | green | 254 | `#70b94f` |
-| 4 | brown | 51 | `#805924` | | 12 | blue | 190 | `#70a8f4` |
-| 5 | dark-grey | 3 | `#5d5d5d` | | 13 | lavender | 140 | `#75719b` |
-| 6 | light-grey | 6 | `#a1a1a1` | | 14 | pink | 94 | `#ea8ca2` |
-| 7 | white | 7 | `#b9b9b9` | | 15 | peach | 47 | `#cbb79f` |
+## Colors
 
-*(Colors are the GameTank's own palette bytes - the RGB shown is what the
-console actually displays, not PICO-8's originals. The RGB is the CAPTURE
-palette, GameTank's hardware-accurate default. It's muted vs PICO-8: no pure
-white/black, softer primaries. Full rationale + per-color notes:
-[docs/PALETTE.md](PALETTE.md).)*
+Colors are PICO-8-style indices `0-15` in draw calls, mapped to a 15-bit BGR555
+palette. **Unlike the GameTank fork, `pal()` and `spr_col()` DO work at runtime**
+- the GBA has hardware palette RAM, so palette swaps, cycling, and day/night are
+cheap and real (see the extras section). `pal(i, r, g, b)` sets BG palette entry
+`i` to an 8-bit RGB; `spr_col(i, r, g, b)` sets an OBJ palette entry.
 
 ---
 
 ## Controller → `btn()` index
 
 ```
-        [2]↑                O = 4  🅾️ → GameTank A
-    [←]0    1[→]            X = 5  ❎ → GameTank B
-        [3]↓                C = 6  → GameTank C  (extra button - P8 has no 6!)
-                            START = 7
+        [2]↑                4 = A            6 = L (shoulder)
+    [←]0    1[→]            5 = B            7 = R (shoulder)
+        [3]↓                8 = START        9 = SELECT
 ```
 
-`btn(i,[pl])` held · `btnp(i,[pl])` just-pressed with P8 auto-repeat (15 frames,
-then every 4). Two pads via the `pl` argument. Glyphs `⬅️ ➡️ ⬆️ ⬇️ 🅾️ ❎` lex as
-constants 0–5 in source.
+`btn(i,[pl])` held · `btnp(i,[pl])` just-pressed with PICO-8 auto-repeat. The GBA
+is a 1-player machine - the `pl` argument is accepted for API parity but ignored.
+The d-pad indices match PICO-8 (0=LEFT 1=RIGHT 2=UP 3=DOWN); the GBA adds L, R,
+START, and SELECT at 6-9.
 
 ---
 
@@ -78,87 +70,78 @@ constants 0–5 in source.
 | Call | | Notes |
 |---|:--:|---|
 | `_init()` | ✅ | runs once at startup |
-| `_update()` | ✅ | logic @ 30 fps (every 2nd vsync) - **the default; prefer this** |
-| `_update60()` | ✅ | logic @ 60 fps (per vsync) - light carts only |
+| `_update()` | ✅ | logic @ 30 fps |
+| `_update60()` | ✅ | logic @ 60 fps - the GBA holds this easily |
 | `_draw()` | ✅ | 1× per visible frame |
 
-No cartridge loop / `goto` tweetcart form - `_draw()` **is** the loop. Same
-fixed-timestep model as PICO-8 (no `dt`; move by a constant per frame). Unlike
-PICO-8's beefier VM, the GameTank's real 6502 rarely holds 60 once a game does
-work, so **30 (`_update`) is the safe default** - a cart too heavy for
-`_update60` runs in slow motion (logic is paced to the frames it can draw),
-exactly like a PICO-8 game that can't hold its target rate.
+Same fixed-timestep model as PICO-8 (no `dt`; move by a constant per frame). The
+GBA's ARM CPU has plenty of headroom, so **`_update60()` is a fine default** -
+unlike a slower console.
 
 ## Dialect & syntax
 
 | Feature | | Notes |
 |---|:--:|---|
-| `a \ b` | 🟡 | floored int divide `flr(a/b)` - **power-of-two divisor** for now |
-| `//` | ✅ | a line comment, like PICO-8 |
+| `a \ b` | ✅ | floored integer divide |
+| `//` | ✅ | a line comment |
 | `a != b` | ✅ | alias of `~=` |
 | `if (c) stmt else stmt` | ✅ | one-line if / while, parens required |
-| `+= -= *= \= %=` | ✅ | LHS evaluated **once** (P8 does it twice) |
-| `x,y = 64,32` | ✅ | multiple **assignment** (swap-safe, RHS first) |
-| `x,y = f()` | 🔵 | multiple **return** values - v0.5 |
+| `+= -= *= \= %=` | ✅ | LHS evaluated once |
+| `x,y = 64,32` | ✅ | multiple assignment (swap-safe) |
 | `for i=1,10,2` | ✅ | fractional & negative steps ok |
-| `sfx"3"  add(p,{..})` | ✅ | paren-less string / table calls |
-| `[[ long string ]]` | ✅ | multi-line string (level grids, credits) |
-| `🅾️ ❎ ⬅️ ➡️ ⬆️ ⬇️` | ✅ | glyphs → constants 0–5 (raw P8SCII bytes too) |
+| `[[ long string ]]` | ✅ | multi-line string |
 
 ## Number model
 
-Full **16.16 fixed point**, PICO-8 edge cases and all - it maps to the 6502 for
-free (Lexaloffle designed it for exactly this class of machine).
+Full **16.16 fixed point**, PICO-8 edge cases and all.
 
 | | | Notes |
 |---|:--:|---|
-| range | ✅ | −32768.0 … 32767.99999 |
+| range | ✅ | −32768.0 … 32767.99998 |
 | overflow | ✅ | wraps (two's complement) |
-| `a / 0` | ✅ | saturates ±0x7fff.ffff |
+| `a / 0` | ✅ | saturates |
 | `sin(.25) == -1` | ✅ | turns-based, screen-inverted |
-| `sgn(0) == 1` | ✅ | `flr` toward −∞ |
+| `sgn(0) == 1` · `flr` toward −∞ | ✅ | |
 | `>>` / `>>>` | ✅ | arithmetic / logical shift |
 
-**gt speed knob:** `--num8` builds switch to 8.8 fixed (±127.99) - cuts the
-32-bit math tax hard on physics-heavy carts.
+The compiler keeps values that stay integral in fast 32-bit ints - an
+optimization, never a semantic change.
 
-## Graphics & draw
+## Graphics & draw (bitmap mode)
 
 | Call | | Notes |
 |---|:--:|---|
-| `cls([c])` | ✅ | blitter full-screen fill |
-| `spr(n,x,y,[w,h],[fx,fy])` | ✅ | 8×8 cell 0–255; flips are hardware |
+| `cls([c])` | ✅ | clears the bitmap |
 | `rectfill / rect(x0,y0,x1,y1,c)` | ✅ | inclusive corners (P8 gotcha kept) |
-| `circfill / circ(x,y,r,c)` | ✅ | blitter row-run fills |
-| `line(x0,y0,x1,y1,c)` | ✅ | CPU Bresenham |
+| `circfill / circ(x,y,r,c)` | ✅ | |
+| `line(x0,y0,x1,y1,c)` | ✅ | |
 | `pset / pget(x,y,[c])` | ✅ | |
-| `sset(x,y,c)` | ✅ | write a sheet pixel (bake sprites) |
+| `sset(x,y,c)` | ✅ | write a sheet pixel |
 | `camera([x,y])` | ✅ | sticky draw offset |
 | `color(c)` | ✅ | |
-| `sspr(...)` | 🟡 | unscaled rect blit works; **scaled = compile error** |
-| `clip(x,y,w,h)` | 🔵 | screen-edge only today; software-clip v0.3+ |
-| `fillp`, `tline` | ❌ | deferred indefinitely |
+| `sspr(...)` | 🟡 | unscaled rect blit; scaled = compile error |
+| `fillp`, `tline`, `clip` | ❌ | not implemented |
 
-## Palette & transparency - the largest real gap
+## Sprites
 
 | Call | | Notes |
 |---|:--:|---|
-| `pal(...)` | ❌ | **removed** - colors are raw GameTank bytes, there is no runtime remap table |
-| `palt(0,on)` | 🟡 | color-0 transparency toggle |
-| `palt(c,true)`, c≠0 | 🔷 | compile error with a fix-it |
+| `spr(n,x,y,[w,h],[fx,fy])` | ✅🔷 | a **hardware OBJ** (128 max), not a blit; flips free |
+| `spr8(t,x,y,[flip])` | ➕ | 8×8 sprite from a raw tile index |
+| `sprf(frame,x,y,[fx,fy])` | ✅ | frame-table sprite |
+| `spr_pal(bank)` · `spr_prio(p)` | ➕ | palette bank / priority vs BG layers |
+| `sprr(n,x,y,angle,scale)` | ➕ | **rotate + scale** (affine) sprite |
+| `sprr2(n,x,y,angle,sx,sy)` | ➕ | affine with non-uniform x/y scale (squash/stretch) |
 
-GameTank framebuffer bytes **are** colors - no CLUT between GRAM and screen, and
-no PICO-8 palette layer. `pal()` (index remap / per-draw sprite recolor) does not
-exist. To recolor: pre-author the recolored sheet cells (the standard GameTank
-idiom - Celeste's blue-hair frames are baked at asset time), or draw with a
-different `gt.rgb` byte. The full-screen `pal(t,1)` fade idiom needs a `gt.*`
-redraw-tinted path.
+The GBA composites sprites in hardware, so there's a **128-sprite-per-frame**
+budget instead of PICO-8's per-blit CPU cost. `sprr`/`sprr2` are the headline
+GBA feature PICO-8 has no equivalent for.
 
 ## Input
 
 | Call | | Notes |
 |---|:--:|---|
-| `btn(i,[pl])` | ✅➕ | held; i = 0–7 (6 = GameTank C is a bonus button) |
+| `btn(i,[pl])` | ✅➕ | held; i = 0-9 (adds L/R/START/SELECT) |
 | `btnp(i,[pl])` | ✅➕ | just-pressed, P8 auto-repeat |
 
 ## Math
@@ -167,161 +150,152 @@ redraw-tinted path.
 |---|:--:|---|
 | `flr ceil abs sgn sqrt(x)` | ✅ | |
 | `min max(x,y)` · `mid(x,y,z)` | ✅ | |
-| `sin cos(x)` · `atan2(dx,dy)` | ✅ | 256-entry ROM turn table |
-| `rnd(x)` · `srand(x)` | ✅ | 16-bit xorshift; `flr(rnd(n))` exact |
-| `t()` · `time()` | ✅ | frames÷60 as fixed seconds |
-| bitwise `& \| ^^ << >>` … | ✅ | as operators (band/bor/… names → ops) |
+| `sin cos(x)` · `atan2(dx,dy)` | ✅ | turns-based |
+| `rnd(x)` · `srand(x)` | ✅ | `flr(rnd(n))` exact |
+| `t()` · `time()` | ✅ | fixed seconds |
+| bitwise `& \| ^^ << >>` | ✅ | as operators |
 
 ## Tables & entities
 
 | Call | | Notes |
 |---|:--:|---|
 | `ps = pool(16)` | 🟡 | capacity-bounded (no unbounded growth / GC) |
-| `add(ps,{x=1,y=2})` | ✅ | traps past capacity in debug builds |
-| `del(ps,e)` | ✅ | delete-while-iterating ok |
+| `add(ps,{x=1,y=2})` · `del(ps,e)` | ✅ | |
 | `for e in all(ps) do` | ✅ | insertion order |
-| `array(n)` / `array8(n)` | 🟡➕ | fixed / byte-wide arrays |
-| `{x=1, y=2}` (struct) | ✅ | tables are structs: fixed **named** fields |
+| `array(n)` / `array8(n)` | 🟡➕ | fixed 16.16 / byte arrays - **1-indexed** (`a[1]` first) |
+| `{x=1, y=2}` (struct) | ✅ | tables are structs: fixed named fields |
 | `{1,2,3}` / `{[k]=v}` | ❌ | array / map tables - one clear error, no cascade |
 
-**Tables are structs, not arrays or maps.** A table is a fixed set of named
-byte/word fields (`{x=1, y=2}`); there is no array-style `{1,2,3}`, no
-computed-key `{[k]=v}`, and no table-of-tables `{{..},{..}}` - those are a
-dynamic data model the compiled runtime has no representation for. Each gets one
-clear compile error (not a cascade). Use `array(n)`/`array8(n)` for indexed
-numeric data, and a `pool` of structs for entities.
-
-**Cut (compiled subset):** nil / `x or default`, closures, metatables/OOP,
-coroutines. Use named functions + a `kind` field + `if/elseif` state machines -
-the compiler errors loudly with the fix.
+**Tables are structs, not arrays or maps** - a fixed set of named fields. Use
+`array(n)`/`array8(n)` for indexed numeric data and a `pool` of structs for
+entities. **Cut:** nil / `x or default`, closures, metatables, coroutines. Named
+functions + a `kind` field + `if/elseif` state machines instead; the compiler
+errors loudly with the fix.
 
 ## Audio
 
 | Call | | Notes |
 |---|:--:|---|
-| `sfx(n,[ch])` | 🟡 | built-in bank 0–7, or your imported cart |
-| `music(n,[fade])` | 🟡 | built-in 0–1; `music(-1)` stops |
-| `sfx_bank / music_bank(data)` | 🟡➕ | register converted PICO-8 `__sfx__`/`__music__` |
+| `music(n,[loop])` | ✅🔷 | plays a **module** (maxmod) by index; `music(-1)` stops |
+| `sfx(n,[ch])` | ✅ | sampled one-shot effect |
+| `sfx_ex(n,vol,pan,pitch)` | ➕ | per-shot volume (0-1024), pan (0-255), pitch (16.16×) |
+| `sfx_volume(v)` | ➕ | master SFX level |
 
-Zero-authoring built-ins: `sfx(0)`=jump, 1=pickup, 2=shoot, 3=explode, 4=blip,
-5=powerup, 6=hurt, 7=select. Rendered on the ACP's 4-op FM voices (a second
-65C02). Import a cart's own tracker bytes with **`bin/p8sfx.mjs`** →
-`sfx_bank()`.
+Music is a streamed module, not FM or raw PICO-8 SFX bytes. The default soundbank
+(`assets/soundbank.bin`) ships a chiptune as module 0; regenerate it from
+`assets/make_music_xm.mjs` + `assets/build_soundbank.mjs` for your own tunes.
 
 ## Strings & print
 
 | Call | | Notes |
 |---|:--:|---|
-| `print(str,x,y,[c])` | ✅ | x,y **required** (4×6 font); returns right-edge x |
-| `print(str)` | 🔵 | cursor form (auto x,y advance) - v0.5, needs runtime cursor |
-| `?expr` | 🔵 | print shorthand - lands with the cursor form |
+| `print(str,x,y,[c])` | ✅ | positioned text |
+| `print(val,x,y,[c])` | ✅ | numbers print directly |
 | `s = "hello"` | ✅ | string literals (short and `[[ long ]]`) |
-| `s .. s2` | 🔵 | runtime concat - v0.5 |
-| `sub tostr tonum chr ord split` | 🔵 | v0.5 |
+| `s .. s2` | ❌ | **no runtime string concat** - print label and value separately |
+| `sub tostr tonum chr ord split` | ❌ | no runtime string building |
 
-Bake dynamic text into byte buffers and draw with `gt.print_buf` for HUDs (the
-fast path); no runtime string building yet.
+To show a label with a number, print them as two calls
+(`print("hi",8,8,7) print(score,40,8,7)`), not `"hi"..score`.
 
 ## Map / tiles
 
 | Call | | Notes |
 |---|:--:|---|
-| `map(tx,ty,sx,sy,tw,th,[lyr])` | 🔵 | v0.4 |
-| `mget / mset(x,y,[v])` | 🔵 | v0.4 |
-| `fget / fset(n,[f],[v])` | 🔵 | tile flags - v0.4 |
+| `map(cx,cy,sx,sy,cw,ch)` | ✅ | software tilemap draw off the `--map` data |
+| `mget(x,y)` | ✅ | read a map cell |
+| `map_show(layer)` | ➕ | show the bundled tilemap on a **hardware** BG layer |
+| `tileset` / `tilemap` | ➕ | load a hardware layer's tiles / map |
+| `layer_show` / `layer_pri` / `layer_scroll` | ➕ | control the 4 hardware BG layers |
+| `parallax(layer,factor)` · `camera(x,y)` | ➕ | free hardware scrolling + parallax |
+| `tget` / `tset` | ➕ | read/modify a hardware tile at runtime |
 
-**gt has it a different way today:** `gt.bg_compose` pre-paints a tilemap into a
-spare GRAM page once, then `gt.bg_draw` blits the whole page per frame - the
-shipped tilemap path. Ports drive scrolling worlds with `gt.chunks_draw` asm
-engines.
+The GBA has **real tilemap hardware** - four layers that scroll for free, unlike
+PICO-8's single software map. `map()` is the PICO-8-compatible software path;
+`map_show` + `layer_*` is the hardware path (the real scrolling-game route).
 
 ## Cartridge data / save
 
 | Call | | Notes |
 |---|:--:|---|
-| `cartdata("id")` | 🔵 | v0.4 |
-| `dget / dset(i,[v])` | 🔵 | 0..63 persistent slots - v0.4 |
+| `save(slot, array8, n)` | ✅➕ | write `n` bytes to **battery SRAM** (16 slots × 1 KB) |
+| `load(slot, array8, n)` | ✅➕ | restore; returns bytes read (0 = slot never written) |
 
-The GameTank SAVE bank hardware exists for exactly this; the API layer is
-planned, not yet wired.
+Real persistence, on real save hardware: `if load(0, st, 8) > 0 then ...restored
+end`. Keep your state in an `array8` and save/load it.
 
 ## Memory / low-level - n/a by design
 
 | Call | | Notes |
 |---|:--:|---|
-| `peek / poke(addr,[v])` | ❌ | P8's flat-memory pokes |
-| `memcpy memset cstore` | ❌ | |
-| `stat(x)` · `menuitem` | ❌ | |
-
-PICO-8's memory map (`0x6000` screen, `0x5f00` draw state…) **doesn't exist** -
-there's no VM to poke. Real GameTank hardware registers are reached through
-`gt.*` helpers and raw-color bytes, not a P8-compatible address space.
+| `peek / poke(addr,[v])` | ❌ | PICO-8's flat-memory pokes |
+| `memcpy memset cstore` · `stat(x)` · `menuitem` | ❌ | no VM to poke |
 
 ---
 
-## What `gt.*` adds beyond PICO-8
+## What the GBA adds beyond PICO-8
 
-| Call | Notes |
+| Verb(s) | Notes |
 |---|---|
-| `gt.rgb(r,g,b)` / `gt.rgb(byte)` | the full 256-color GameTank palette |
-| `gt.border(c)` | overscan border color |
-| `gt.bg_compose` / `gt.bg_draw` | cache a static layer in GRAM, 1 blit/frame |
-| `gt.print_buf(buf,off,x,y,c)` | fast HUD text from byte buffers |
-| `gt.pool_move` / `pool_anim` / `pool_sprs` / `pool_edraw` | bulk entity update/draw in one asm walk |
-| `gt.phys_step` / `phys_draw` / `phys_drag` | physics engine (collision pairs, integrate) |
-| `gt.parallax_*` / `gt.drift_*` / `gt.chunks_draw` | staged-blit asm draw engines |
-| `hexdata("…")` | compile-time byte blob → ROM |
+| `sprr` / `sprr2` | **rotate + scale sprites** (affine) - the signature GBA sprite feature |
+| `mode7()` / `mode7_cam(x,y,angle,[zoom])` / `mode7_off()` | an **affine plane** on BG2 (F-Zero ground, spinning maps, zooming menus) |
+| `blend(layer,alpha)` / `fade(amount,[white])` / `blend_off()` | the PPU **blend unit** - free alpha and brightness fades (glass, ghosts, level wipes, hit flashes) |
+| `window(x0,y0,x1,y1)` / `window_inside` / `window_outside` / `window_obj` / `window_off` | hardware **clipping windows** (spotlight/iris/reveal, HUD panels, sprite-shaped masks) |
+| `mosaic(n)` / `mosaic2(bh,bv)` | hardware **pixelate** (dissolve, heat-shimmer, hit-flash) |
+| `pal(i,r,g,b)` / `spr_col(i,r,g,b)` | **runtime palette** - swap, cycle, day/night (BGR555) |
+| `hgradient(table)` | per-scanline **backdrop gradient** via the HBlank IRQ (sky gradients, underwater bands) |
+| `backdrop(color)` · `screen_off()` / `screen_on()` | the void behind all layers · instant force-blank |
+| `anim(slot,first,last,fps)` / `anim_once` / `anim_pingpong` / `anim_reset` / `anim_done` | frame-range animation off the frame clock |
+| `timer_start()` / `timer_read()` | a free-running hardware timer (Timer 3, ~16 kHz) for sub-frame timing / profiling |
 
-These exist because native code has no cycle governor: you get the whole
-3.5 MHz. The constraint moves from PICO-8's 8192-token cap to **ROM/RAM size** -
-and to the blitter, which these engines feed efficiently.
+These exist because native ARM code has no cycle governor and the GBA's PPU does
+compositing, affine transforms, blending, and scrolling in hardware. The
+constraint moves from PICO-8's 8192-token cap to **ROM size** (which is generous)
+and the 128-sprite / 4-layer hardware budgets.
 
 ---
 
-## The 6 things to unlearn
+## The things to unlearn
 
-1. Colors are raw GameTank bytes. A static 0–15 literal is baked from the PICO-8
-   palette at build time; a **runtime-computed** color is a raw byte (a computed
-   0–15 index renders wrong). No `pal()`, no runtime palette.
-2. `palt` is color-0 only.
-3. Conditions must be boolean - `if (n)` on a number is an error (P8 calls 0
+1. **The screen is 240×160**, not 128×128 - coordinates don't transfer.
+2. `pal()` / `spr_col()` **do** work here (real palette hardware), unlike some
+   fantasy-console ports.
+3. `spr()` is a **hardware sprite** (128 budget), not a per-blit CPU cost.
+4. **No runtime string concat** - `"score "..n` doesn't compile; print separately.
+5. Conditions must be boolean - `if (n)` on a number is an error (PICO-8 calls 0
    truthy, we won't guess).
-4. No nil, so `x = x or default` is gone; tables are capacity-bounded; no
-   closures / metatables / coroutines.
-5. No token/cycle cap - games get all 3.5 MHz; the limit is ROM/RAM size.
-6. `sfx/music` play a native FM bank by index (or your converted cart), not raw
-   PICO-8 SFX bytes.
+6. No nil, so `x = x or default` is gone; tables are capacity-bounded structs;
+   no closures / metatables / coroutines.
+7. `music()` plays a **module** (maxmod) by index, not FM or raw PICO-8 bytes.
 
 ---
 
-## Hello, GameTank
+## Hello, GBA
 
 ```lua
 local angle = 0
-local radius = 40
+local radius = 60
 
-function _update()
-  angle += 0.016
+function _update60()
+  angle += 0.008
   if (btn(0)) radius -= 1
   if (btn(1)) radius += 1
-  radius = mid(8, radius, 58)
+  radius = mid(10, radius, 78)
 end
 
 function _draw()
   cls(1)
-  circfill(64, 64, 10, 9)
-  circfill(64 + flr(cos(angle) * radius),
-           64 + flr(sin(angle) * radius), 5, 8)
+  circfill(120, 80, 12, 9)                            -- center of a 240x160 screen
+  circfill(120 + flr(cos(angle) * radius),
+           80 + flr(sin(angle) * radius), 6, 8)
 end
 ```
 
-`gtlua build main.lua --sheet gfx.gtg -o game.gtr` → runs in the emulator, on
-gametank.zone, and on real hardware via GTFO.
+`node bin/gtlua.js build --target gba main.lua -o game.gba` → runs in mGBA and on
+real hardware.
 
 ---
 
 *Status reflects the shipped implementation, cross-checked against the compiler
-builtins and the SDK runtime. The roadmap targets full Tier-0/1 PICO-8 parity
-where the hardware allows, and fails loudly (with a fix-it) where it can't.
-PICO-8 is by Lexaloffle Games; the GameTank is Clyde Shaffer's open 8-bit
-console.*
+builtins and the SDK runtime. PICO-8 is by Lexaloffle Games; the Game Boy Advance
+is Nintendo hardware. This SDK is an independent homebrew toolchain.*
