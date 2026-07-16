@@ -273,15 +273,13 @@ void gba_circ(int cx, int cy, int r, int color)
 void gba_circfill(int cx, int cy, int r, int color)
 {
     u8 c = resolve_color(color);
-    int x = r, y = 0, err = 1 - r;
-    while (x >= y) {
-        hline_clip(cx - x, cx + x, cy + y, c);
-        hline_clip(cx - x, cx + x, cy - y, c);
-        hline_clip(cx - y, cx + y, cy + x, c);
-        hline_clip(cx - y, cx + y, cy - x, c);
-        y++;
-        if (err < 0) err += 2 * y + 1;
-        else { x--; err += 2 * (y - x) + 1; }
+    if (r < 0) return;
+    // Scanline fill: one hline per row, exact half-width = round(sqrt(r^2 - dy^2)).
+    // (The octant/Bresenham fill leaves gaps near the poles at larger radii — this
+    // draws every row exactly once with no seams.)
+    for (int dy = -r; dy <= r; dy++) {
+        int dx = (int)Sqrt((u32)(r * r - dy * dy));   // integer half-width (BIOS sqrt)
+        hline_clip(cx - dx, cx + dx, cy + dy, c);
     }
 }
 
@@ -361,6 +359,11 @@ void gba_print(const char *s, int x, int y, int color)
     // stays the default: one fewer BG layer used and no per-frame VRAM writes.)
     (void)color;   // sprite font is single-ink white in tile mode
     if (in_tile_mode()) { hud_draw_str(s, x, y); return; }
+    // TTE's bmp surface (tc->dst) and the m4 shape primitives (vid_page) must point
+    // at the SAME page, or text and shapes land on different buffers (one invisible,
+    // and whichever ran last leaves its page active for the next call). Sync TTE to
+    // the shape page right before drawing so print() composes with cls/rect/circ.
+    tte_get_context()->dst.data = (u8 *)vid_page;
     tte_color(color);
     tte_set_pos(x, y);
     write_guarded(s);

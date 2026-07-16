@@ -24,23 +24,26 @@ back end to native ARM.
 A complete GBA game - one `main.lua`, no assets:
 
 ```lua
--- The screen is 240x160. cls clears it; print and the shapes draw on top.
+-- The screen is 240x160. cls clears it; the shapes draw a smiley on top.
 -- Colors are PICO-8-style indices 0-15 (0 black, 1 dark-blue, 10 yellow, 14 pink).
 function _draw()
   cls(1)                                -- dark blue background
-  print("hello gba", 92, 20, 14)        -- title, pink, near the top
 
-  circfill(120, 84, 30, 10)             -- head: a big yellow circle
-  rectfill(104, 72, 112, 80, 0)         -- left eye
-  rectfill(128, 72, 136, 80, 0)         -- right eye
-  circfill(120, 96, 10, 0)              -- mouth
+  circfill(120, 88, 38, 10)             -- head: a big yellow circle
+  rectfill(106, 78, 113, 88, 0)         -- left eye: a black square
+  rectfill(127, 78, 134, 88, 0)         -- right eye
+  circfill(120, 100, 12, 0)             -- mouth: a black circle
 end
 ```
+
+<p align="center">
+  <img src="docs/img/hello.png" width="480" alt="a yellow smiley face on a dark blue 240x160 screen">
+</p>
 
 Build it to a `.gba` ROM:
 
 ```sh
-node bin/gtlua.js build --target gba examples/hello/main.lua -o hello.gba
+node bin/gtlua.js build examples/hello/main.lua -o hello.gba
 ```
 
 Then run `hello.gba` in [mGBA](https://mgba.io/) (or any GBA emulator), or flash
