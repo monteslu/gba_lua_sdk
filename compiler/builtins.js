@@ -21,6 +21,15 @@ export const BUILTINS = {
   circ:     { params: [["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_circ" },
   circfill: { params: [["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_circfill" },
   line:     { params: [["coord", false], ["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_line" },
+  // clip(x,y,w,h): restrict all subsequent bitmap drawing to a rectangle (HUD
+  // panels, masked regions). clip() with no args resets to full screen; cls()
+  // also resets it. PICO-8 semantics.
+  clip:     { params: [["coord", true], ["coord", true], ["coord", true], ["coord", true]], ret: "void", c: "gba_clip", gbaOnly: true },
+  // pget(x,y): read a bitmap pixel (color 0..255). sset(x,y,[c]): paint a pixel
+  // into the loaded sprite sheet at runtime (0..15). Read-modify-write bitmap /
+  // procedural sprite art.
+  pget:     { params: [["coord", false], ["coord", false]], ret: "int", c: "gba_pget", gbaOnly: true },
+  sset:     { params: [["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gba_sset", gbaOnly: true },
   spr:      { params: [["int", false], ["coord", false], ["coord", false], ["int", true], ["int", true], ["flip", true], ["flip", true]], ret: "void", c: "gt_p8_spr" },
   // GBA-only: rotated+scaled hardware sprite. sprr(n, x, y, angle, [scale]).
   // angle is PICO-8 turns (0..1, like sin/cos); scale is a fixed multiplier
@@ -104,6 +113,32 @@ export const BUILTINS = {
   mode7:     { params: [], ret: "void", c: "gba_mode7", gbaOnly: true },
   mode7_cam: { params: [["num", false], ["num", false], ["num", false], ["num", true]], ret: "void", c: "gba_mode7_cam", gbaOnly: true },
   mode7_off: { params: [], ret: "void", c: "gba_mode7_off", gbaOnly: true },
+
+  // ---- second affine BG (rotate/scale a layer of YOUR OWN tiles, not Mode 7) --
+  // abg_setup(tiles, ntiles, map, msize, [pal]): tiles = array8 of 8bpp pixels
+  //   (64 bytes/tile), map = array8 of msize*msize tile indices, msize = 16/32/
+  //   64/128, pal = array of BGR555 colors (or omit to keep the BG palette).
+  // abg_cam(x,y,angle,[zoom]): per-frame camera (same as mode7_cam).
+  // abg_off(): hide it. A spinning logo/menu or a second scaled world.
+  abg_setup: { params: [["array8", false], ["int", false], ["array8", false], ["int", false], ["array", true]], ret: "void", c: "gba_abg_setup", gbaOnly: true },
+  abg_cam:   { params: [["num", false], ["num", false], ["num", false], ["num", true]], ret: "void", c: "gba_abg_cam", gbaOnly: true },
+  abg_off:   { params: [], ret: "void", c: "gba_abg_off", gbaOnly: true },
+
+  // ---- DMA bulk moves (DMA3 — fast block copy/fill of gba-lua arrays) ---------
+  // dma(dst, src, n): copy n 32-bit words src->dst. dma_fill(dst, value, n): fill.
+  // For `array` (16.16) n = element count; for array8 pass a word count (bytes/4).
+  dma:      { params: [["array", false], ["array", false], ["int", false]], ret: "void", c: "gba_dma", gbaOnly: true },
+  dma_fill: { params: [["array", false], ["int", false], ["int", false]], ret: "void", c: "gba_dma_fill", gbaOnly: true },
+
+  // ---- 16-bit direct-color bitmap (Mode 5, true color, double-buffered) -------
+  // mode15(): switch to the 16-bit bitmap (160x128). rgb15(r,g,b): build a color
+  // (0..255 each). cls15(color)/pset15(x,y,color): clear/plot. flip15(): present.
+  // For plasmas / gradients / photo blits beyond the 16-color indexed path.
+  mode15:   { params: [], ret: "void", c: "gba_mode15", gbaOnly: true },
+  rgb15:    { params: [["int", false], ["int", false], ["int", false]], ret: "int", c: "gba_rgb15", gbaOnly: true },
+  cls15:    { params: [["int", false]], ret: "void", c: "gba_cls15", gbaOnly: true },
+  pset15:   { params: [["coord", false], ["coord", false], ["int", false]], ret: "void", c: "gba_pset15", gbaOnly: true },
+  flip15:   { params: [], ret: "void", c: "gba_flip15", gbaOnly: true },
 
   // ---- windows: hardware rectangular clipping regions (free in the PPU) ----
   // window(x0,y0,x1,y1): SPOTLIGHT — show everything inside the box, hide outside

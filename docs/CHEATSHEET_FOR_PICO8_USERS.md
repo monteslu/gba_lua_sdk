@@ -116,11 +116,13 @@ optimization, never a semantic change.
 | `circfill / circ(x,y,r,c)` | ✅ | |
 | `line(x0,y0,x1,y1,c)` | ✅ | |
 | `pset(x,y,[c])` | ✅ | set a pixel |
-| `pget(x,y)` / `sset(x,y,c)` | ❌ | framebuffer/sheet reads not implemented |
+| `pget(x,y)` | ✅ | read a bitmap pixel |
+| `sset(x,y,c)` | ✅ | paint a pixel into the sprite sheet |
+| `clip(x,y,w,h)` | ✅ | bound draws to a rect; `clip()` resets (cls resets too) |
 | `camera([x,y])` | ✅ | sticky draw offset |
 | `color(c)` | ✅ | |
 | `sspr(...)` | 🟡 | unscaled rect blit; scaled = compile error |
-| `fillp`, `tline`, `clip` | ❌ | not implemented |
+| `fillp`, `tline` | ❌ | not implemented |
 
 ## Sprites
 
@@ -246,6 +248,9 @@ end`. Keep your state in an `array8` and save/load it.
 | `backdrop(color)` · `screen_off()` / `screen_on()` | the void behind all layers · instant force-blank |
 | `anim(slot,first,last,fps)` / `anim_once` / `anim_pingpong` / `anim_reset` / `anim_done` | frame-range animation off the frame clock |
 | `timer_start()` / `timer_read()` | a free-running hardware timer (Timer 3, ~16 kHz) for sub-frame timing / profiling |
+| `abg_setup(...)` / `abg_cam(...)` / `abg_off()` | a second **rotate/scale BG** of your own tiles (not the Mode-7 plane) |
+| `mode15()` / `rgb15(r,g,b)` / `cls15` / `pset15` / `flip15` | a **16-bit true-color** bitmap (160×128 BGR555) - plasmas, gradients |
+| `dma(dst,src,n)` / `dma_fill(dst,value,n)` | hardware **DMA3** block copy/fill of arrays |
 
 These exist because native ARM code has no cycle governor and the GBA's PPU does
 compositing, affine transforms, blending, and scrolling in hardware. The

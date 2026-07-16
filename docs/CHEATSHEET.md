@@ -69,6 +69,9 @@ blue, `14` pink). Runtime `pal(i,r,g,b)` / `spr_col(i,r,g,b)` reach the full
 | `line(x0,y0,x1,y1,[c])` | a line |
 | `color(c)` | set the default draw color |
 | `camera([x,y])` | sticky draw offset for subsequent calls |
+| `clip(x,y,w,h)` | bound all draws to a rectangle; `clip()` (no args) resets — `cls()` resets too |
+| `pget(x,y)` | read a bitmap pixel (color 0..255) |
+| `sset(x,y,[c])` | paint a pixel into the loaded sprite sheet at runtime |
 | `sspr(sx,sy,sw,sh,dx,dy,[dw,dh],[fx,fy])` | sheet blit (scaled = compile error today) |
 | `print(str_or_val,x,y,[c])` | draw text or a number at (x,y) |
 
@@ -136,6 +139,47 @@ zooming menus. Data comes from `--mode7 plane.png` (8bpp, square power-of-two).
 | `mode7()` | show the bundled affine plane (call once in `_init`) |
 | `mode7_cam(x,y,angle,[zoom])` | per-frame camera: world point centered, `angle` turns, `zoom` 16.16 |
 | `mode7_off()` | hide the affine layer |
+
+---
+
+## Second affine BG (your own rotate/scale layer)
+
+Like Mode 7, but with the game's **own** tiles + map instead of the bundled plane
+- a spinning logo, a rotating menu, or a second scaled world.
+
+| Call | What |
+|---|---|
+| `abg_setup(tiles,ntiles,map,msize,[pal])` | `tiles` = array8 of 8bpp pixels (64 bytes/tile), `map` = array8 of `msize*msize` tile indices, `msize` = 16/32/64/128, `pal` = array of BGR555 colors (see `rgb15`) |
+| `abg_cam(x,y,angle,[zoom])` | per-frame camera (same as `mode7_cam`) |
+| `abg_off()` | hide it |
+
+---
+
+## 16-bit bitmap (true color)
+
+A 160×128 direct-color (BGR555) framebuffer for plasmas, gradients, and photo
+blits - beyond the 16-color indexed path. Switch with `mode15()` (once), then use
+these instead of the 8bpp `cls`/`pset`.
+
+| Call | What |
+|---|---|
+| `mode15()` | switch to the 16-bit bitmap (call once in `_init`) |
+| `rgb15(r,g,b)` | build a color from 0..255 components |
+| `cls15(color)` / `pset15(x,y,color)` | clear / plot a 16-bit pixel |
+| `flip15()` | present (currently single-buffered, so drawing shows immediately) |
+
+---
+
+## DMA (fast bulk moves)
+
+Hardware DMA3 block copy/fill - far faster than a Lua loop for big buffers.
+
+| Call | What |
+|---|---|
+| `dma(dst,src,n)` | copy `n` 32-bit words `src`→`dst` (both gba-lua arrays) |
+| `dma_fill(dst,value,n)` | fill `n` words of `dst` with `value` |
+
+For an `array` (16.16) `n` = element count; for `array8` pass a word count (bytes/4).
 
 ---
 

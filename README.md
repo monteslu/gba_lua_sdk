@@ -106,18 +106,20 @@ first element (`a[0]` is out of bounds).
 | | |
 |---|---|
 | lifecycle | `_init` `_update` `_update60` `_draw` |
-| bitmap draw | `cls` `camera` `color` `pset` `rect` `rectfill` `circ` `circfill` `line` |
+| bitmap draw | `cls` `camera` `color` `pset` `pget` `sset` `clip` `rect` `rectfill` `circ` `circfill` `line` |
+| 16-bit bitmap | `mode15()` true color · `rgb15(r,g,b)` · `cls15` `pset15` `flip15` - a 160×128 BGR555 framebuffer |
 | sprites | `spr(n,x,y,[w,h],[fx,fy])` hardware OBJ · `spr8(t,x,y,[flip])` · `spr_pal` `spr_prio` |
 | affine sprites | `sprr(n,x,y,angle,scale)` rotate+scale · `sprr2(n,x,y,angle,sx,sy)` non-uniform |
 | tile layers | `map_show` `tileset` `tilemap` `layer_show` `layer_pri` `layer_scroll` `parallax` `camera` `mget`/`tget`/`tset` |
 | mode 7 | `mode7()` · `mode7_cam(x,y,angle,[zoom])` · `mode7_off()` - an affine plane on BG2 |
+| affine BG | `abg_setup(tiles,ntiles,map,msize,[pal])` · `abg_cam(x,y,angle,[zoom])` · `abg_off()` - your own rotate/scale layer |
 | windows | `window(x0,y0,x1,y1)` spotlight · `window_inside`/`window_outside`/`window_obj` · `window_off` |
 | color effects | `fade(amount,[white])` · `blend(layer,alpha)` · `blend_off` · `mosaic`/`mosaic2` · `backdrop` · `screen_off`/`screen_on` |
 | palette | `pal(i,r,g,b)` BG · `spr_col(i,r,g,b)` OBJ · `hgradient(table)` per-scanline backdrop |
 | animation | `anim(slot,first,last,fps)` loop · `anim_once` · `anim_pingpong` · `anim_reset` · `anim_done` |
 | input | `btn(i,[pl])` `btnp(i,[pl])` - 0-3 d-pad, 4=A, 5=B, 6=L, 7=R, 8=START, 9=SELECT |
 | math | `flr` `ceil` `abs` `sgn` `sqrt` `min` `max` `mid` `sin` `cos` `atan2` `rnd` `srand` `t`/`time` + bit ops |
-| data | `array(n,[v])` 16.16 · `array8(n,[v])` bytes 0-255 · `pool(n)` |
+| data | `array(n,[v])` 16.16 · `array8(n,[v])` bytes 0-255 · `pool(n)` · `dma(dst,src,n)`/`dma_fill` fast moves |
 | save | `save(slot,array8,n)` · `load(slot,array8,n)` - battery SRAM, 16 slots × 1 KB |
 | timer | `timer_start()` · `timer_read()` - free-running Timer 3, sub-frame profiling |
 | sound | `music(n,[loop])` module music · `sfx(n,[ch])` · `sfx_ex(n,vol,pan,pitch)` · `sfx_volume` |

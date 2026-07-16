@@ -161,6 +161,7 @@ export async function buildGba(entryLua, outPath, opts = {}) {
   const winC = await rd("gba_win.c");   // hardware windows (clip regions)
   const animC = await rd("gba_anim.c");   // animation helpers (frame cycling)
   const hwC = await rd("gba_hw.c");   // SRAM save/load + free-running timer
+  const moreC = await rd("gba_more.c");   // DMA + 16-bit bitmap + second affine BG
   const apiH = await rd("gba_api.h");
   const mathH = await rd("gba_math.h");
   const alienH = await rd("alien_sprite.h");
@@ -184,7 +185,7 @@ export async function buildGba(entryLua, outPath, opts = {}) {
   const sid = init.sidOut;
   await rpc(sid, { jsonrpc: "2.0", method: "notifications/initialized" });
 
-  const sources = { "main.c": res.c, "gba_api.c": apiC, "gba_math.c": mathC, "gba_bg.c": bgC, "gba_text.c": textC, "gba_fx.c": fxC, "gba_mode7.c": m7C, "gba_win.c": winC, "gba_anim.c": animC, "gba_hw.c": hwC };
+  const sources = { "main.c": res.c, "gba_api.c": apiC, "gba_math.c": mathC, "gba_bg.c": bgC, "gba_text.c": textC, "gba_fx.c": fxC, "gba_mode7.c": m7C, "gba_win.c": winC, "gba_anim.c": animC, "gba_hw.c": hwC, "gba_more.c": moreC };
   const includes = { "gba_api.h": apiH, "gba_math.h": mathH, "alien_sprite.h": alienH, "gba_sintab.h": sintabH, "gba_font.h": fontH };
 
   // per-build feature-flag header (every TU includes gba_api.h -> gba_config.h).

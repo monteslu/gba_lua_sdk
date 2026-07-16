@@ -65,6 +65,9 @@ static const u16 BTN_MASK[BTN_COUNT] = {
 static int cur_color = 7;
 // Mode-4 double-buffer: endframe requests a flip, gba_vsync does it in vblank.
 static int pending_flip;
+// set by mode15() (gba_more.c): a 16-bit bitmap mode owns its OWN page flip
+// (flip15), so gba_vsync must NOT do the Mode-4 flip. 0 = normal Mode-4 path.
+int gba_bitmap16_mode;
 // per-sprite draw modifiers (palbank + priority + mode + mosaic), reset each
 // frame in endframe. spr_mode: 0=normal 1=alpha-blend (translucent) 2=obj-window.
 static int spr_palbank;
@@ -172,7 +175,7 @@ void gba_vsync(void)
     // Why this is maxmod-safe where the old attempt wasn't: we only TOGGLE the
     // DCNT_PAGE bit here (a single register bit in vblank) — we never call
     // vid_flip()/VBlankIntrWait() a second time, so nothing races mmVBlank.
-    if (pending_flip) {
+    if (pending_flip && !gba_bitmap16_mode) {
         REG_DISPCNT ^= DCNT_PAGE;                       // show the page we just drew
         vid_page = (COLOR *)((u32)vid_page ^ VRAM_PAGE_SIZE);   // draw to the other
         tte_get_context()->dst.data = (u8 *)vid_page;   // keep TTE on the draw page
@@ -210,6 +213,12 @@ static inline u8 resolve_color(int c)
     return (u8)(c & 15);
 }
 
+#define SCRW 240
+#define SCRH 160
+// Active clip rectangle [clip_x0,clip_x1) x [clip_y0,clip_y1) for bitmap draws.
+// Full screen by default; clip(x,y,w,h) shrinks it; cls()/clip() reset it.
+static int clip_x0 = 0, clip_y0 = 0, clip_x1 = SCRW, clip_y1 = SCRH;
+
 // ---- immediate drawing (Mode-4 bitmap) -------------------------------------
 void gba_cls(int color)
 {
@@ -219,18 +228,60 @@ void gba_cls(int color)
     m4_fill(c);
     sprites_used = 0;
     affine_used = 0;
+    // PICO-8: cls() resets the clip region to the full screen.
+    clip_x0 = 0; clip_y0 = 0; clip_x1 = SCRW; clip_y1 = SCRH;
 }
 
 void gba_color(int c) { cur_color = c & 15; }
 
-void gba_pset(int x, int y, int color) { m4_plot(x, y, resolve_color(color)); }
+static inline void plot_clip(int x, int y, u8 c);   // defined below (honors clip())
+static inline void hline_clip(int x1, int x2, int y, u8 c);   // defined below
+
+void gba_pset(int x, int y, int color) { plot_clip(x, y, resolve_color(color)); }
+
+// pget(x,y): read a Mode-4 bitmap pixel as its raw palette index (0..255). Off
+// screen returns 0. Pairs with pset for read-modify-write bitmap tricks.
+int gba_pget(int x, int y)
+{
+    if ((unsigned)x >= SCRW || (unsigned)y >= SCRH) return 0;
+    u16 w = vid_page[(y * SCRW + x) >> 1];
+    return (x & 1) ? (w >> 8) : (w & 0xFF);
+}
+
+// sset(x,y,c): write pixel (x,y) of the loaded sprite sheet to color index c
+// (0..15, the 4bpp OBJ palette). Lets a game paint/patch sprite art at runtime.
+// The sheet lives at OBJ tile block 5 (tile_mem[5]); tiles are 8x8 4bpp. We
+// address it as a linear tile grid SHEET_TILE_COLS tiles wide (block 5 holds up
+// to SHEET_MAX_TILES 4bpp tiles). Bakes into the same tiles gba_spr() reads.
+#define SHEET_TILE_COLS 32     // 32 tiles = 256 px wide (a full OBJ charblock row)
+#define SHEET_MAX_TILES 512    // 4bpp tiles per charblock
+void gba_sset(int x, int y, int color)
+{
+    if (x < 0 || y < 0) return;
+    int c = color & 15;
+    int tcol = x >> 3, trow = y >> 3;       // which 8x8 tile
+    int px = x & 7,  py = y & 7;            // pixel within it
+    int tile = trow * SHEET_TILE_COLS + tcol;
+    if (tile < 0 || tile >= SHEET_MAX_TILES) return;
+    // 4bpp tile = 32 bytes = 8 rows of 4 bytes; each byte holds 2 pixels (low
+    // nibble = left). Read-modify-write the 32-bit row word for this pixel.
+    u32 *roww = &((u32 *)&tile_mem[5][tile])[py];
+    int shift = px << 2;                    // 4 bits per pixel
+    *roww = (*roww & ~((u32)0xF << shift)) | ((u32)c << shift);
+}
 
 void gba_rect(int x0, int y0, int x1, int y1, int color)
 {
-    m4_frame(x0, y0, x1, y1, resolve_color(color));   // outline (inclusive rect)
+    u8 c = resolve_color(color);
+    if (x0 > x1) { int t = x0; x0 = x1; x1 = t; }
+    if (y0 > y1) { int t = y0; y0 = y1; y1 = t; }
+    hline_clip(x0, x1, y0, c);                 // top + bottom edges
+    hline_clip(x0, x1, y1, c);
+    for (int y = y0 + 1; y < y1; y++) {        // left + right edges
+        plot_clip(x0, y, c);
+        plot_clip(x1, y, c);
+    }
 }
-
-static inline void hline_clip(int x1, int x2, int y, u8 c);   // defined below
 
 void gba_rectfill(int x0, int y0, int x1, int y1, int color)
 {
@@ -243,16 +294,41 @@ void gba_rectfill(int x0, int y0, int x1, int y1, int color)
 
 void gba_line(int x0, int y0, int x1, int y1, int color)
 {
-    m4_line(x0, y0, x1, y1, resolve_color(color));
+    // clipped Bresenham (plot_clip honors clip() and the screen bounds).
+    u8 c = resolve_color(color);
+    int dx = x1 - x0, dy = y1 - y0;
+    int sx = dx < 0 ? -1 : 1, sy = dy < 0 ? -1 : 1;
+    if (dx < 0) dx = -dx;
+    if (dy < 0) dy = -dy;
+    int err = dx - dy;
+    for (;;) {
+        plot_clip(x0, y0, c);
+        if (x0 == x1 && y0 == y1) break;
+        int e2 = err << 1;
+        if (e2 > -dy) { err -= dy; x0 += sx; }
+        if (e2 <  dx) { err += dx; y0 += sy; }
+    }
+}
+
+// clip(x,y,w,h): restrict all subsequent bitmap drawing to a rectangle; clip()
+// with no args (w<=0) resets to the full screen. PICO-8 semantics — pset/rect/
+// circ/line/print are all bounded by it. cls() resets the clip.
+void gba_clip(int x, int y, int w, int h)
+{
+    if (w <= 0 || h <= 0) { clip_x0 = 0; clip_y0 = 0; clip_x1 = SCRW; clip_y1 = SCRH; return; }
+    int x1 = x + w, y1 = y + h;
+    clip_x0 = x  < 0 ? 0 : x  > SCRW ? SCRW : x;
+    clip_y0 = y  < 0 ? 0 : y  > SCRH ? SCRH : y;
+    clip_x1 = x1 < 0 ? 0 : x1 > SCRW ? SCRW : x1;
+    clip_y1 = y1 < 0 ? 0 : y1 > SCRH ? SCRH : y1;
 }
 
 // libtonc's m4_plot/m4_hline do NOT clip — an off-screen x/y corrupts adjacent
-// rows (wraps across the 240-wide framebuffer). So we clip to [0,240)x[0,160).
-#define SCRW 240
-#define SCRH 160
+// rows. Every bitmap primitive draws through plot_clip/hline_clip, which honor
+// both the screen bounds and the active clip() rectangle (SCRW/SCRH + clip_* above).
 static inline void plot_clip(int x, int y, u8 c)
 {
-    if ((unsigned)x < SCRW && (unsigned)y < SCRH) m4_plot(x, y, c);
+    if (x >= clip_x0 && x < clip_x1 && y >= clip_y0 && y < clip_y1) m4_plot(x, y, c);
 }
 // Fill a clipped horizontal span in the Mode-4 bitmap. VRAM is 16-bit-write-only
 // and packs two 8bpp pixels per halfword, so we write 16-bit WORDS directly:
@@ -262,11 +338,11 @@ static inline void plot_clip(int x, int y, u8 c)
 // surface after a TTE (print) glyph render. A plain word loop always lands.
 static inline void hline_clip(int x1, int x2, int y, u8 c)
 {
-    if ((unsigned)y >= SCRH) return;
+    if (y < clip_y0 || y >= clip_y1) return;
     if (x1 > x2) { int t = x1; x1 = x2; x2 = t; }
-    if (x2 < 0 || x1 >= SCRW) return;
-    if (x1 < 0) x1 = 0;
-    if (x2 >= SCRW) x2 = SCRW - 1;
+    if (x2 < clip_x0 || x1 >= clip_x1) return;
+    if (x1 < clip_x0) x1 = clip_x0;
+    if (x2 >= clip_x1) x2 = clip_x1 - 1;
 
     u16 *row = &vid_page[(y * SCRW) >> 1];
     u16 word = (u16)(c | (c << 8));

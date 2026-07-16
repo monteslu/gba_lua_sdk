@@ -32,6 +32,9 @@ void gba_rectfill(int x0, int y0, int x1, int y1, int color);  // filled
 void gba_circ(int cx, int cy, int r, int color);              // outline
 void gba_circfill(int cx, int cy, int r, int color);          // filled
 void gba_line(int x0, int y0, int x1, int y1, int color);
+void gba_clip(int x, int y, int w, int h);   // clip(x,y,w,h): bound draws to a rect; clip() resets
+int  gba_pget(int x, int y);                 // pget(x,y): read a Mode-4 bitmap pixel (color 0..255)
+void gba_sset(int x, int y, int color);      // sset(x,y,c): write a sprite-sheet pixel
 
 // ---- backgrounds: hardware TILE layers (Mode 0) — the real game path -------
 // The GBA has 4 hardware BG layers. A layer shows a tilemap (built from an
@@ -161,5 +164,22 @@ void gba_sfx_volume(int vol);      // sfx_volume(0..1024): master sfx volume
 // (start/select later). player is ignored (GBA is 1-pad) but kept for API parity.
 int gba_btn(int i, int player);
 int gba_btnp(int i, int player);
+
+// ---- parity odds & ends (gba_more.c) ---------------------------------------
+// DMA bulk moves (DMA3): copy/fill n 32-bit words between gba-lua arrays.
+void gba_dma(void *dst, const void *src, int n);
+void gba_dma_fill(void *dst, int value, int n);
+// 16-bit direct-color bitmap (Mode 5, double-buffered 160x128, raw BGR555).
+void gba_mode15(void);                       // switch into the 16-bit bitmap mode
+int  gba_rgb15(int r, int g, int b);         // build a BGR555 color from 0..255 rgb
+void gba_cls15(int color);                   // clear the 16-bit page
+void gba_pset15(int x, int y, int color);    // plot a 16-bit pixel
+void gba_flip15(void);                       // present the drawn 16-bit page
+// second affine BG (BG2 rotate/scale) from the game's OWN tiles/map (not Mode 7).
+void gba_abg_setup(const unsigned char *tiles, int ntiles,
+                   const unsigned char *map, int msize,
+                   const int *pal);
+void gba_abg_cam(long x, long y, long angle, long zoom);   // per-frame camera
+void gba_abg_off(void);
 
 #endif
