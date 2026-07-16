@@ -32,31 +32,44 @@ function compileLuaCli(entry) {
 }
 
 const USAGE =
-  "usage: gbalua build <main.lua> [--sheet sprites.png] [--map level.png] [--mode7 plane.png] [-o game.gba]\n" +
-  "       gbalua c     <main.lua>                      print the generated C (debugging)";
+  "usage: gbalua build <main.lua> [--sheet sprites.png] [--map level.png] [--mode7 plane.png]\n" +
+  "                    [--music song.xm]... [--soundbank bank.bin] [-o game.gba]\n" +
+  "       gbalua c     <main.lua>                      print the generated C (debugging)\n" +
+  "\n" +
+  "  --music is repeatable: music(0) plays the first module, music(1) the second, ...\n" +
+  "  (.xm/.mod/.it/.s3m accepted; compiled to a Maxmod soundbank by romdev-maxmod)";
 
 const [, , cmd, ...rest] = process.argv;
 
 if (cmd === "build") {
-  const oIdx = rest.indexOf("-o");
-  const outPath = oIdx !== -1 ? rest[oIdx + 1] : undefined;
-  const shIdx = rest.indexOf("--sheet");
-  const sheetPath = shIdx !== -1 ? rest[shIdx + 1] : undefined;
-  const mpIdx = rest.indexOf("--map");
-  const mapPath = mpIdx !== -1 ? rest[mpIdx + 1] : undefined;
-  const m7Idx = rest.indexOf("--mode7");
-  const mode7Path = m7Idx !== -1 ? rest[m7Idx + 1] : undefined;
-  const valueOf = (i) => (i === -1 ? -2 : i + 1);
-  const entry = rest.filter((a, i) =>
-    i !== oIdx && i !== valueOf(oIdx) &&
-    i !== shIdx && i !== valueOf(shIdx) &&
-    i !== mpIdx && i !== valueOf(mpIdx) &&
-    i !== m7Idx && i !== valueOf(m7Idx))[0];
+  // options that take one value; --music may repeat.
+  const opts = { musicPaths: [] };
+  const positional = [];
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    const val = () => {
+      if (i + 1 >= rest.length) fail(`gbalua: ${a} needs a value\n${USAGE}`);
+      return rest[++i];
+    };
+    if (a === "-o") opts.outPath = val();
+    else if (a === "--sheet") opts.sheetPath = val();
+    else if (a === "--map") opts.mapPath = val();
+    else if (a === "--mode7") opts.mode7Path = val();
+    else if (a === "--music") opts.musicPaths.push(val());
+    else if (a === "--soundbank") opts.soundbankPath = val();
+    else if (a.startsWith("-")) fail(`gbalua: unknown option ${a}\n${USAGE}`);
+    else positional.push(a);
+  }
+  const entry = positional[0];
   if (!entry) fail(USAGE);
-  const out = outPath ?? path.join(path.dirname(path.resolve(entry)),
+  if (opts.musicPaths.length && opts.soundbankPath) fail("gbalua: --music and --soundbank are mutually exclusive");
+  const out = opts.outPath ?? path.join(path.dirname(path.resolve(entry)),
     path.basename(entry, path.extname(entry)) + ".gba");
   const { buildGba } = await import("../compiler/build-gba.mjs");
-  const r = await buildGba(entry, out, { sheetPath, mapPath, mode7Path });
+  const r = await buildGba(entry, out, {
+    sheetPath: opts.sheetPath, mapPath: opts.mapPath, mode7Path: opts.mode7Path,
+    musicPaths: opts.musicPaths, soundbankPath: opts.soundbankPath,
+  });
   if (r.issues?.length) {
     for (const iss of r.issues) console.error(`${iss.severity ?? "error"}: ${iss.file ?? ""}:${iss.line ?? ""} ${iss.message}`);
   }

@@ -25,6 +25,10 @@ import {
   sheetAssetsHeader, mapAssetHeader, mode7AssetHeader,
   alienAssetsHeader, mapStubHeader, mode7StubHeader,
 } from "./asset-headers.mjs";
+import { buildSoundbank } from "./soundbank.mjs";
+import { aseToRgba } from "./ase-import.mjs";
+import { tmxToRgba, listTmxImages } from "./tmx-import.mjs";
+import { encodePng } from "./png-encode.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SDK_DIR = path.resolve(__dirname, "..", "gba-sdk");
@@ -86,20 +90,44 @@ function reorderToSpriteBlocks(rowTiles, tilesAcross, tilesDown) {
   return out.length ? out : rowTiles;
 }
 
-// Asset headers: PNG bytes -> generated C headers, via the browser-safe shared
-// module (compiler/asset-headers.mjs) so CLI and web builds emit IDENTICAL text.
-// We do NOT use encodeArt's GBA `tiles` palette — that stage emits a broken
-// placeholder palette (romdev bug: "no master palette for gba").
-async function convertSheet(_sid, pngPath, varPrefix) {
-  return sheetAssetsHeader(await readFile(pngPath), path.basename(pngPath), varPrefix);
+// Asset headers: image bytes -> generated C headers, via the browser-safe
+// shared module (compiler/asset-headers.mjs) so CLI and web builds emit
+// IDENTICAL text. We do NOT use encodeArt's GBA `tiles` palette — that stage
+// emits a broken placeholder palette (romdev bug: "no master palette for gba").
+//
+// --sheet/--map/--mode7 accept .png natively, plus IMPORTS from the formats
+// artists actually use: Aseprite (.ase/.aseprite, frame 0 flattened) and
+// Tiled (.tmx, layers composited; tileset images read relative to the map).
+// Imports normalize to PNG bytes, then take the exact same path as a PNG.
+async function loadImageAsPng(filePath) {
+  const abs = path.resolve(filePath);
+  const ext = path.extname(abs).toLowerCase();
+  if (ext === ".ase" || ext === ".aseprite") {
+    const { width, height, rgba } = aseToRgba(new Uint8Array(await readFile(abs)));
+    return encodePng(rgba, width, height);
+  }
+  if (ext === ".tmx") {
+    const tmxText = await readFile(abs, "utf8");
+    const images = {};
+    for (const src of listTmxImages(tmxText)) {
+      images[src.split("/").pop()] = new Uint8Array(await readFile(path.resolve(path.dirname(abs), src)));
+    }
+    const { width, height, rgba } = tmxToRgba(tmxText, images);
+    return encodePng(rgba, width, height);
+  }
+  return readFile(abs);                         // .png (or anything decodePng reads)
 }
 
-async function convertMap(pngPath) {
-  return mapAssetHeader(await readFile(pngPath), path.basename(pngPath));
+async function convertSheet(_sid, imgPath, varPrefix) {
+  return sheetAssetsHeader(await loadImageAsPng(imgPath), path.basename(imgPath), varPrefix);
 }
 
-async function convertMode7(pngPath) {
-  return mode7AssetHeader(await readFile(pngPath), path.basename(pngPath));
+async function convertMap(imgPath) {
+  return mapAssetHeader(await loadImageAsPng(imgPath), path.basename(imgPath));
+}
+
+async function convertMode7(imgPath) {
+  return mode7AssetHeader(await loadImageAsPng(imgPath), path.basename(imgPath));
 }
 
 /**
@@ -151,14 +179,27 @@ export async function buildGba(entryLua, outPath, opts = {}) {
 
   // sound: link maxmod + the soundbank when the game uses music()/sfx().
   let maxmod = false;
-  let soundbankPath = null;
+  let soundbankPath = null;    // a .bin on disk (the default bank, or --soundbank)
+  let soundbankBytes = null;   // a bank built in-memory from --music modules
   if (usesSound) {
     sources["gba_sound.c"] = await rd("gba_sound.c");
-    // the default soundbank (MOD_CHIPTUNE = music 0). A game can override with
-    // its own soundbank later. The toolchain auto-emits the .incbin stub for a
-    // binaryInclude named "soundbank.bin" when maxmod is on.
     maxmod = true;
-    soundbankPath = path.resolve(SDK_DIR, "..", "assets", "soundbank.bin");
+    if (opts.musicPaths?.length) {
+      // --music song.xm [--music two.mod ...] -> compile a custom soundbank.
+      // music(n) plays the nth --music module (soundbank position = module id).
+      const modules = [];
+      for (const p of opts.musicPaths) {
+        modules.push({ name: path.basename(p), bytes: new Uint8Array(await readFile(path.resolve(p))) });
+      }
+      soundbankBytes = buildSoundbank(modules).bin;
+    } else if (opts.soundbankPath) {
+      // --soundbank bank.bin -> link a prebuilt Maxmod soundbank as-is.
+      soundbankPath = path.resolve(opts.soundbankPath);
+    } else {
+      // the default soundbank (MOD_CHIPTUNE = music 0). The toolchain auto-emits
+      // the .incbin stub for a binaryInclude named "soundbank.bin".
+      soundbankPath = path.resolve(SDK_DIR, "..", "assets", "soundbank.bin");
+    }
   }
 
   // Asset conversion: --sheet foo.png -> real 4bpp sprite tiles, generated into
@@ -188,8 +229,8 @@ export async function buildGba(entryLua, outPath, opts = {}) {
     throw new Error("gbalua: GBALUA_BACKEND=local but romdevtools not found — set $ROMDEVTOOLS, `npm i romdevtools`, or keep a sibling romdev checkout.");
   }
   return toolsDir
-    ? buildLocal({ toolsDir, sources, includes, maxmod, soundbankPath, outPath })
-    : buildMcp({ sources, includes, maxmod, soundbankPath, outPath });
+    ? buildLocal({ toolsDir, sources, includes, maxmod, soundbankPath, soundbankBytes, outPath })
+    : buildMcp({ sources, includes, maxmod, soundbankPath, soundbankBytes, outPath });
 }
 
 // ---- local backend: run the WASM toolchain in-process (no server) -----------
@@ -199,14 +240,14 @@ export async function buildGba(entryLua, outPath, opts = {}) {
 // wrong). Warm-up note: each CLI invocation compiles the tool WASM once
 // (cc1-arm is ~38 MB), so a one-shot build pays a small startup cost the warm
 // MCP server doesn't; the bytes are the same either way.
-async function buildLocal({ toolsDir, sources, includes, maxmod, soundbankPath, outPath }) {
+async function buildLocal({ toolsDir, sources, includes, maxmod, soundbankPath, soundbankBytes, outPath }) {
   const toolUrl = pathToFileURL(path.join(toolsDir, "src", "toolchains", "gba-c", "gba-c.js")).href;
   const parseUrl = pathToFileURL(path.join(toolsDir, "src", "toolchains", "parse-errors.js")).href;
   const [{ buildGbaC }, { parseBuildLog }] = await Promise.all([import(toolUrl), import(parseUrl)]);
 
   const binaryIncludes = {};
-  if (maxmod && soundbankPath) {
-    binaryIncludes["soundbank.bin"] = new Uint8Array(await readFile(soundbankPath));
+  if (maxmod && (soundbankBytes || soundbankPath)) {
+    binaryIncludes["soundbank.bin"] = soundbankBytes ?? new Uint8Array(await readFile(soundbankPath));
   }
 
   const r = await buildGbaC({
@@ -224,7 +265,7 @@ async function buildLocal({ toolsDir, sources, includes, maxmod, soundbankPath, 
 }
 
 // ---- mcp backend: POST the sources to a running romdev server ---------------
-async function buildMcp({ sources, includes, maxmod, soundbankPath, outPath }) {
+async function buildMcp({ sources, includes, maxmod, soundbankPath, soundbankBytes, outPath }) {
   const init = await rpc(null, {
     jsonrpc: "2.0", id: 1, method: "initialize",
     params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "gbalua", version: "1" } },
@@ -236,9 +277,17 @@ async function buildMcp({ sources, includes, maxmod, soundbankPath, outPath }) {
   await rpc(sid, { jsonrpc: "2.0", method: "notifications/initialized" });
 
   const buildExtra = {};
-  if (maxmod && soundbankPath) {
+  if (maxmod && (soundbankBytes || soundbankPath)) {
     buildExtra.maxmod = true;
-    buildExtra.binaryIncludePaths = { "soundbank.bin": soundbankPath };
+    // the MCP build tool takes soundbanks by path; a --music-built bank gets
+    // written next to the ROM so the server can read it.
+    let bankPath = soundbankPath;
+    if (soundbankBytes) {
+      bankPath = path.resolve(outPath + ".soundbank.bin");
+      await mkdir(path.dirname(bankPath), { recursive: true });
+      await writeFile(bankPath, soundbankBytes);
+    }
+    buildExtra.binaryIncludePaths = { "soundbank.bin": bankPath };
   }
   const b = await rpc(sid, {
     jsonrpc: "2.0", id: 2, method: "tools/call",

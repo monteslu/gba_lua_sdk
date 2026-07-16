@@ -14,6 +14,9 @@
     "./compiler/png-tiles.mjs": "./compiler/png-tiles.mjs",
     "./compiler/png-encode.mjs": "./compiler/png-encode.mjs",
     "./compiler/asset-headers.mjs": "./compiler/asset-headers.mjs",
+    "./compiler/soundbank.mjs": "./compiler/soundbank.mjs",
+    "./compiler/ase-import.mjs": "./compiler/ase-import.mjs",
+    "./compiler/tmx-import.mjs": "./compiler/tmx-import.mjs",
     "./package.json": "./package.json"
   },
   "engines": {

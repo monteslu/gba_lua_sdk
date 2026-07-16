@@ -132,11 +132,14 @@ See **[docs/CHEATSHEET.md](docs/CHEATSHEET.md)** for every verb with signatures.
 
 `--sheet sprites.png` imports a sprite sheet, `--map level.png` a tilemap, and
 `--mode7 plane.png` an affine plane, via a self-contained PNG → tile converter
-(`compiler/png-tiles.mjs`). They're CLI flags on `build`:
+(`compiler/png-tiles.mjs`). All three also accept the formats artists actually
+work in — **Aseprite** (`.ase`/`.aseprite`, frame 0 flattened) and **Tiled**
+(`.tmx`, visible layers composited; embed the tileset in the map) — imported,
+never re-invented. They're CLI flags on `build`:
 
 ```sh
 node bin/gbalua.js build --target gba mygame/main.lua \
-  --sheet mygame/sprites.png --map mygame/level.png -o mygame/game.gba
+  --sheet mygame/sprites.ase --map mygame/level.tmx -o mygame/game.gba
 ```
 
 The `examples/` directory shows each subsystem in use:
@@ -172,9 +175,14 @@ end
 
 `music(-1)` stops; `music(n, false)` plays once. `sfx_ex(n, vol, pan, pitch)`
 gives per-shot volume (0-1024), pan (0-255, 128 center), and pitch (a 16.16
-multiplier); `sfx_volume(v)` sets the master SFX level. The default soundbank
-(`assets/soundbank.bin`) ships a chiptune as module 0; regenerate it from
-`assets/make_music_xm.mjs` → `assets/build_soundbank.mjs` to use your own.
+multiplier); `sfx_volume(v)` sets the master SFX level.
+
+Bring your own music with `--music song.xm` on `build` (repeatable —
+`music(0)` plays the first module, `music(1)` the second, …; `.xm`/`.mod`/
+`.it`/`.s3m` all work). The soundbank is compiled at build time by
+`romdev-maxmod`, a faithful pure-JS port of devkitPro's `mmutil`. Or link a
+prebuilt bank with `--soundbank bank.bin`. With neither flag, the default
+soundbank (`assets/soundbank.bin`) ships a chiptune as module 0.
 
 ## Not-Lua walls (loud, never silent)
 
