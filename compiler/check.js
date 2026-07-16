@@ -9,7 +9,7 @@
 //
 // Conditions must be boolean (deliberate wall: Lua's 0 is truthy, C's is not).
 
-import { BUILTINS, GT_MEMBERS, CALLBACKS } from "./builtins.js";
+import { BUILTINS, CALLBACKS } from "./builtins.js";
 
 const join = (a, b) => (a === "fixed" || b === "fixed") ? "fixed" : "int";
 
@@ -687,25 +687,11 @@ export function check(chunk, file) {
     function callType(call, asStatement = false) {
       const callee = call.callee;
 
-      // gt.* extras
+      // gt.* was the GameTank-only namespace; the GBA has no such escape hatch
+      // (its hardware is first-class verbs). Reject it with a pointer to the docs.
       if (callee.kind === "member" && callee.object.kind === "name" && callee.object.name === "gt") {
-        const sig = GT_MEMBERS[callee.field];
-        if (!sig) { err(call, `unknown gt function 'gt.${callee.field}'`); return "int"; }
-        if (sig.audio) usesAudio.flag = true;
-        // gt.rgb has two forms: gt.rgb(byte) raw, or gt.rgb(r,g,b) resolved to
-        // the nearest palette byte at compile time (r,g,b must be constants).
-        if (callee.field === "rgb" && call.args.length === 3) {
-          for (const a of call.args) {
-            if (constEval(a) === null) {
-              err(a, "gt.rgb(r, g, b) needs constant 0-255 values (use gt.rgb(byte) for a runtime color)");
-            } else typeOf(a);
-          }
-          call.sig = sig;
-          return sig.ret;
-        }
-        checkArgs(call, sig.params, `gt.${callee.field}`);
-        call.sig = sig;
-        return sig.ret;
+        err(call, `'gt.${callee.field}' is a GameTank-only verb and isn't available on the GBA - use the GBA verbs instead (see docs/CHEATSHEET.md)`);
+        return "int";
       }
 
       if (callee.kind !== "name") {
@@ -900,11 +886,7 @@ export function check(chunk, file) {
         }
         case "member": {
           if (e.object.kind === "name" && e.object.name === "gt") {
-            if (GT_MEMBERS[e.field]) {
-              err(e, `gt.${e.field} must be called: gt.${e.field}(...)`);
-              return "int";
-            }
-            err(e, `unknown gt member 'gt.${e.field}'`);
+            err(e, `'gt.${e.field}' is a GameTank-only verb and isn't available on the GBA (see docs/CHEATSHEET.md)`);
             return "int";
           }
           if (e.object.kind === "name") {

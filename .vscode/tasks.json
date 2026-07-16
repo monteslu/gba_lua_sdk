@@ -2,8 +2,8 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "gtlua: Build",
-      "detail": "Compile the open .lua to a .gtr cartridge (same-name, same folder)",
+      "label": "gba-lua: Build",
+      "detail": "Compile the open .lua to a .gba ROM (same name, same folder)",
       "type": "shell",
       "command": "node",
       "args": [
@@ -11,7 +11,7 @@
         "build",
         "${file}",
         "-o",
-        "${fileDirname}/${fileBasenameNoExtension}.gtr"
+        "${fileDirname}/${fileBasenameNoExtension}.gba"
       ],
       "group": {
         "kind": "build",
@@ -21,38 +21,6 @@
         "reveal": "always",
         "panel": "shared"
       },
-      "problemMatcher": []
-    },
-    {
-      "label": "gtlua: Run",
-      "detail": "Launch the built .gtr in a detected GameTank emulator",
-      "type": "shell",
-      "command": "${workspaceFolder}/scripts/run_emulator.sh",
-      "args": [
-        "${fileDirname}/${fileBasenameNoExtension}.gtr"
-      ],
-      "windows": {
-        "command": "${workspaceFolder}\\scripts\\run_emulator.cmd",
-        "args": [
-          "${fileDirname}\\${fileBasenameNoExtension}.gtr"
-        ]
-      },
-      "group": "test",
-      "presentation": {
-        "reveal": "silent",
-        "panel": "shared"
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "gtlua: Build & Run",
-      "detail": "Compile the open .lua, then launch it in the emulator",
-      "dependsOn": [
-        "gtlua: Build",
-        "gtlua: Run"
-      ],
-      "dependsOrder": "sequence",
-      "group": "test",
       "problemMatcher": []
     }
   ]

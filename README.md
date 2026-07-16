@@ -101,8 +101,8 @@ first element (`a[0]` is out of bounds).
 | | |
 |---|---|
 | lifecycle | `_init` `_update` `_update60` `_draw` |
-| bitmap draw | `cls` `camera` `color` `pset` `rect` `rectfill` `circ` `circfill` `line` `sset` |
-| sprites | `spr(n,x,y,[w,h],[fx,fy])` hardware OBJ · `spr8(t,x,y,[flip])` · `sprf` · `spr_pal` `spr_prio` |
+| bitmap draw | `cls` `camera` `color` `pset` `rect` `rectfill` `circ` `circfill` `line` |
+| sprites | `spr(n,x,y,[w,h],[fx,fy])` hardware OBJ · `spr8(t,x,y,[flip])` · `spr_pal` `spr_prio` |
 | affine sprites | `sprr(n,x,y,angle,scale)` rotate+scale · `sprr2(n,x,y,angle,sx,sy)` non-uniform |
 | tile layers | `map_show` `tileset` `tilemap` `layer_show` `layer_pri` `layer_scroll` `parallax` `camera` `mget`/`tget`/`tset` |
 | mode 7 | `mode7()` · `mode7_cam(x,y,angle,[zoom])` · `mode7_off()` - an affine plane on BG2 |

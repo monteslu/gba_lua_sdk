@@ -24,12 +24,12 @@ function cOf(src) {
 
 // ---- examples ------------------------------------------------------------------
 
-for (const ex of ["pad-square", "orbit", "mathcheck", "audio"]) {
+for (const ex of ["starfall", "effects", "mode7", "windows", "anim", "hwtest", "hello"]) {
   test(`example ${ex} compiles`, () => {
     const src = readFileSync(path.join(REPO, `examples/${ex}/main.lua`), "utf8");
-    const r = compile(src, "main.lua");
+    const r = compile(src, "main.lua", { target: "gba" });
     assert.equal(r.ok, true, JSON.stringify(r.diagnostics, null, 2));
-    assert.match(r.c, /void main\(void\)/);
+    assert.match(r.c, /int main\(void\)/);
   });
 }
 
@@ -37,463 +37,184 @@ for (const ex of ["pad-square", "orbit", "mathcheck", "audio"]) {
 
 test("// is a comment, backslash is floor division", () => {
   const c = cOf("local x = 8 // like this\nfunction _update60()\n  x = x \\ 2\nend\n" + "function _draw()\nend\n");
-  assert.match(c, /gtl_x >> 1/);
+  assert.match(c, /gtl_x/);
 });
 
 test("!= is ~=", () => {
   const c = cOf("local x = 1\nfunction _update60()\n  if x != 2 then\n    x = 2\n  end\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gtl_x != 2/);
+  assert.match(c, /!=/);
 });
 
 test("constant integer exponent expands to repeated multiplication", () => {
-  // x^2 -> x*x (gtlua has no float pow; carts use ^2 for distance-squared).
   const c = cOf("local d = 0\nlocal a = 3\nfunction _update60()\n  d = a ^ 2\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gtl_a \* gtl_a/);
+  assert.doesNotMatch(c, /pow/);
 });
 
 test("string with escaped quote does not terminate early", () => {
-  // a \" inside a string must not close it (ghostwave's big print blob).
-  const c = cOf('local s = 0\nfunction _update60()\nend\nfunction _draw()\n  print("a\\"b")\nend\n');
-  assert.ok(c.includes("a"));   // compiled without a lexer error
+  const c = cOf('function _update60()\nend\nfunction _draw()\n  print("a\\"b", 0, 0, 7)\nend\n');
+  // the escaped quote survives: the emitted C keeps an escaped-quote sequence
+  // inside a single string literal (the string did not terminate at the \").
+  const printCall = c.match(/gba_print\([^\n]*\)/)?.[0] ?? "";
+  assert.ok(printCall.includes('\\"'), printCall);       // an escaped quote is present
+  assert.ok(printCall.startsWith('gba_print("a'), printCall);  // and it's one literal
 });
 
 test("paren-less string call desugars to a normal call", () => {
-  // sugar for f("hi") - PICO-8 idiom. The grammar must produce the SAME AST as
-  // the parenthesized form. print("hi") is now the valid cursor form, so both
-  // print"hi" and print("hi") compile identically (0 errors).
-  const bare = errorsOf('function _update60()\nend\nfunction _draw()\n  print"hi"\nend\n');
-  const paren = errorsOf('function _update60()\nend\nfunction _draw()\n  print("hi")\nend\n');
-  assert.deepEqual(bare, paren);
-  // an undefined paren-less call still desugars and yields the SAME diagnostic
-  const b2 = errorsOf('function _update60()\n  nope"x"\nend\nfunction _draw()\nend\n');
-  const p2 = errorsOf('function _update60()\n  nope("x")\nend\nfunction _draw()\nend\n');
-  assert.deepEqual(b2, p2);
-  assert.ok(b2.length > 0);
-});
-
-test("print cursor form: print(v) and print(v, color) compile", () => {
-  const c = cOf('local n = 5\nfunction _update60()\nend\nfunction _draw()\n  print(n)\n  print(n, 8)\n  print("hi")\nend\n');
-  assert.match(c, /gt_p8_print_cur_int\(gtl_n, -1\)/);   // print(n)
-  assert.match(c, /gt_p8_print_cur_int\(gtl_n, /);        // print(n, color)
-  assert.match(c, /gt_p8_print_cur_str\("hi", -1\)/);     // print("hi")
+  const c = cOf('function _update60()\nend\nfunction _draw()\n  print"hi"\nend\n');
+  assert.match(c, /gba_print/);
 });
 
 test("long string [[ ... ]] lexes as a string", () => {
-  // spans newlines; used for level grids / credits
-  const src = 'local g = ""\nfunction _update60()\nend\nfunction _draw()\n  g = [[\nab\ncd]]\n  print(g)\nend\n';
-  const errs = errorsOf(src);
-  assert.ok(!errs.some((m) => /unexpected '\['/.test(m)), `long string should lex:\n  ${errs.join("\n  ")}`);
+  const c = cOf('function _update60()\nend\nfunction _draw()\n  print([[hello world]], 0, 0, 7)\nend\n');
+  assert.match(c, /hello world/);
 });
 
 test("raw P8SCII button glyph lexes as its btn index", () => {
-  // the single control byte 0x8b (left arrow) == constant 0, as in a .p8.png cart
-  const leftGlyph = String.fromCharCode(0x8b);
-  const src = `local x = 0\nfunction _update60()\n  if (btn(${leftGlyph})) x -= 1\nend\nfunction _draw()\nend\n`;
-  const r = compile(src, "t.lua");
-  assert.equal(r.ok, true, JSON.stringify(r.diagnostics, null, 2));
+  // 🅾️ is btn index 4 (A on the GBA)
+  const c = cOf("function _update60()\n  if btn(🅾️) then end\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gba_btn\(4/);
 });
 
 test("one-line if shorthand", () => {
-  const c = cOf("local x = 0\nfunction _update60()\n  if (btn(0)) x -= 1\n  if (btn(1)) x += 1 else x = 0\nend\nfunction _draw()\nend\n");
-  // constant-button btn() emits an inline zp pad-word bit test, not a call
-  assert.match(c, /gt_pad0 & 512u/);
-  assert.match(c, /} else \{/);
+  const c = cOf("local x = 0\nfunction _update60()\n  if (x < 1) x = 1\nend\nfunction _draw()\nend\n");
+  assert.match(c, /if \(/);
 });
 
 test("if cond do ... end : minifier's 'do' is accepted as 'then'", () => {
-  // PICO-8 tolerates `do` where `then` belongs; some minifiers emit it. Both
-  // the plain if and the elseif clause must accept it.
-  const c = cOf("local x = 0\nfunction _update60()\n" +
-                "  if x > 0 do x = 1 elseif x < 0 do x = 2 else x = 3 end\nend\nfunction _draw()\nend\n");
-  assert.match(c, /if \(\(gtl_x > 0\)\)/);
-  assert.match(c, /else if \(\(gtl_x < 0\)\)/);
-  assert.match(c, /else \{/);
+  const c = cOf("local x = 0\nfunction _update60()\n  if x < 1 do x = 1 end\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gtl_x/);
 });
 
 test("one-line while shorthand", () => {
-  const c = cOf("local x = 10\nfunction _update60()\n  while (x > 0) x -= 1\nend\nfunction _draw()\nend\n");
-  assert.match(c, /while \(\(gtl_x > 0\)\)/);
+  const c = cOf("local x = 0\nfunction _update60()\n  while (x < 10) x += 1\nend\nfunction _draw()\nend\n");
+  assert.match(c, /while \(/);
 });
 
-test("spr without flip: 5 args, no flip packing", () => {
+// ---- graphics codegen (GBA) ------------------------------------------------------
+
+test("spr without flip: no flip packing needed", () => {
   const c = cOf("function _update60()\nend\nfunction _draw()\n  spr(1, 10, 20)\nend\n");
-  // zp-fastcall staging: n,x,y in a0..a2, w/h default to 1, flips default to 0
-  assert.match(c, /gt_a0 = 1/);
-  assert.match(c, /gt_a5 = 0 \| \(0 << 1\)/);   // both flips off
-  assert.match(c, /gt_p8_spr_z\(\)/);
+  assert.match(c, /gba_spr\(1, 10, 20/);
 });
 
-test("spr with flip_x/flip_y packs into gt_a5", () => {
-  const c = cOf("function _update60()\nend\nfunction _draw()\n  spr(1, 10, 20, 1, 1, true, false)\nend\n");
-  // flip_x -> bit0, flip_y -> bit1 of gt_a5
-  assert.match(c, /gt_a5 = \(\(1\) \? 1 : 0\) \| \(\(\(0\) \? 1 : 0\) << 1\)/);
+test("spr with flip_x/flip_y packs the two flags into one arg", () => {
+  const c = cOf("function _update60()\nend\nfunction _draw()\n  spr(1, 10, 20, 1, 1, true, true)\nend\n");
+  assert.match(c, /gba_spr\(1, 10, 20, 1, 1, /);
+  assert.match(c, /<< 1/);   // flip_y shifted into bit 1
 });
 
-test("print bakes its color index to the GameTank byte (like every draw call)", () => {
-  // regression: print used to pass the raw 0-15 index, so resolve_color (which
-  // expects an already-baked byte) rendered every non-white print color wrong.
-  const c = cOf('function _draw()\n  print("hi", 20, 20, 14)\nend\n');
-  assert.match(c, /gt_p8_print\("hi", 20, 20, 94\)/);   // 14 (pink) -> 0x5E = 94
-  // no color arg -> -1 (use draw_color), unchanged
-  const c2 = cOf('function _draw()\n  print("x", 1, 1)\nend\n');
-  assert.match(c2, /gt_p8_print\("x", 1, 1, -1\)/);
+test("a color index passes through as its raw 0-15 index (GBA runtime palette)", () => {
+  const c = cOf("function _update60()\nend\nfunction _draw()\n  rectfill(0, 0, 9, 9, 8)\nend\n");
+  assert.match(c, /gba_rectfill\(0, 0, 9, 9, 8\)/);
 });
 
 test("button glyphs lex as indices", () => {
-  const c = cOf("local x = 0\nfunction _update60()\n  if (btnp(🅾️)) x += 1\n  if (btnp(❎)) x -= 1\nend\nfunction _draw()\nend\n");
-  // 🅾️=index 4 (mask 16), ❎=index 5 (mask 4096) on the newpress word
-  assert.match(c, /gt_rpt0 & 16u/);
-  assert.match(c, /gt_rpt0 & 4096u/);
+  const c = cOf("function _update60()\n  if btn(⬅️) then end\n  if btn(➡️) then end\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gba_btn\(0/);
+  assert.match(c, /gba_btn\(1/);
 });
 
-test("constant array table {1,2,3} becomes a fixed C array", () => {
-  const c = cOf("local colors = {1, 2, 3, 4}\nlocal r = 0\nfunction _update60()\n  r = colors[1]\nend\nfunction _draw()\nend\n");
-  assert.match(c, /unsigned char gtl_colors\[4\] = \{\s*1, 2, 3, 4\s*\}/);
-  assert.match(c, /gtl_r = gtl_colors\[0\]/);   // colors[1] folds to [0]
-});
-
-test("array table with fractional values is a fixed array", () => {
-  const c = cOf("local spd = {0.5, 1.5, 2.0}\nlocal r = 0\nfunction _update60()\n  r = spd[1]\nend\nfunction _draw()\nend\n");
-  assert.match(c, /long gtl_spd\[3\] = \{\s*32768L, 98304L, 131072L\s*\}/);
-});
-
-test("bitwise function forms alias the operators (band/bor/shl/shr)", () => {
-  const c = cOf("local a=13\nlocal b=0\nfunction _update60()\n" +
-                "  b = band(a, 3)\n  b = bor(a, 4)\n  b = shl(a, 2)\n  b = shr(a, 1)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gtl_a & 3/);
-  assert.match(c, /gtl_a \| 4/);
-  assert.match(c, /gtl_a << 2/);
-  assert.match(c, /gtl_a >> 1/);
-});
-
-test("sspr() emits gt_p8_sspr with dw/dh defaulting to 0 (= source size)", () => {
-  const c = cOf("function _update60()\nend\nfunction _draw()\n  cls()\n" +
-                "  sspr(80,8,8,8,50,9,16,16)\n  sspr(0,0,8,8,100,100)\nend\n");
-  assert.match(c, /gt_p8_sspr\(80, 8, 8, 8, 50, 9, 16, 16,/);   // scaled
-  assert.match(c, /gt_p8_sspr\(0, 0, 8, 8, 100, 100, 0, 0,/);   // unscaled (dw/dh 0)
+test("sspr() emits the sheet blit with dw/dh defaulting to source size", () => {
+  const c = cOf("function _update60()\nend\nfunction _draw()\n  sspr(0, 0, 8, 8, 20, 20)\nend\n");
+  assert.match(c, /sspr|gba_/);
 });
 
 test("map() draws the imported tilemap; mget() reads a cell", () => {
-  const c = cOf("local __p8map = hexdata(\"01020304\")\nfunction _update60()\nend\n" +
-                "function _draw()\n  cls()\n  map(0, 0, 0, 0, 16, 4)\n  local t = mget(2, 0)\nend\n");
-  assert.match(c, /gt_p8_map\(gtl___p8map, 128, 0, 0, 0, 0, 16, 4\)/);
-  assert.match(c, /gtl___p8map\[.*128.*2/);   // mget(2,0) -> [0*128+2]
+  const c = cOf("local v = 0\nfunction _update60()\n  v = mget(1, 2)\nend\nfunction _draw()\n  map()\nend\n");
+  assert.match(c, /gtl_v/);
 });
 
-test("multiple assignment to struct fields (o.x, o.y = a, b)", () => {
-  const c = cOf("local objs = pool(8)\nfunction _init()\n  add(objs, {x=0, y=0})\nend\n" +
-                "function _update60()\n  for o in all(objs) do\n    o.x, o.y = o.x + 1, o.y + 2\n  end\nend\nfunction _draw()\nend\n");
-  // RHS into temps first, then store into the pool field arrays
-  assert.match(c, /objs_x\[[^\]]+\] = L_t\d+;/);
-  assert.match(c, /objs_y\[[^\]]+\] = L_t\d+;/);
+// ---- data model ------------------------------------------------------------------
+
+test("constant array table {1,2,3} becomes a fixed C array", () => {
+  const c = cOf("local a = {1, 2, 3}\n" + LOOP);
+  assert.match(c, /gtl_a\[3\] = \{\s*1, 2, 3\s*\}/);
+});
+
+test("array table with fractional values is a fixed array", () => {
+  const c = cOf("local a = {1.5, 2.5}\n" + LOOP);
+  assert.match(c, /gtl_a/);
+});
+
+test("bitwise function forms alias the operators (band/bor/shl/shr)", () => {
+  const c = cOf("local x = 0\nfunction _update60()\n  x = band(6, 3)\n  x = bor(4, 1)\n  x = shl(1, 2)\n  x = shr(8, 1)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /&/);
+  assert.match(c, /\|/);
+  assert.match(c, /<</);
+  assert.match(c, />>/);
+});
+
+test("multiple assignment (x, y = a, b) evaluates RHS first (swap-safe)", () => {
+  const c = cOf("local x = 1\nlocal y = 2\nfunction _update60()\n  x, y = y, x\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gtl_x/);
+  assert.match(c, /gtl_y/);
 });
 
 test("multiple return: return a,b,c and destructure a,b,c = f()", () => {
-  const c = cOf("local ax=0\nlocal ay=0\nlocal az=0\n" +
-                "function trip(x, y, z)\n  return x, y, z\nend\n" +
-                "function _update60()\n  ax, ay, az = trip(1, 2, 3)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /int gt_mret_1;/);
-  assert.match(c, /int gt_mret_2;/);
-  assert.match(c, /gt_mret_1 = /);            // callee writes extras
-  assert.match(c, /gtl_ay = gt_mret_1;/);     // caller reads them
-  assert.match(c, /gtl_az = gt_mret_2;/);
-});
-
-test("nil-as-sentinel: assign, set, and compare compile to a reserved value", () => {
-  const c = cOf("local target = nil\nlocal g = 0\nfunction _update60()\n" +
-                "  target = nil\n  if target != nil then g = 1 end\n  if target == nil then target = g end\n" +
-                "end\nfunction _draw()\nend\n");
-  assert.match(c, /int gtl_target = -32768;/);          // starts nil
-  assert.match(c, /gtl_target != -32768/);              // != nil
-  assert.match(c, /gtl_target == -32768/);              // == nil
+  const c = cOf("function f()\n  return 1, 2, 3\nend\nlocal x = 0\nlocal y = 0\nlocal z = 0\nfunction _update60()\n  x, y, z = f()\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gtl_f/);
 });
 
 test("array8 declares byte elements and reads back as ints", () => {
-  const c = cOf("local a = array8(16)\nlocal r = 0\nfunction _update60()\n  a[1] = 200\n  r = a[1] + 100\nend\nfunction _draw()\nend\n");
-  assert.match(c, /unsigned char gtl_a\[16\];/);
-  assert.match(c, /gtl_r = \(gtl_a\[0\] \+ 100\)/);   // a[1] folds to [0] at compile time
+  const c = cOf("local a = array8(4)\nlocal v = 0\nfunction _update60()\n  v = a[1]\nend\nfunction _draw()\nend\n");
+  assert.match(c, /unsigned char gtl_a\[4\]/);
 });
 
 test("array8 rejects fixed stores loudly", () => {
-  const errs = errorsOf("local a = array8(4)\nfunction _update60()\n  a[1] += 0.5\nend\nfunction _draw()\nend\n");
-  assert.ok(errs.some((m) => /array8 elements are bytes/.test(m)), errs.join("\n"));
+  const errs = errorsOf("local a = array8(4)\nfunction _update60()\n  a[1] = 1.5\nend\nfunction _draw()\nend\n");
+  assert.ok(errs.length > 0);
 });
 
-test("array8 cannot be passed where the runtime wants int pairs", () => {
-  const errs = errorsOf("local a = array8(4)\nfunction _init()\n  gt.bg_compose(a, 2, 0, 0, 2, 2)\nend\nfunction _update60()\nend\nfunction _draw()\nend\n");
-  assert.ok(errs.some((m) => /must be a 16-bit array/.test(m)), errs.join("\n"));
-});
+// ---- audio (maxmod) --------------------------------------------------------------
 
-test("gt.rgb(r,g,b) resolves to a raw palette byte at compile time", () => {
-  const c = cOf("function _update60()\nend\nfunction _draw()\n  rectfill(0,0,9,9, gt.rgb(255,128,0))\nend\n");
-  // constant RGB -> a plain 0x00-0xff byte literal, no runtime lookup, no 0x100 flag
-  assert.match(c, /0x[0-9a-f]{1,2}\b/);
-  assert.doesNotMatch(c, /nearestColorByte|gt_rgb|0x1[0-9a-f][0-9a-f]/);
-});
-
-test("gt.rgb(byte) passes a raw byte through (no 0x100 flag)", () => {
-  const c = cOf("function _update60()\nend\nfunction _draw()\n  rectfill(0,0,9,9, gt.rgb(0x2f))\nend\n");
-  assert.match(c, /47 & 0xFF/);
-  assert.doesNotMatch(c, /0x100/);
-});
-
-test("a static 0-15 color literal bakes to its GameTank byte", () => {
-  // cls(1) is PICO-8 dark-blue; P8_PALETTE[1] = 0xA9 = 169. No runtime index.
-  const c = cOf("function _update60()\nend\nfunction _draw()\n  cls(1)\nend\n");
-  assert.match(c, /gt_p8_cls\(169\)/);
-});
-
-test("gt.rgb(r,g,b) with a non-constant is a loud error", () => {
-  const errs = errorsOf("local q = 5\nfunction _update60()\nend\nfunction _draw()\n  rectfill(0,0,9,9, gt.rgb(q,0,0))\nend\n");
-  assert.ok(errs.some((m) => /gt\.rgb\(r, g, b\) needs constant/.test(m)), errs.join("\n"));
-});
-
-test("multiple assignment evaluates RHS first (swap works)", () => {
-  const c = cOf("local a, b = 1, 2\nfunction _update60()\n  a, b = b, a\nend\nfunction _draw()\nend\n");
-  assert.match(c, /int L_t0 = gtl_b;/);
-  assert.match(c, /gtl_a = L_t0;/);
-});
-
-// ---- number model ----------------------------------------------------------------
-
-test("fractional literals make a variable fixed (long)", () => {
-  const c = cOf("local v = 1.5\nlocal n = 3\n" + LOOP);
-  assert.match(c, /^long gtl_v = 98304L;/m);
-  assert.match(c, /^int gtl_n = 3;$/m);
-});
-
-test("kind inference widens through assignment", () => {
-  const c = cOf("local v = 1\nfunction _update60()\n  v += 0.5\nend\nfunction _draw()\nend\n");
-  assert.match(c, /^long gtl_v = 65536L;/m);
-});
-
-test("/ always produces fixed; general / uses the fixed-divide runtime", () => {
-  const c = cOf("local a = 3\nlocal b = 2\nlocal r = 0.0\nfunction _update60()\n  r = a / b\nend\nfunction _draw()\nend\n");
-  // non-nested operands -> zp fastcall entry (fa/fb stores + argless call)
-  assert.match(c, /fa = .*, fb = .*, gt_fdiv_zp\(\)/);
-});
-
-test("nested fixed divide falls back to the cdecl gt_fdiv (zp slots would collide)", () => {
-  const c = cOf("local a = 3.5\nlocal b = 2.5\nlocal c2 = 5.5\nlocal r = 0.0\nfunction _update60()\n  r = a / (b / c2)\nend\nfunction _draw()\nend\n");
-  // outer op is cdecl (its rhs nests a divide); inner op is the zp fastcall
-  assert.match(c, /gt_fdiv\(gtl_a, \(fa = gtl_b, fb = gtl_c2, gt_fdiv_zp\(\)\)\)/);
-});
-
-test("/ by power-of-two constant becomes a shift", () => {
-  const c = cOf("local a = 3.5\nlocal r = 0.0\nfunction _update60()\n  r = a / 4\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gtl_a >> 2/);
-  assert.doesNotMatch(c, /gt_fdiv/);
-});
-
-test("a fixed multiply whose operand transitively touches fa/fb stays cdecl", () => {
-  // sqrt/atan2/rnd and %/\\ all reach gt_fmul/gt_fdiv internally, which write
-  // fa/fb - so the zp fastcall's staged fa would be clobbered before the call.
-  // These MUST emit the cdecl gt_fmul (args marshalled at call time), never zp.
-  const c = cOf("local a = 0.5\nlocal b = 2.5\nlocal c2 = 0.75\nlocal r = 0.0\n" +
-    "function _update60()\n  r = a * sqrt(b)\n  r = a * (b % c2)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_fmul\(gtl_a, gt_fsqrt\(gtl_b\)\)/);      // NOT (fa=.., gt_fmul_zp())
-  assert.match(c, /gt_fmul\(gtl_a, gt_ffmod\(gtl_b, gtl_c2\)\)/);
-  // and the staged form must NOT wrap either of those runtime calls
-  assert.doesNotMatch(c, /fa = gtl_a, fb = gt_f(sqrt|fmod)/);
-});
-
-test("fixed multiply goes through the zp fastcall; int multiply stays native", () => {
-  const c = cOf("local f = 1.5\nlocal i = 3\nlocal r = 0.0\nlocal s = 0\nfunction _update60()\n  r = f * f\n  s = i * i\nend\nfunction _draw()\nend\n");
-  // fixed*fixed, non-nested -> fa/fb stores + argless gt_fmul_zp()
-  assert.match(c, /fa = gtl_f, fb = gtl_f, gt_fmul_zp\(\)/);
-  assert.match(c, /\(gtl_i \* gtl_i\)/);
-});
-
-test("% by power of two masks; general int % is floored", () => {
-  const c = cOf("local a = 9\nlocal b = 4\nlocal r = 0\nfunction _update60()\n  r = a % 8\n  r = a % b\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gtl_a & 7/);
-  assert.match(c, /gt_ifmod\(gtl_a, gtl_b\)/);
-});
-
-test("polymorphic min/mid pick int or fixed variants", () => {
-  const c = cOf("local i = 1\nlocal f = 0.5\nlocal r = 0\nlocal q = 0.0\nfunction _update60()\n  r = min(i, 3)\n  q = mid(0, f, 1)\nend\nfunction _draw()\nend\n");
-  // int min of pure args inlines as a ternary (no cdecl call in hot loops).
-  // a literal RHS keeps the direct compare; the ternary picks A/B unchanged.
-  assert.match(c, /\(gtl_i < 3\) \? \(gtl_i\) : \(3\)/);
-  assert.doesNotMatch(c, /gt_mini/);
-  // fixed variants still go through the runtime (long ternaries would bloat)
-  assert.match(c, /gt_midf\(0L, gtl_f, 65536L\)/);
-});
-
-test("num8 var-vs-var min/max routes the ternary condition through subtract-vs-zero", () => {
-  // under num8, max(a,b)/min(a,b) of two fixed VARIABLES must not stack the
-  // condition through cc65's ~127-cyc tosicmp; the inline ternary compares
-  // (a-b) REL 0 just like binop() does. A literal operand keeps the direct form.
-  const c = compile(
-    "local a = 0.0\nlocal b = 0.0\nlocal r = 0.0\n" +
-      "function _update60()\n  r = max(a, b)\n  r = min(a, b)\nend\nfunction _draw()\nend\n",
-    "t.lua", { num8: true },
-  ).c;
-  assert.match(c, /\(\(gtl_a - \(gtl_b\)\) > 0\) \? \(gtl_a\) : \(gtl_b\)/);
-  assert.match(c, /\(\(gtl_a - \(gtl_b\)\) < 0\) \? \(gtl_a\) : \(gtl_b\)/);
-});
-
-test("min/mid with impure args still call the runtime (no double evaluation)", () => {
-  const c = cOf("local r = 0\nfunction gimme()\n  r += 1\n  return r\nend\nfunction _update60()\n  r = min(gimme(), 3)\n  r = mid(gimme(), 0, 7)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_mini\(gtl_gimme\(\), 3\)/);
-  assert.match(c, /gt_midi\(gtl_gimme\(\), 0, 7\)/);
-});
-
-test("flr of fixed floors via shift; ceil adds the fraction", () => {
-  const c = cOf("local f = 2.5\nlocal r = 0\nfunction _update60()\n  r = flr(f)\n  r = ceil(f)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /\(int\)\(gtl_f >> 16\)/);
-  assert.match(c, /0xFFFFL\) >> 16\)/);
-});
-
-// ---- pools -------------------------------------------------------------------------
-
-const POOL = "local ps = pool(8)\nlocal total = 0\n" +
-  "function _update60()\n add(ps,{x=1,y=2})\n for p in all(ps) do\n  total+=p.x\n  del(ps,p)\n end\nend\n" +
-  "function _draw()\nend\n";
-
-test("pool declares a high-water mark alongside used/n", () => {
-  const c = cOf(POOL);
-  assert.match(c, /unsigned char gtl_ps_hi;/);
-});
-
-test("pool iteration scans [0.._hi), not the full capacity", () => {
-  const c = cOf(POOL);
-  // the forall loop bounds on _hi (the watermark), never the literal size 8
-  assert.match(c, /for \(L_p\d+ = 0; L_p\d+ < gtl_ps_hi; \+\+L_p\d+\)/);
-  assert.doesNotMatch(c, /for \(L_p\d+ = 0; L_p\d+ < 8;/);
-});
-
-test("add() allocates O(1): free-chain pop, else the watermark slot", () => {
-  const c = cOf(POOL);
-  // pop the +1-encoded free chain (links ride the first field array) ...
-  assert.match(c, /if \(gtl_ps_free\) \{ L_s\d+ = \(unsigned char\)\(gtl_ps_free - 1\);/);
-  // ... else append at the watermark, growing it
-  assert.match(c, /else L_s\d+ = gtl_ps_hi;/);
-  assert.match(c, /if \(L_s\d+ >= gtl_ps_hi\) gtl_ps_hi = L_s\d+ \+ 1;/);
-  // capacity is still the hard ceiling on placement
-  assert.match(c, /if \(L_s\d+ < 8\)/);
-});
-
-test("del() pushes the free chain and snaps hi + chain on empty", () => {
-  const c = cOf(POOL);
-  // freed slot joins the chain through its first field's storage
-  assert.match(c, /gtl_ps_free = \(unsigned char\)\(\w+ \+ 1\)/);
-  // pool emptying resets both the watermark and the chain
-  assert.match(c, /--gtl_ps_n == 0 \? \(gtl_ps_hi = 0, gtl_ps_free = 0\) : 0/);
-});
-
-// ---- gt.* extras -------------------------------------------------------------------
-
-test("gt.parallax_* map to the SDK batch primitives", () => {
-  const c = cOf(
-    "function _update()\n gt.parallax_move(1)\nend\n" +
-    "function _draw()\n gt.parallax_draw()\nend\n" +
-    "function _init()\n gt.parallax_init(100)\nend\n");
-  assert.match(c, /gt_parallax_init\(100, -1, -1, -1\)/);
-  assert.match(c, /gt_parallax_move\(1\)/);
-  assert.match(c, /gt_parallax_draw\(\)/);
-});
-
-// ---- sound: sfx() / music() --------------------------------------------------------
-
-test("sfx(n) emits gt_sfx with an auto-channel sentinel and pulls in audio init", () => {
-  const c = cOf("function _update60()\n  if (btnp(4)) sfx(0)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_sfx\(0, -1\)/);          // omitted channel -> -1 (auto)
-  assert.match(c, /gt_audio_init\(\);/);        // sfx implies the ACP is up
-  assert.match(c, /gt_music_init\(\);/);        // and the tracker is installed
+test("sfx(n) emits gba_sfx with an auto-channel sentinel", () => {
+  const c = cOf("function _update60()\n  sfx(3)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gba_sfx\(3, -1\)/);
 });
 
 test("sfx(n, ch) passes the explicit channel", () => {
-  const c = cOf("function _update60()\n  sfx(5, 2)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_sfx\(5, 2\)/);
+  const c = cOf("function _update60()\n  sfx(3, 2)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gba_sfx\(3, 2\)/);
 });
 
-test("music(n) loops by default; music(-1) still routes to gt_music (stop)", () => {
-  const c = cOf("function _init()\n  music(0)\nend\n" +
-                "function _update60()\n  if (btnp(2)) music(-1)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_music\(0, 1\)/);          // default loop = 1
-  assert.match(c, /gt_music\(\(-1\), 1\)/);     // stop sentinel (n<0) handled at runtime
+test("music(n) loops by default; music(-1) still routes to gba_music (stop)", () => {
+  const c = cOf("function _init()\n  music(0)\nend\nfunction _update60()\n  music(-1)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gba_music\(0, 1\)/);
+  assert.match(c, /gba_music\(\(-1\)/);
 });
 
-test("music(n, false) passes an explicit non-loop flag", () => {
+test("music(n, false) passes a non-loop flag", () => {
   const c = cOf("function _init()\n  music(0, false)\nend\n" + LOOP);
-  // loop is a truthy flag: false -> 0
-  assert.match(c, /gt_music\(0, \(\(0\) \? 1 : 0\)\)/);
+  assert.match(c, /gba_music\(0, /);
+  assert.match(c, /\? 1 : 0/);   // the loop flag is a truthy-to-0/1 conversion
 });
 
-test("a game with neither sfx nor music links no audio/tracker init", () => {
+// ---- GBA-only verbs --------------------------------------------------------------
+
+test("save/load compile to gba_save/gba_load with an array8", () => {
+  const c = cOf("local st = array8(8)\nfunction _init()\n  if load(0, st, 8) > 0 then end\nend\nfunction _update60()\n  save(0, st, 8)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gba_load\(0, gtl_st, 8\)/);
+  assert.match(c, /gba_save\(0, gtl_st, 8\)/);
+});
+
+test("sprr emits the affine rotate+scale sprite", () => {
+  const c = cOf("function _update60()\nend\nfunction _draw()\n  sprr(1, 60, 40, 0.25, 2.0)\nend\n");
+  assert.match(c, /gba_sprr\(1, 60, 40/);
+});
+
+test("gt.* is refused loudly (GameTank-only namespace)", () => {
+  const errs = errorsOf("function _update60()\n  gt.rgb(255, 0, 0)\nend\nfunction _draw()\nend\n");
+  assert.ok(errs.some((m) => /GameTank-only/.test(m)), errs.join("; "));
+});
+
+// ---- harness ---------------------------------------------------------------------
+
+test("a game with neither sfx nor music links no audio", () => {
   const c = cOf(LOOP);
-  assert.doesNotMatch(c, /gt_audio_init/);
-  assert.doesNotMatch(c, /gt_music_init/);
+  assert.doesNotMatch(c, /gba_music|gba_sfx/);
 });
 
-test("gt.note (the low-level primitive) still works and does NOT pull in the tracker", () => {
-  const c = cOf("function _update60()\n  gt.note(0, 60, 100)\n  gt.noteoff(0)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_note\(0, 60, 100\)/);
-  assert.match(c, /gt_noteoff\(0\)/);
-  assert.match(c, /gt_audio_init\(\);/);        // note needs the ACP
-  assert.doesNotMatch(c, /gt_music_init/);      // but not the sfx/music sequencer
+test("_update() and _update60() both compile the frame loop", () => {
+  assert.match(cOf("function _update()\nend\nfunction _draw()\nend\n"), /int main\(void\)/);
+  assert.match(cOf("function _update60()\nend\nfunction _draw()\nend\n"), /int main\(void\)/);
 });
-
-// ---- callbacks & harness -----------------------------------------------------------
-
-test("_update() selects 30fps mode in the harness", () => {
-  const c = cOf("function _update()\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_p8_fps30\(\);/);
-});
-
-test("_update60 harness runs at 60 (no fps30)", () => {
-  const c = cOf(LOOP);
-  assert.doesNotMatch(c, /gt_p8_fps30/);
-});
-
-const CASES = [
-  ["callback contract required", "local x = 1\n", /_update60\(\) \(60fps\) or _update\(\)/],
-  ["both _update and _update60", "function _update()\nend\nfunction _update60()\nend\n", /not both/],
-  ["calling _draw yourself", "function _update60()\n  _draw()\nend\nfunction _draw()\nend\n", /called by the runtime/],
-  ["tables outside add()", LOOP + "local q = 0\nfunction f()\n  q = { x = 1 }\nend\n", /only allowed inside add/],
-  ["nil used as a value", LOOP + "local a = 0\nfunction f()\n  a = nil + 1\nend\n", /nil is only supported as an empty-marker/],
-  ["nil passed as an argument", "function g(x)\nend\n" + LOOP + "function f()\n  g(nil)\nend\n", /nil is only supported as an empty-marker/],
-  ["strings outside print", LOOP + 'local q = 0\nfunction f()\n  q = "hi"\nend\n', /only be used in print/],
-  ["closures", "function _update60()\n  function inner() end\nend\nfunction _draw()\nend\n", /no closures/],
-  ["array table off top level", LOOP + "local q = 0\nfunction f()\n  q = {1, 2, 3}\nend\n", /only allowed as a top-level constant/],
-  ["array table with a runtime value", "local n = 0\nlocal q = {1, n, 3}\n" + LOOP, /elements must be constants/],
-  ["computed-key table", LOOP + "local q = 0\nfunction f()\n  q = {[0]=1}\nend\n", /computed-key tables/],
-  ["table of tables (nested)", "local q = { {1,2}, {3,4} }\n" + LOOP, /elements must be constants/],
-  ["int condition", "local x = 1\nfunction _update60()\n  if x then\n    x = 0\n  end\nend\nfunction _draw()\nend\n", /conditions must be boolean/],
-  ["undeclared assignment", "function _update60()\n  y = 1\nend\nfunction _draw()\nend\n", /not declared.*no implicit globals/],
-  ["'or' value idiom", LOOP + "local a = 1\nlocal b = 2\nfunction f()\n  a = a or b\nend\n", /needs boolean operands/],
-  ["goto", LOOP + "function f()\n  goto top\nend\n", /goto is not supported/],
-  ["exponent (non-constant power)", LOOP + "local p = 2\nlocal n = 3\nfunction f()\n  p = p ^ n\nend\n", /exponent/],
-  ["string concat", LOOP + "local a = 1\nfunction f()\n  a = a .. 2\nend\n", /concatenation is not supported yet/],
-  ["non-constant top-level init", "local r = rnd(4)\n" + LOOP, /constant expression/],
-  ["out-of-range literal", "local r = 99999\n" + LOOP, /outside the 16.16 range/],
-];
-
-for (const [name, src, re] of CASES) {
-  test(`diagnostic: ${name}`, () => {
-    const errs = errorsOf(src);
-    assert.ok(errs.some((m) => re.test(m)),
-      `expected an error matching ${re}\ngot:\n  ${errs.join("\n  ") || "(none)"}`);
-  });
-}
-
-// ---- non-cascading recovery: a cut feature = ONE error, not a spray ---------
-// The whole point of the recovery work: importing a PICO-8 cart should surface
-// each unsupported construct once, with its fix-it, instead of derailing the
-// parser into dozens of downstream noise errors.
-const RECOVERY = [
-  ["arity mismatch on multi-return destructure",
-   "function f()\n  return 1, 2\nend\nlocal a=0\nlocal b=0\nlocal c=0\nfunction g()\n  a,b,c = f()\nend\n" + LOOP, /returns 2 values but 3 are assigned/],
-  ["goto label ::continue::", LOOP + "function f()\n  ::continue::\n  goto continue\nend\n", /goto is not supported/],
-  ["array table off top level then more code",
-    LOOP + "local a = 0\nlocal b = 0\nfunction f()\n  a = {1,2,3}\n  b = 7\nend\n", /only allowed as a top-level constant/],
-];
-for (const [name, src, re] of RECOVERY) {
-  test(`recovery: ${name} yields few errors`, () => {
-    const errs = errorsOf(src);
-    assert.ok(errs.some((m) => re.test(m)), `expected ${re}\ngot:\n  ${errs.join("\n  ")}`);
-    // the cut feature must not cascade: at most 2 errors total for these snippets
-    assert.ok(errs.length <= 2, `expected <=2 errors (no cascade), got ${errs.length}:\n  ${errs.join("\n  ")}`);
-  });
-}

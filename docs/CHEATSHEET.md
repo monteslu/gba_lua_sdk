@@ -63,13 +63,12 @@ blue, `14` pink). Runtime `pal(i,r,g,b)` / `spr_col(i,r,g,b)` reach the full
 | Call | What |
 |---|---|
 | `cls([c])` | clear the screen to color `c` |
-| `pset(x,y,[c])` / `pget(x,y)` | set / read one pixel |
+| `pset(x,y,[c])` | set one pixel |
 | `rect(x0,y0,x1,y1,[c])` / `rectfill(...)` | outline / filled rectangle (inclusive corners) |
 | `circ(x,y,r,[c])` / `circfill(...)` | outline / filled circle |
 | `line(x0,y0,x1,y1,[c])` | a line |
 | `color(c)` | set the default draw color |
 | `camera([x,y])` | sticky draw offset for subsequent calls |
-| `sset(x,y,[c])` | write a pixel into the sprite sheet |
 | `sspr(sx,sy,sw,sh,dx,dy,[dw,dh],[fx,fy])` | sheet blit (scaled = compile error today) |
 | `print(str_or_val,x,y,[c])` | draw text or a number at (x,y) |
 
@@ -87,7 +86,6 @@ hardware object, not a CPU blit.
 |---|---|
 | `spr(n,x,y,[w,h],[fx,fy])` | draw sprite tile `n`; `w,h` in 8px cells; flips are free |
 | `spr8(t,x,y,[flip])` | 8×8 sprite from a raw tile index |
-| `sprf(frame,x,y,[fx,fy])` | draw a frame-table entry |
 | `spr_pal(bank)` | palette bank (0-15) for subsequent `spr()` this frame |
 | `spr_prio(p)` | priority vs BG layers (0 front .. 3 back) |
 | `sprr(n,x,y,angle,scale)` | **rotate + scale** sprite (`angle` in turns 0..1, `scale` 16.16) |
@@ -185,7 +183,7 @@ Layer ids: `0-2` tile BGs, `3` text/HUD, `4` sprites. Amounts are `0.0..1.0` in
 ## Animation helpers
 
 Turn a first..last frame range + an fps into "which frame now." `slot` is a
-per-actor id (0-31); feed the result to `spr()`/`spr8()`/`sprf()`.
+per-actor id (0-31); feed the result to `spr()`/`spr8()`.
 
 | Call | What |
 |---|---|

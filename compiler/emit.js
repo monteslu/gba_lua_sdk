@@ -7,8 +7,7 @@
 // Fixed multiply/divide/mod go through the gt_f* runtime; power-of-two
 // divisors fold to shifts/masks at compile time (exact for 16.16).
 
-import { BUILTINS, GT_MEMBERS, CALLBACKS, P8_PALETTE } from "./builtins.js";
-import { nearestColorByte } from "./gt_palette.js";
+import { BUILTINS, CALLBACKS } from "./builtins.js";
 
 // Split an index expression into (base, constant offset): `x + 3` -> [x, 3],
 // `x - 2` -> [x, -2], `5` -> [null, 5], anything else -> [expr, 0]. Lets the
@@ -260,12 +259,10 @@ function touchesFixedRuntime(node) {
 }
 
 export function emit(chunk, symbols, file, opts = {}) {
-  // target: "gametank" (default, cc65/65C02) | "gba" (arm-gcc/libtonc).
-  // The front-end (lex/parse/check) + all arg lowering is target-independent;
-  // only the CALL-SITE strings, the #include, and the main() harness differ.
-  // GBA drops the zero-page fastcall ABI entirely (ARM has no zero page) — every
-  // draw builtin is a plain gba_*(args) call.
-  const target = opts.target === "gba" ? "gba" : "gametank";
+  // This SDK targets the GBA only (arm-gcc / libtonc / maxmod). `target` defaults
+  // to "gba"; the front-end (lex/parse/check) + arg lowering is target-independent,
+  // and every draw builtin is a plain gba_*(args) call (no zero-page fastcall ABI).
+  const target = opts.target === "gametank" ? "gametank" : "gba";
   const isGba = target === "gba";
   // GBA reuses the builtins table verbatim; only the C SYMBOL a verb resolves to
   // differs. The GameTank runtime names everything gt_p8_* / gt_*; the GBA
@@ -765,14 +762,8 @@ export function emit(chunk, symbols, file, opts = {}) {
       // is used as-is (a game that computes a 0-15 index will render wrong; the
       // GameTank palette differs from PICO-8's, documented best-effort).
       case "color": {
-        // GBA: the runtime palette IS the PICO-8 16-color palette indexed 0..15,
-        // so a static color literal passes through as its raw index (no bake).
-        // GameTank: bake the p8 index to the GameTank palette byte at compile time.
-        if (isGba) return expr(a, "int");
-        if (a.kind === "number" && Number.isInteger(a.value) &&
-            a.value >= 0 && a.value <= 15) {
-          return String(P8_PALETTE[a.value]);   // bake p8 index -> GT byte
-        }
+        // The GBA runtime palette IS the PICO-8 16-color palette indexed 0..15,
+        // so a color arg passes through as its raw index (no compile-time bake).
         return expr(a, "int");
       }
       // pass an array global by pointer: the bare mangled name decays to
@@ -788,72 +779,13 @@ export function emit(chunk, symbols, file, opts = {}) {
   function call(e) {
     const callee = e.callee;
 
-    // gt.* extras
+    // gt.* was the GameTank-only namespace; it does not exist on the GBA (the GBA
+    // exposes its hardware as first-class verbs instead). Refuse it loudly.
     if (callee.kind === "member" && callee.object.kind === "name" && callee.object.name === "gt") {
-      const sig = GT_MEMBERS[callee.field];
-      if (sig.special === "rgb") {
-        // gt.rgb(r,g,b) / gt.rgb(byte): a raw GameTank palette byte (0-255).
-        // (r,g,b) resolves to the nearest byte at COMPILE time (zero runtime
-        // cost - the checker proved the 3 args constant); (byte) masks to 8 bits.
-        if (e.args.length === 3) {
-          const r = Math.round(constFold(e.args[0]) ?? 0);
-          const g = Math.round(constFold(e.args[1]) ?? 0);
-          const b = Math.round(constFold(e.args[2]) ?? 0);
-          return `0x${nearestColorByte(r, g, b).toString(16)}`;
-        }
-        return `(${argAt(e, 0, "int", "0")} & 0xFF)`;
-      }
-      if (sig.isValue) return sig.c;
-      if (sig.special === "hitscan") {
-        const A = e.args[0].sym, B = e.args[3].sym;
-        const fw = e.args[1].value, fh = e.args[2].value, fbw = e.args[4].value;
-        const bh = expr(e.args[5], "int"), sh = expr(e.args[6], "int");
-        const pr = expr(e.args[7], "int");
-        return `gt_hit_scan(${A.cname}_x, ${A.cname}_y, ${A.cname}_${fw}, ${A.cname}_${fh}, ${A.cname}_used, ${A.cname}_hi, ${B.cname}_x, ${B.cname}_y, ${B.cname}_${fbw}, ${B.cname}_used, ${B.cname}_hi, ${bh}, ${sh}, ${pr})`;
-      }
-      if (sig.special === "dbar") {
-        const names = ["db_px", "db_py", "db_v", "db_m", "db_c", "db_c2", "db_bg"];
-        // positions 4,5,6 (db_c, db_c2, db_bg) are colors: bake a static 0-15
-        // literal to its GameTank byte, like a `color` arg; else pass raw.
-        const isColor = (i) => i >= 4;
-        const parts = e.args.map((a, i) => {
-          const v = (isColor(i) && a.kind === "number" && Number.isInteger(a.value) &&
-                     a.value >= 0 && a.value <= 15)
-            ? String(P8_PALETTE[a.value]) : expr(a, "int");
-          return `${names[i]} = (unsigned char)(${v})`;
-        });
-        return `(${parts.join(", ")}, gt_dbar_z())`;
-      }
-      if (sig.special === "partsstep") {
-        const pl = e.args[0].sym;
-        return `gt_parts_step(${pl.cname}_x, ${pl.cname}_y, ${pl.cname}_vx, ${pl.cname}_vy, ${pl.cname}_used, ${pl.cname}_hi)`;
-      }
-      if (sig.special === "poolsprs") {
-        const pl = e.args[0].sym;
-        const fld = e.args[1].value;
-        const ox = e.args[2] ? expr(e.args[2], "int") : "0";
-        const oy = e.args[3] ? expr(e.args[3], "int") : "0";
-        return `gt_pool_sprs(${pl.cname}_x, ${pl.cname}_y, ${pl.cname}_used, ${pl.cname}_${fld}, ${pl.cname}_hi, ${ox}, ${oy})`;
-      }
-      if (sig.special === "poolmove") {
-        const pl = e.args[0].sym;
-        const mode = expr(e.args[1], "int");
-        return `gt_pool_move(${pl.cname}_x, ${pl.cname}_y, ${pl.cname}_sx, ${pl.cname}_sy, ${pl.cname}_used, ${pl.cname}_hi, ${mode})`;
-      }
-      if (sig.special === "poolanim") {
-        const pl = e.args[0].sym;
-        const f = e.args[1].value, sp = e.args[2].value, mx = e.args[3].value;
-        const rst = e.args[4] ? expr(e.args[4], "int") : "16";   // reset frame (16ths; 16 = first)
-        return `gt_pool_anim(${pl.cname}_${f}, ${pl.cname}_${sp}, ${pl.cname}_${mx}, ${pl.cname}_used, ${pl.cname}_hi, ${rst})`;
-      }
-      if (sig.special === "pooledraw") {
-        const pl = e.args[0].sym;
-        const an = e.args[1].value, ty = e.args[2].value, fl = e.args[3].value, sh = e.args[4].value;
-        const desc = expr(e.args[5], "array");
-        const nud = expr(e.args[6], "int");
-        return `gt_pool_edraw(${pl.cname}_x, ${pl.cname}_y, ${pl.cname}_${an}, ${pl.cname}_${ty}, ${pl.cname}_${fl}, ${pl.cname}_${sh}, ${pl.cname}_used, ${pl.cname}_hi, ${desc}, ${nud})`;
-      }
-      return `${sig.c}(${sig.params.map((p, i) => argAt(e, i, p[0], defaultFor(callee.field, i))).join(", ")})`;
+      throw new Error(
+        `'gt.${callee.field}' is a GameTank-only verb and isn't available on the GBA - ` +
+        `use the GBA verbs instead (see docs/CHEATSHEET.md).`,
+      );
     }
 
     // user function - cross-bank calls go through a fixed-bank far-call stub

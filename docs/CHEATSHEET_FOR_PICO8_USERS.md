@@ -115,8 +115,8 @@ optimization, never a semantic change.
 | `rectfill / rect(x0,y0,x1,y1,c)` | ✅ | inclusive corners (P8 gotcha kept) |
 | `circfill / circ(x,y,r,c)` | ✅ | |
 | `line(x0,y0,x1,y1,c)` | ✅ | |
-| `pset / pget(x,y,[c])` | ✅ | |
-| `sset(x,y,c)` | ✅ | write a sheet pixel |
+| `pset(x,y,[c])` | ✅ | set a pixel |
+| `pget(x,y)` / `sset(x,y,c)` | ❌ | framebuffer/sheet reads not implemented |
 | `camera([x,y])` | ✅ | sticky draw offset |
 | `color(c)` | ✅ | |
 | `sspr(...)` | 🟡 | unscaled rect blit; scaled = compile error |
@@ -128,7 +128,6 @@ optimization, never a semantic change.
 |---|:--:|---|
 | `spr(n,x,y,[w,h],[fx,fy])` | ✅🔷 | a **hardware OBJ** (128 max), not a blit; flips free |
 | `spr8(t,x,y,[flip])` | ➕ | 8×8 sprite from a raw tile index |
-| `sprf(frame,x,y,[fx,fy])` | ✅ | frame-table sprite |
 | `spr_pal(bank)` · `spr_prio(p)` | ➕ | palette bank / priority vs BG layers |
 | `sprr(n,x,y,angle,scale)` | ➕ | **rotate + scale** (affine) sprite |
 | `sprr2(n,x,y,angle,sx,sy)` | ➕ | affine with non-uniform x/y scale (squash/stretch) |
