@@ -59,13 +59,14 @@ colors) at runtime when you want more.
 ## Requirements
 
 - [Node.js](https://nodejs.org/) **24+**
-- **nothing else** - the ARM toolchain (arm-gcc), libtonc, maxmod, and the
-  emulator all come bundled as WebAssembly. No devkitPro, no native tools to
-  build or install.
+- the [`romdevtools`](https://www.npmjs.com/package/romdevtools) package, which
+  bundles the whole ARM toolchain (arm-gcc), libtonc, and maxmod **as
+  WebAssembly**. No devkitPro, no native tools to build or install.
 
-The build talks to the bundled toolchain over a local build service; see
-`compiler/build-gba.mjs`. Output paths passed with `-o` should be **absolute**
-(the build service resolves them on its side).
+The build runs the WASM toolchain in-process (`cc1-arm` → `as` → `ld` →
+`objcopy`). It finds `romdevtools` via the `$ROMDEVTOOLS` env var, a normal
+`npm install romdevtools`, or a sibling checkout; it can also talk to a running
+romdev server instead (`GBALUA_BACKEND=mcp`). See `compiler/build-gba.mjs`.
 
 ## The screen and the two rendering modes
 
