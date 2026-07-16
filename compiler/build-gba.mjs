@@ -21,7 +21,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { compile, formatDiagnostics } from "./index.js";
-import { pngToSheet, pngToTilemap, pngToAffineMap } from "./png-tiles.mjs";
+import {
+  sheetAssetsHeader, mapAssetHeader, mode7AssetHeader,
+  alienAssetsHeader, mapStubHeader, mode7StubHeader,
+} from "./asset-headers.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SDK_DIR = path.resolve(__dirname, "..", "gba-sdk");
@@ -83,81 +86,20 @@ function reorderToSpriteBlocks(rowTiles, tilesAcross, tilesDown) {
   return out.length ? out : rowTiles;
 }
 
-// Convert a PNG to GBA 4bpp tiles + palette via romdev's encodeArt, and emit a C
-// header the runtime #includes. `varPrefix` names the C symbols (e.g. "sheet").
-// Returns the header text. tiles are `unsigned int[]` (4bpp, 8 words/tile), pal
-// is `unsigned short[16]` (BGR555). For a tilemap (stage:'tilemap') we also emit
-// the map as `unsigned short[]` + its cols/rows.
+// Asset headers: PNG bytes -> generated C headers, via the browser-safe shared
+// module (compiler/asset-headers.mjs) so CLI and web builds emit IDENTICAL text.
+// We do NOT use encodeArt's GBA `tiles` palette — that stage emits a broken
+// placeholder palette (romdev bug: "no master palette for gba").
 async function convertSheet(_sid, pngPath, varPrefix) {
-  // Self-contained PNG->4bpp (compiler/png-tiles.mjs): builds the palette from the
-  // image's OWN colors. We do NOT use encodeArt's GBA `tiles` palette — that stage
-  // emits a broken placeholder palette (romdev bug: "no master palette for gba").
-  const buf = await readFile(pngPath);
-  const { words, pal } = pngToSheet(buf);
-  let h = `// generated from ${path.basename(pngPath)} (self-contained PNG->GBA 4bpp)\n`;
-  h += `#ifndef GBA_ASSETS_H\n#define GBA_ASSETS_H\n\n`;
-  h += `static const unsigned int ${varPrefix}_tiles[${words.length}] = {${words.map((w) => w >>> 0).join(",")}};\n`;
-  h += `static const unsigned short ${varPrefix}_pal[16] = {${pal.join(",")}};\n`;
-  h += `#define GBA_SHEET_TILES ${varPrefix}_tiles\n`;
-  h += `#define GBA_SHEET_TILES_WORDS ${words.length}\n`;
-  h += `#define GBA_SHEET_HAS_PAL 1\n`;
-  h += `#define GBA_SHEET_PAL ${varPrefix}_pal\n`;
-  h += `\n#endif\n`;
-  return h;
+  return sheetAssetsHeader(await readFile(pngPath), path.basename(pngPath), varPrefix);
 }
 
-// Convert a background PNG to a tilemap header (deduped tiles + map + palette).
 async function convertMap(pngPath) {
-  const buf = await readFile(pngPath);
-  const { tileWords, map, pal, cols, rows } = pngToTilemap(buf);
-  let h = `// generated from ${path.basename(pngPath)} (PNG->GBA tilemap)\n`;
-  h += `#ifndef GBA_MAP_ASSET_H\n#define GBA_MAP_ASSET_H\n#define GBA_HAS_MAP 1\n\n`;
-  h += `static const unsigned int map_tiles[${tileWords.length}] = {${tileWords.map((w) => w >>> 0).join(",")}};\n`;
-  h += `#define map_ntiles ${tileWords.length / 8}\n`;
-  h += `static const unsigned short map_data[${map.length}] = {${map.join(",")}};\n`;
-  h += `static const unsigned short map_pal[16] = {${pal.join(",")}};\n`;
-  h += `#define map_cols ${cols}\n#define map_rows ${rows}\n`;
-  h += `\n#endif\n`;
-  return h;
+  return mapAssetHeader(await readFile(pngPath), path.basename(pngPath));
 }
 
-// Convert a PNG to a Mode-7 AFFINE background header: 8bpp tiles + 256-color
-// palette + a square 1-byte-per-cell map. The map bytes are packed 4-per-u32 so
-// the runtime can memcpy32 them straight into the screenblock.
 async function convertMode7(pngPath) {
-  const buf = await readFile(pngPath);
-  const { tileWords, map, pal, side } = pngToAffineMap(buf);
-  // pack the 1-byte map cells into u32 words (4 cells/word, little-endian).
-  const mapWords = [];
-  for (let i = 0; i < map.length; i += 4) {
-    mapWords.push(((map[i] | (map[i + 1] << 8) | (map[i + 2] << 16) | (map[i + 3] << 24)) >>> 0));
-  }
-  let h = `// generated from ${path.basename(pngPath)} (PNG->GBA Mode-7 affine bg)\n`;
-  h += `#ifndef GBA_MODE7_ASSET_H\n#define GBA_MODE7_ASSET_H\n#define GBA_HAS_MODE7 1\n\n`;
-  h += `static const unsigned int m7_tiles[${tileWords.length}] = {${tileWords.map((w) => w >>> 0).join(",")}};\n`;
-  h += `#define m7_ntiles ${tileWords.length / 16}\n`;              // 8bpp = 16 words/tile
-  h += `static const unsigned int m7_map[${mapWords.length}] = {${mapWords.join(",")}};\n`;
-  h += `static const unsigned short m7_pal[256] = {${pal.join(",")}};\n`;
-  h += `#define m7_side ${side}\n`;
-  h += `\n#endif\n`;
-  return h;
-}
-
-function emptyMode7Header() {
-  return `#ifndef GBA_MODE7_ASSET_H\n#define GBA_MODE7_ASSET_H\n#define GBA_HAS_MODE7 0\n#endif\n`;
-}
-
-// the fallback gba_assets.h when no --sheet: use the built-in alien.
-function alienAssetsHeader() {
-  return `// no --sheet given: fall back to the built-in alien sprite.
-#ifndef GBA_ASSETS_H
-#define GBA_ASSETS_H
-#include "alien_sprite.h"
-#define GBA_SHEET_TILES alien_tiles
-#define GBA_SHEET_TILES_WORDS (sizeof(alien_tiles)/4)
-#define GBA_SHEET_HAS_PAL 0
-#endif
-`;
+  return mode7AssetHeader(await readFile(pngPath), path.basename(pngPath));
 }
 
 /**
@@ -231,13 +173,13 @@ export async function buildGba(entryLua, outPath, opts = {}) {
   // Generated into gba_map_asset.h, always present (empty stub if no --map).
   includes["gba_map_asset.h"] = opts.mapPath
     ? await convertMap(path.resolve(opts.mapPath))
-    : `#ifndef GBA_MAP_ASSET_H\n#define GBA_MAP_ASSET_H\n#define GBA_HAS_MAP 0\n#endif\n`;
+    : mapStubHeader();
 
   // --mode7 plane.png -> an 8bpp affine background (mode7/mode7_cam). Generated
   // into gba_mode7_asset.h, always present (empty stub if no --mode7).
   includes["gba_mode7_asset.h"] = opts.mode7Path
     ? await convertMode7(path.resolve(opts.mode7Path))
-    : emptyMode7Header();
+    : mode7StubHeader();
 
   // ---- backend dispatch ------------------------------------------------------
   const forced = process.env.GBALUA_BACKEND;   // "local" | "mcp" | unset
