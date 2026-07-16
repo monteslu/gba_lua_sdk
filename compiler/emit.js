@@ -260,7 +260,22 @@ function touchesFixedRuntime(node) {
 }
 
 export function emit(chunk, symbols, file, opts = {}) {
-  const banked = opts.banked === true;
+  // target: "gametank" (default, cc65/65C02) | "gba" (arm-gcc/libtonc).
+  // The front-end (lex/parse/check) + all arg lowering is target-independent;
+  // only the CALL-SITE strings, the #include, and the main() harness differ.
+  // GBA drops the zero-page fastcall ABI entirely (ARM has no zero page) — every
+  // draw builtin is a plain gba_*(args) call.
+  const target = opts.target === "gba" ? "gba" : "gametank";
+  const isGba = target === "gba";
+  // GBA reuses the builtins table verbatim; only the C SYMBOL a verb resolves to
+  // differs. The GameTank runtime names everything gt_p8_* / gt_*; the GBA
+  // runtime (gba_api.c) mirrors the same set as gba_*. Remap at the call site so
+  // the table stays single-source (no forked builtins.js).
+  const cName = (c) => {
+    if (!isGba || !c) return c;
+    return c.replace(/^gt_p8_/, "gba_").replace(/^gt_/, "gba_");
+  };
+  const banked = opts.banked === true && !isGba;   // GBA is flat: never banked
   const placement = opts.placement ?? {};
   const bankOf = (name) => (banked ? (placement[name] ?? "fixed") : "fixed");
   const out = [];
@@ -614,7 +629,10 @@ export function emit(chunk, symbols, file, opts = {}) {
           return cv(N8 ? `(${expr(e.left, "fixed")} >> ${8 + lg})`
                        : `(int)(${expr(e.left, "fixed")} >> ${16 + lg})`, "int", want);
         }
-        if (ok === "int") return cv(`gt_ifdiv(${expr(e.left, "int")}, ${expr(e.right, "int")})`, "int", want);
+        // GBA: native integer division (hardware). GameTank: runtime helper.
+        if (ok === "int") return cv(isGba
+          ? `((${expr(e.left, "int")}) / (${expr(e.right, "int")}))`
+          : `gt_ifdiv(${expr(e.left, "int")}, ${expr(e.right, "int")})`, "int", want);
         return cv(N8 ? `(${fixedCall("gt_fdiv", e.left, e.right)} >> 8)`
                      : `(int)(${fixedCall("gt_fdiv", e.left, e.right)} >> 16)`, "int", want);
       }
@@ -622,6 +640,12 @@ export function emit(chunk, symbols, file, opts = {}) {
         if (e.divConst) {
           if (k === "int") return cv(`(${expr(e.left, "int")} & ${e.divConst - 1})`, "int", want);
           return cv(`(${expr(e.left, "fixed")} & ${(e.divConst * FONE) - 1}${FL})`, "fixed", want);
+        }
+        // GBA: native modulo (hardware divide). GameTank: runtime helpers.
+        if (isGba) {
+          if (k === "int") return cv(`((${expr(e.left, "int")}) % (${expr(e.right, "int")}))`, "int", want);
+          // 16.16 fixed modulo == a % b on the raw fixed ints (fraction preserved).
+          return cv(`((${expr(e.left, "fixed")}) % (${expr(e.right, "fixed")}))`, "fixed", want);
         }
         if (k === "int") return cv(`gt_ifmod(${expr(e.left, "int")}, ${expr(e.right, "int")})`, "int", want);
         return cv(`gt_ffmod(${expr(e.left, "fixed")}, ${expr(e.right, "fixed")})`, "fixed", want);
@@ -653,6 +677,17 @@ export function emit(chunk, symbols, file, opts = {}) {
   function fixedCall(fn, left, right) {
     const L = expr(left, "fixed");
     const R = expr(right, "fixed");
+    // GBA: 16.16 fixed mul/div are NATIVE C via a 64-bit intermediate — the
+    // ARM7TDMI has a hardware multiplier + fast divide, so no runtime call and
+    // no zero-page staging (the whole gt_fmul/gt_fdiv/fa/fb apparatus is a 6502
+    // workaround the GBA doesn't need). This is the number model going faster +
+    // simpler on better hardware, exactly as planned.
+    if (isGba) {
+      if (fn === "gt_fmul") return `(long)(((long long)(${L}) * (${R})) >> 16)`;
+      if (fn === "gt_fdiv") return `(long)((((long long)(${L})) << 16) / (${R}))`;
+      // gt_ffmod handled at its own call site; other fns shouldn't reach here.
+      return `${fn}(${L}, ${R})`;
+    }
     const zpOk = true;   // both num8 mul AND div have asm zp entries now
     if (zpOk && !touchesFixedRuntime(left) && !touchesFixedRuntime(right)) {
       return `(fa = ${L}, fb = ${R}, ${fn}_zp())`;
@@ -730,6 +765,10 @@ export function emit(chunk, symbols, file, opts = {}) {
       // is used as-is (a game that computes a 0-15 index will render wrong; the
       // GameTank palette differs from PICO-8's, documented best-effort).
       case "color": {
+        // GBA: the runtime palette IS the PICO-8 16-color palette indexed 0..15,
+        // so a static color literal passes through as its raw index (no bake).
+        // GameTank: bake the p8 index to the GameTank palette byte at compile time.
+        if (isGba) return expr(a, "int");
         if (a.kind === "number" && Number.isInteger(a.value) &&
             a.value >= 0 && a.value <= 15) {
           return String(P8_PALETTE[a.value]);   // bake p8 index -> GT byte
@@ -902,31 +941,33 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (!b) return "0";
 
     if (b.special === "print") {
+      // pf() = the print C-fn name, remapped gt_p8_* -> gba_* on the GBA target.
+      const pf = (suffix) => cName(`gt_p8_print${suffix}`);
       if (e.cursorForm) {
         // print(v) / print(v, color) - no x,y, uses the running cursor
         const c = e.args[1] ? argAt(e, 1, "color") : "-1";
         if (e.printKind === "str") {
           const esc = String(e.args[0].value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-          return `gt_p8_print_cur_str("${esc}", ${c})`;
+          return `${pf("_cur_str")}("${esc}", ${c})`;
         }
-        if (e.args[0].tk === "int") return `gt_p8_print_cur_int(${expr(e.args[0], "int")}, ${c})`;
-        return `gt_p8_print_cur_num(${expr(e.args[0], "fixed")}, ${c})`;
+        if (e.args[0].tk === "int") return `${pf("_cur_int")}(${expr(e.args[0], "int")}, ${c})`;
+        return `${pf("_cur_num")}(${expr(e.args[0], "fixed")}, ${c})`;
       }
       const x = expr(e.args[1], "int");
       const y = expr(e.args[2], "int");
-      // color must be baked p8-index -> GT byte, same as every draw builtin
-      // (the runtime's resolve_color treats its arg as an ALREADY-baked byte).
-      // Passing the raw 0-15 index here rendered every print color wrong.
+      // GameTank bakes the p8 index -> GT byte here (its resolve_color expects an
+      // already-baked byte). GBA passes the raw 0-15 index (argAt's color case is
+      // gated on isGba to skip the bake).
       const c = e.args[3] ? argAt(e, 3, "color") : "-1";
       if (e.printKind === "str") {
         const esc = String(e.args[0].value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-        return `gt_p8_print("${esc}", ${x}, ${y}, ${c})`;
+        return `${pf("")}("${esc}", ${x}, ${y}, ${c})`;
       }
       // int-typed values skip the fixed widening + long digit path
       if (e.args[0].tk === "int") {
-        return `gt_p8_print_int(${expr(e.args[0], "int")}, ${x}, ${y}, ${c})`;
+        return `${pf("_int")}(${expr(e.args[0], "int")}, ${x}, ${y}, ${c})`;
       }
-      return `gt_p8_print_num(${expr(e.args[0], "fixed")}, ${x}, ${y}, ${c})`;
+      return `${pf("_num")}(${expr(e.args[0], "fixed")}, ${x}, ${y}, ${c})`;
     }
     if (b.special === "poolmove") {
       const pl = e.args[0].sym;
@@ -957,7 +998,18 @@ export function emit(chunk, symbols, file, opts = {}) {
     // instead of paying cc65's C-stack push per argument. Skipped when an
     // argument expression could itself draw (a user-function call would
     // clobber the slots mid-sequence) - those sites use the cdecl wrapper.
-    if (ZP_BUILTINS[name] && !e.args.some(hasUserCall)) {
+    // GBA: no zero-page, so the whole ZP-fastcall / camera / btn-inline
+    // optimization block is skipped — every builtin is a plain gba_*(args) call
+    // handled by the b.c fallthrough below.
+    if (isGba && ZP_BUILTINS[name] && !e.args.some(hasUserCall)) {
+      // spr packs its two flip flags into one int for the 5-param C signature
+      // (same shape as the GameTank cdecl fallback), everything else is plain.
+      if (name === "spr") {
+        return `${cName(b.c)}(${args[0]}, ${args[1]}, ${args[2]}, ${args[3]}, ${args[4]}, ${args[5]} | (${args[6]} << 1))`;
+      }
+      return `${cName(b.c)}(${args.join(", ")})`;
+    }
+    if (!isGba && ZP_BUILTINS[name] && !e.args.some(hasUserCall)) {
       // spr has 7 params (n,x,y,w,h,flip_x,flip_y) but only 6 zp slots - pack
       // the two flip flags into gt_a5 as a bitmask (bit0 = X, bit1 = Y). The
       // asm reads gt_a5 to set WIDTH/HEIGHT bit7 + flip the GX/GY source edge.
@@ -969,12 +1021,13 @@ export function emit(chunk, symbols, file, opts = {}) {
       const stores = args.map((a, i) => `gt_a${i} = ${a}`);
       return `(${stores.join(", ")}, ${ZP_BUILTINS[name]}())`;
     }
-    if (name === "camera" && !e.args.some(hasUserCall)) {
+    if (!isGba && name === "camera" && !e.args.some(hasUserCall)) {
       return `(gt_cam_x = ${args[0]}, gt_cam_y = ${args[1]})`;
     }
     // btn/btnp with constant button + player 0/1: an inline bit test on the
     // zp pad word - no call at all (233 measured cycles down to a handful).
-    if ((name === "btn" || name === "btnp") && e.args[0]?.kind === "number") {
+    // (GameTank only — GBA reads REG_KEYINPUT via a plain gba_btn call.)
+    if (!isGba && (name === "btn" || name === "btnp") && e.args[0]?.kind === "number") {
       const idx = e.args[0].value | 0;
       const plArg = e.args[1];
       const plConst = !plArg ? 0 : (plArg.kind === "number" ? plArg.value | 0 : -1);
@@ -986,13 +1039,13 @@ export function emit(chunk, symbols, file, opts = {}) {
     // spr's cdecl fallback (used when an arg contains a user call): pack the
     // two flip flags into one int so the 7-param builtin reaches the 6-param C.
     if (name === "spr") {
-      return `${b.c}(${args[0]}, ${args[1]}, ${args[2]}, ${args[3]}, ${args[4]}, ${args[5]} | (${args[6]} << 1))`;
+      return `${cName(b.c)}(${args[0]}, ${args[1]}, ${args[2]}, ${args[3]}, ${args[4]}, ${args[5]} | (${args[6]} << 1))`;
     }
     // sprf(frame,x,y,[fx],[fy]) -> gt_gspr_frame(frame,x,y, fx | (fy<<1))
     if (name === "sprf") {
-      return `${b.c}(${args[0]}, ${args[1]}, ${args[2]}, ${args[3]} | (${args[4]} << 1))`;
+      return `${cName(b.c)}(${args[0]}, ${args[1]}, ${args[2]}, ${args[3]} | (${args[4]} << 1))`;
     }
-    return `${b.c}(${args.join(", ")})`;
+    return `${cName(b.c)}(${args.join(", ")})`;
   }
 
   // rnd(x) with an integral range, consumed as an integer: emit the cheap
@@ -1023,6 +1076,10 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (name === "song") return "1";          // song(data) -> loop by default
     if (name === "spr") return i >= 5 ? "0" : "1";  // w,h default 1 cell; flips default off
     if (name === "sprf") return "0";          // flipx/flipy default off
+    if (name === "spr8") return "0";          // flip default off
+    if (name === "fade") return "0";          // fade(amount) -> to black (white flag off)
+    if (name === "sprr") return `${FONE}${FL}`;  // scale defaults to 1.0 (16.16)
+    if (name === "mode7_cam") return `${FONE}${FL}`;  // zoom defaults to 1.0 (16.16)
     if (name === "parallax_init") return "-1";   // colors default to the classic tiers
     return "-1";                              // optional color -> current
   }
@@ -1439,7 +1496,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   let currentFn = null;
 
   out.push(`/* generated by gtlua from ${file} - edit the .lua, not this file */`);
-  out.push(`#include "gt_api.h"`);
+  out.push(isGba ? `#include "gba_api.h"` : `#include "gt_api.h"`);
   out.push("");
 
   // banked builds: functions get external linkage (the far-call stubs in
@@ -1664,23 +1721,44 @@ export function emit(chunk, symbols, file, opts = {}) {
     }
     out.push(`${ind}${mangle(name)}();`);
   };
-  out.push("void main(void)");
-  out.push("{");
-  out.push("    gt_init();");
-  out.push("    gt_sheet_init();");
-  if (symbols.usesAudio) out.push("    gt_audio_init();");
-  if (symbols.usesMusic) out.push("    gt_music_init();");
-  if (thirty) out.push("    gt_p8_fps30();");
-  if (has("_init")) callCb("_init", "    ");
-  out.push("    for (;;) {");
-  out.push("        gt_update_inputs();");
-  if (has("_update60")) callCb("_update60", "        ");
-  if (thirty) callCb("_update", "        ");
-  if (has("_draw")) callCb("_draw", "        ");
-  out.push("        gt_endframe();");
-  out.push("    }");
-  out.push("}");
-  out.push("");
+  if (isGba) {
+    // libtonc harness: install the vblank IRQ (THE #1 GBA footgun — before the
+    // first VBlankIntrWait), let the runtime bring up video, then the frame loop
+    // reads input, runs the callbacks, and flushes OAM at vblank. All the moving
+    // parts (DISPCNT, OAM shadow, input latch, oam flush) live in gba_api.c.
+    out.push("int main(void)");
+    out.push("{");
+    out.push("    gba_init();");
+    if (has("_init")) callCb("_init", "    ");
+    out.push("    for (;;) {");
+    out.push("        gba_vsync();");        // VBlankIntrWait + latch input
+    if (has("_update60")) callCb("_update60", "        ");
+    if (thirty) callCb("_update", "        ");
+    if (has("_draw")) callCb("_draw", "        ");
+    out.push("        gba_endframe();");     // oam flush + housekeeping
+    out.push("    }");
+    out.push("    return 0;");
+    out.push("}");
+    out.push("");
+  } else {
+    out.push("void main(void)");
+    out.push("{");
+    out.push("    gt_init();");
+    out.push("    gt_sheet_init();");
+    if (symbols.usesAudio) out.push("    gt_audio_init();");
+    if (symbols.usesMusic) out.push("    gt_music_init();");
+    if (thirty) out.push("    gt_p8_fps30();");
+    if (has("_init")) callCb("_init", "    ");
+    out.push("    for (;;) {");
+    out.push("        gt_update_inputs();");
+    if (has("_update60")) callCb("_update60", "        ");
+    if (thirty) callCb("_update", "        ");
+    if (has("_draw")) callCb("_draw", "        ");
+    out.push("        gt_endframe();");
+    out.push("    }");
+    out.push("}");
+    out.push("");
+  }
 
   // far-call stubs (assembled separately, linked into the FIXED bank).
   // A stub forwards the cc65 fastcall registers blindly: A/X carry the last

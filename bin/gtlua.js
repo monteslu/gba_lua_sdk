@@ -212,7 +212,39 @@ async function runBuild(entry, opts) {
 // ---- main -------------------------------------------------------------------
 
 const [, , cmd, ...rest] = process.argv;
-if (cmd === "build") {
+
+// --target gba routes to the GBA build (Lua -> GBA C + gba_api.c runtime -> .gba
+// via the romdev arm toolchain). Handled before the GameTank path below.
+const tIdx = rest.indexOf("--target");
+const target = tIdx !== -1 ? rest[tIdx + 1] : "gametank";
+
+if (cmd === "build" && target === "gba") {
+  const oIdx = rest.indexOf("-o");
+  const outPath = oIdx !== -1 ? rest[oIdx + 1] : undefined;
+  const shIdx = rest.indexOf("--sheet");
+  const sheetPath = shIdx !== -1 ? rest[shIdx + 1] : undefined;
+  const mpIdx = rest.indexOf("--map");
+  const mapPath = mpIdx !== -1 ? rest[mpIdx + 1] : undefined;
+  const m7Idx = rest.indexOf("--mode7");
+  const mode7Path = m7Idx !== -1 ? rest[m7Idx + 1] : undefined;
+  const valueOf = (i) => (i === -1 ? -2 : i + 1);
+  const entry = rest.filter((a, i) =>
+    i !== oIdx && i !== valueOf(oIdx) &&
+    i !== tIdx && i !== valueOf(tIdx) &&
+    i !== shIdx && i !== valueOf(shIdx) &&
+    i !== mpIdx && i !== valueOf(mpIdx) &&
+    i !== m7Idx && i !== valueOf(m7Idx))[0];
+  if (!entry) fail("usage: gtlua build --target gba <main.lua> [--sheet sprites.png] [--map level.png] [--mode7 plane.png] [-o game.gba]");
+  const out = outPath ?? path.join(path.dirname(path.resolve(entry)),
+    path.basename(entry, path.extname(entry)) + ".gba");
+  const { buildGba } = await import("../compiler/build-gba.mjs");
+  const r = await buildGba(entry, out, { sheetPath, mapPath, mode7Path });
+  if (r.issues?.length) {
+    for (const iss of r.issues) console.error(`${iss.severity ?? "error"}: ${iss.file ?? ""}:${iss.line ?? ""} ${iss.message}`);
+  }
+  if (!r.ok) { if (r.log) console.error(r.log); fail("gba-lua: build failed"); }
+  console.log(`${r.outPath} (GBA ROM)`);
+} else if (cmd === "build") {
   const oIdx = rest.indexOf("-o");
   const outPath = oIdx !== -1 ? rest[oIdx + 1] : undefined;
   const sIdx = rest.indexOf("--sheet");
