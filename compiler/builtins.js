@@ -104,6 +104,12 @@ export const BUILTINS = {
   // (wraps ~every 4 ms). Bracket a routine to profile it, or drive rhythm timing.
   timer_start: { params: [], ret: "void", c: "gba_timer_start", gbaOnly: true },
   timer_read:  { params: [], ret: "int",  c: "gba_timer_read",  gbaOnly: true },
+  // realframes()/realsecs(): a STEADY real-time clock. t()/time() advance once per
+  // game loop (so a slow _draw makes them drift); these tick in a VCOUNT IRQ at a
+  // true 60 Hz regardless — use them to pace things by wall-clock (auto-advance,
+  // timeouts). realframes = frame count; realsecs = seconds (16.16).
+  realframes: { params: [], ret: "int", c: "gba_realframes", gbaOnly: true },
+  realsecs:   { params: [], ret: "num", c: "gba_realsecs",   gbaOnly: true },
 
   // ---- Mode 7: affine background (rotate/scale/scroll a plane in hardware) ----
   // mode7(): show the bundled --mode7 plane on BG2 (call once in _init).

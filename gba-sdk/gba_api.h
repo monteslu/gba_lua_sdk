@@ -165,6 +165,10 @@ void gba_sfx_volume(int vol);      // sfx_volume(0..1024): master sfx volume
 int gba_btn(int i, int player);
 int gba_btnp(int i, int player);
 
+// ---- real-time clock (VCOUNT IRQ, steady 60 Hz even when _draw is slow) -----
+unsigned int gba_realframes(void);   // realframes(): true 60 Hz frame count
+long gba_realsecs(void);             // realsecs(): elapsed real seconds (16.16)
+
 // ---- parity odds & ends (gba_more.c) ---------------------------------------
 // DMA bulk moves (DMA3): copy/fill n 32-bit words between gba-lua arrays.
 void gba_dma(void *dst, const void *src, int n);

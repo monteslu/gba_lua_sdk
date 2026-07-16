@@ -9,7 +9,7 @@ local t2 = 0
 local plasma_started = 0
 local abg_started = 0
 local m7_started = 0
-local hold = 0
+local last_switch = 0
 local tiles = array8(2 * 64)   -- 2 affine-BG tiles (8bpp, 64 bytes each)
 local amap  = array8(16 * 16)  -- 16x16 affine map
 local apal  = array(256)       -- affine-BG palette (BGR555)
@@ -29,9 +29,10 @@ end
 
 function _update60()
   t2 = t2 + 1
-  hold = hold + 1
-  -- auto-advance so the demo runs itself; L / R also step manually.
-  if hold > 240 then next_scene() end
+  -- auto-advance every ~4 real seconds (realframes ticks at a true 60 Hz in a
+  -- VCOUNT IRQ, so the pace is steady even in the slow 16-bit plasma scene where
+  -- the game loop itself runs below 60 fps). L / R also step manually.
+  if realframes() - last_switch > 240 then next_scene() end
   if btnp(6) then scene = (scene + nscenes - 1) % nscenes  changed() end   -- L
   if btnp(7) then next_scene() end                                        -- R
 end
@@ -44,7 +45,7 @@ end
 -- on a scene change, clear every mode's "entered" flag so the new scene re-inits
 -- its display (each special scene sets up its mode once on entry).
 function changed()
-  hold = 0
+  last_switch = realframes()
   m7_started = 0
   abg_started = 0
   plasma_started = 0

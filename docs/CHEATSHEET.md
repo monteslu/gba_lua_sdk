@@ -307,8 +307,15 @@ st[1] = hi % 256; st[2] = (hi \ 256) % 256; save(0, st, 8)
 |---|---|
 | `timer_start()` | reset + run a free hardware timer (Timer 3, ~16 kHz) |
 | `timer_read()` | sample the count - sub-frame timing / profiling |
+| `realframes()` | a STEADY 60 Hz frame count (ticks in a VCOUNT IRQ) |
+| `realsecs()` | elapsed real seconds (16.16) |
 
 Bracket a routine to profile it: `timer_start()` ... `local ticks = timer_read()`.
+
+`t()`/`time()` advance once per game loop, so a heavy scene (whose `_draw` misses
+vblanks) makes them drift. `realframes()`/`realsecs()` tick at a true 60 Hz in an
+interrupt regardless - use them to pace things by wall-clock (auto-advance a demo,
+timeouts).
 
 ---
 

@@ -63,6 +63,17 @@ static const u16 BTN_MASK[BTN_COUNT] = {
 
 // current draw color (set by color(); used when a draw call omits its color)
 static int cur_color = 7;
+
+// ---- real-time frame counter (VCOUNT IRQ, true 60 Hz) ----------------------
+// t()/ticks() advance once per GAME LOOP, so a scene whose _draw() misses vblanks
+// (a heavy 16-bit fill, say) makes them run slow in wall-clock time. This counter
+// increments in a VCOUNT interrupt at a fixed scanline every frame — at a true
+// 60 Hz regardless of how slow the game loop is — so realframes()/realsecs() give
+// a STEADY real-time clock for pacing (auto-advancing a demo, timeouts, etc.).
+static volatile unsigned int real_frames;
+static void vcount_isr(void) { real_frames++; }
+unsigned int gba_realframes(void) { return real_frames; }
+long gba_realsecs(void) { return (long)(((long long)real_frames << 16) / 60); }  // 16.16 seconds
 // Mode-4 double-buffer: endframe requests a flip, gba_vsync does it in vblank.
 static int pending_flip;
 // set by mode15() (gba_more.c): a 16-bit bitmap mode owns its OWN page flip
@@ -129,6 +140,11 @@ void gba_init(void)
 #else
     irq_add(II_VBLANK, NULL);
 #endif
+    // real-time clock: a VCOUNT IRQ at line 200 (in the vblank period, so it never
+    // clashes with drawing or the HBlank raster) ticks real_frames at a true 60 Hz.
+    real_frames = 0;
+    irq_add(II_VCOUNT, vcount_isr);
+    REG_DISPSTAT = (REG_DISPSTAT & ~DSTAT_VCT_MASK) | DSTAT_VCT(200) | DSTAT_VCT_IRQ;
 
     load_palettes();
     load_sprite_tiles();
