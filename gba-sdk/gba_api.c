@@ -136,15 +136,18 @@ void gba_init(void)
     tte_init_bmp(4, NULL, NULL);
 
     // Mode 4 bitmap (BG2) + hardware objects (1D mapping). Forced-blank cleared.
-    // Page 0 (front, DCNT_PAGE clear) is the single buffer.
+    // DCNT_PAGE clear => the FRONT page (vid_mem) is displayed; the game draws to
+    // the BACK page and gba_vsync flips them each frame (double-buffered).
     REG_DISPCNT = DCNT_MODE4 | DCNT_BG2 | DCNT_OBJ | DCNT_OBJ_1D;
 
-    // SINGLE-BUFFERED on the FRONT page (vid_mem). libtonc inits vid_page to the
-    // BACK page, so point it (and TTE's surface) at the front page = the visible
-    // one. All m4_* shapes + TTE text draw straight to what's displayed. (No
-    // vid_flip: it raced maxmod's mmVBlank and blanked the screen with sound on.)
-    vid_page = vid_mem;
-    tte_get_context()->dst.data = (u8 *)vid_mem;
+    // DOUBLE-BUFFERED: draw to the BACK page while the FRONT is shown; gba_vsync()
+    // presents by toggling DCNT_PAGE + flipping vid_page. This removes the tearing
+    // that let a mid-draw frame (disc filled, features not yet) reach the screen.
+    // Clear both pages once so the first-ever flip doesn't reveal garbage.
+    memset32((void *)vid_mem_front, 0, VRAM_PAGE_SIZE / 4);
+    memset32((void *)vid_mem_back,  0, VRAM_PAGE_SIZE / 4);
+    vid_page = vid_mem_back;
+    tte_get_context()->dst.data = (u8 *)vid_page;
 
     gba_bg_reset();
     // (gba_sound_init() already ran above, right after installing mmVBlank.)
@@ -160,28 +163,28 @@ void gba_init(void)
 void gba_vsync(void)
 {
     VBlankIntrWait();
+    // DOUBLE-BUFFER PRESENT (Mode-4 page flip). We're now in vblank, main context.
+    // The frame the game drew last is in the BACK page (vid_page); make it visible
+    // by pointing DCNT_PAGE at it, then flip vid_page to the other page so THIS
+    // frame's _draw() paints off-screen. This kills the single-buffer tearing that
+    // let a screenshot catch a half-drawn frame (disc filled, eyes not yet).
+    //
+    // Why this is maxmod-safe where the old attempt wasn't: we only TOGGLE the
+    // DCNT_PAGE bit here (a single register bit in vblank) — we never call
+    // vid_flip()/VBlankIntrWait() a second time, so nothing races mmVBlank.
+    if (pending_flip) {
+        REG_DISPCNT ^= DCNT_PAGE;                       // show the page we just drew
+        vid_page = (COLOR *)((u32)vid_page ^ VRAM_PAGE_SIZE);   // draw to the other
+        tte_get_context()->dst.data = (u8 *)vid_page;   // keep TTE on the draw page
+        pending_flip = 0;
+    }
 #ifdef GBA_HAVE_SOUND
     // maxmod's mixer step MUST run once per frame from MAIN context, right after
     // vblank — so it finishes well before the NEXT vblank IRQ (mmVBlank) fires.
-    // Running it at endframe (after the game's heavy _update/_draw) let a busy
-    // frame push mmFrame so late that the next vblank IRQ raced it -> a wild
-    // branch / crash under load. Right-after-vblank matches maxmod's demo.
     gba_sound_frame();
 #endif
     key_prev = key_curr;
     key_curr = ~REG_KEYINPUT & KEY_MASK;
-    // Mode-4 bitmap is SINGLE-BUFFERED (draw straight to the visible front page).
-    // Double-buffering (vid_flip) raced maxmod's mmVBlank handler and blanked the
-    // screen when sound was on; single-buffer sidesteps it entirely. For the
-    // PICO-8-style immediate mode (cls + redraw right after vblank) this is fine —
-    // the visible tearing window is small and only on the bitmap path (tile games
-    // don't touch this). vid_page + TTE both target the front page (set in init).
-    (void)pending_flip;
-    // tile-mode HUD: blank the text layer before this frame's print()s so a
-    // changing value (score) doesn't leave stale glyphs. Safe now — clears the
-    // text glyph charblock (CBB2), which no longer overlaps the map screenblocks.
-    // DISABLED for crash bisection.
-    // if (gba_text_tiled_active()) gba_text_clear();
 }
 
 void gba_endframe(void)
@@ -196,6 +199,7 @@ void gba_endframe(void)
     spr_mode = 0;
     spr_mosaic = 0;
     // (mmFrame runs in gba_vsync right after vblank, not here — see the note there.)
+    pending_flip = 1;  // this frame is fully drawn; present it at the next vsync
     gba_time_tick();   // advance t()/time()
 }
 
@@ -226,9 +230,15 @@ void gba_rect(int x0, int y0, int x1, int y1, int color)
     m4_frame(x0, y0, x1, y1, resolve_color(color));   // outline (inclusive rect)
 }
 
+static inline void hline_clip(int x1, int x2, int y, u8 c);   // defined below
+
 void gba_rectfill(int x0, int y0, int x1, int y1, int color)
 {
-    m4_rect(x0, y0, x1 + 1, y1 + 1, resolve_color(color));  // filled (m4_rect is exclusive-right/bottom)
+    u8 c = resolve_color(color);
+    if (y0 > y1) { int t = y0; y0 = y1; y1 = t; }
+    // fill row by row through the reliable word-writing span (not m4_rect, whose
+    // memset32 path didn't reliably reach the displayed surface after a print()).
+    for (int y = y0; y <= y1; y++) hline_clip(x0, x1, y, c);
 }
 
 void gba_line(int x0, int y0, int x1, int y1, int color)
@@ -244,6 +254,12 @@ static inline void plot_clip(int x, int y, u8 c)
 {
     if ((unsigned)x < SCRW && (unsigned)y < SCRH) m4_plot(x, y, c);
 }
+// Fill a clipped horizontal span in the Mode-4 bitmap. VRAM is 16-bit-write-only
+// and packs two 8bpp pixels per halfword, so we write 16-bit WORDS directly:
+// read-modify-write the (possibly odd) end pixels, and store the aligned middle as
+// full halfwords. We deliberately do NOT call libtonc's m4_hline — it delegates to
+// memset32 for longer spans, and that path did not reliably reach the displayed
+// surface after a TTE (print) glyph render. A plain word loop always lands.
 static inline void hline_clip(int x1, int x2, int y, u8 c)
 {
     if ((unsigned)y >= SCRH) return;
@@ -251,7 +267,25 @@ static inline void hline_clip(int x1, int x2, int y, u8 c)
     if (x2 < 0 || x1 >= SCRW) return;
     if (x1 < 0) x1 = 0;
     if (x2 >= SCRW) x2 = SCRW - 1;
-    m4_hline(x1, y, x2, c);
+
+    u16 *row = &vid_page[(y * SCRW) >> 1];
+    u16 word = (u16)(c | (c << 8));
+
+    // left odd pixel: high byte of its word (low byte belongs to x1-1)
+    if (x1 & 1) {
+        u16 *p = &row[x1 >> 1];
+        *p = (*p & 0x00FF) | (u16)(c << 8);
+        x1++;
+    }
+    // right odd pixel: low byte of its word (high byte belongs to x2+1)
+    if (!(x2 & 1)) {
+        u16 *p = &row[x2 >> 1];
+        *p = (*p & 0xFF00) | c;
+        x2--;
+    }
+    // aligned middle: whole halfwords (two pixels each)
+    for (int x = x1; x < x2; x += 2)
+        row[x >> 1] = word;
 }
 
 // circle: midpoint algorithm over CLIPPED m4 primitives.
@@ -359,10 +393,8 @@ void gba_print(const char *s, int x, int y, int color)
     // stays the default: one fewer BG layer used and no per-frame VRAM writes.)
     (void)color;   // sprite font is single-ink white in tile mode
     if (in_tile_mode()) { hud_draw_str(s, x, y); return; }
-    // TTE's bmp surface (tc->dst) and the m4 shape primitives (vid_page) must point
-    // at the SAME page, or text and shapes land on different buffers (one invisible,
-    // and whichever ran last leaves its page active for the next call). Sync TTE to
-    // the shape page right before drawing so print() composes with cls/rect/circ.
+    // keep TTE's surface on the current draw page (vsync already syncs it on flip;
+    // this is cheap insurance so text always composes with the shapes this frame).
     tte_get_context()->dst.data = (u8 *)vid_page;
     tte_color(color);
     tte_set_pos(x, y);

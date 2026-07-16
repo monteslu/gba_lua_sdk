@@ -24,20 +24,22 @@ back end to native ARM.
 A complete GBA game - one `main.lua`, no assets:
 
 ```lua
--- The screen is 240x160. cls clears it; the shapes draw a smiley on top.
+-- The screen is 240x160. cls clears it; print and the shapes draw on top.
 -- Colors are PICO-8-style indices 0-15 (0 black, 1 dark-blue, 10 yellow, 14 pink).
 function _draw()
   cls(1)                                -- dark blue background
 
-  circfill(120, 88, 38, 10)             -- head: a big yellow circle
-  rectfill(106, 78, 113, 88, 0)         -- left eye: a black square
-  rectfill(127, 78, 134, 88, 0)         -- right eye
-  circfill(120, 100, 12, 0)             -- mouth: a black circle
+  print("hello gba", 100, 24, 14)       -- title text, pink, near the top
+
+  circfill(120, 92, 38, 10)             -- head: a big yellow circle
+  rectfill(106, 82, 113, 92, 0)         -- left eye: a black square
+  rectfill(127, 82, 134, 92, 0)         -- right eye
+  circfill(120, 104, 11, 0)             -- mouth: a black circle
 end
 ```
 
 <p align="center">
-  <img src="docs/img/hello.png" width="480" alt="a yellow smiley face on a dark blue 240x160 screen">
+  <img src="docs/img/hello.png" width="480" alt="a yellow smiley face and 'hello gba' text on a dark blue 240x160 screen">
 </p>
 
 Build it to a `.gba` ROM:
