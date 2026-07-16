@@ -222,6 +222,16 @@ static int clip_x0 = 0, clip_y0 = 0, clip_x1 = SCRW, clip_y1 = SCRH;
 // ---- immediate drawing (Mode-4 bitmap) -------------------------------------
 void gba_cls(int color)
 {
+    // cls() means "bitmap drawing". If the display is NOT already the Mode-4
+    // bitmap (a prior scene used mode7 / 16-bit / an affine BG, or turned BG2
+    // off), restore it so a game can switch back to a bitmap scene via cls().
+    // (When already in Mode-4 bitmap we leave DISPCNT alone so tile-mode games —
+    // which never call the bitmap cls path this way — and window/effect bits set
+    // earlier in the frame survive.)
+    if ((REG_DISPCNT & DCNT_MODE_MASK) != DCNT_MODE4 || !(REG_DISPCNT & DCNT_BG2)) {
+        REG_DISPCNT = DCNT_MODE4 | DCNT_BG2 | DCNT_OBJ | DCNT_OBJ_1D;
+        gba_bitmap16_mode = 0;
+    }
     // PICO-8 cls: clear the bitmap to `color` (default 0) AND reset the sprite
     // frame (next spr() starts at slot 0). Draws to the CURRENT back buffer.
     u8 c = (color < 0) ? 0 : (u8)(color & 15);

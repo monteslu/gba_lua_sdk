@@ -174,6 +174,7 @@ void gba_mode15(void);                       // switch into the 16-bit bitmap mo
 int  gba_rgb15(int r, int g, int b);         // build a BGR555 color from 0..255 rgb
 void gba_cls15(int color);                   // clear the 16-bit page
 void gba_pset15(int x, int y, int color);    // plot a 16-bit pixel
+void gba_fillrect15(int x, int y, int w, int h, int color);  // fill a 16-bit rect
 void gba_flip15(void);                       // present the drawn 16-bit page
 // second affine BG (BG2 rotate/scale) from the game's OWN tiles/map (not Mode 7).
 void gba_abg_setup(const unsigned char *tiles, int ntiles,

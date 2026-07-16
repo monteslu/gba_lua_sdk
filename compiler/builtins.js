@@ -138,6 +138,7 @@ export const BUILTINS = {
   rgb15:    { params: [["int", false], ["int", false], ["int", false]], ret: "int", c: "gba_rgb15", gbaOnly: true },
   cls15:    { params: [["int", false]], ret: "void", c: "gba_cls15", gbaOnly: true },
   pset15:   { params: [["coord", false], ["coord", false], ["int", false]], ret: "void", c: "gba_pset15", gbaOnly: true },
+  fillrect15: { params: [["coord", false], ["coord", false], ["coord", false], ["coord", false], ["int", false]], ret: "void", c: "gba_fillrect15", gbaOnly: true },
   flip15:   { params: [], ret: "void", c: "gba_flip15", gbaOnly: true },
 
   // ---- windows: hardware rectangular clipping regions (free in the PPU) ----

@@ -166,6 +166,7 @@ these instead of the 8bpp `cls`/`pset`.
 | `mode15()` | switch to the 16-bit bitmap (call once in `_init`) |
 | `rgb15(r,g,b)` | build a color from 0..255 components |
 | `cls15(color)` / `pset15(x,y,color)` | clear / plot a 16-bit pixel |
+| `fillrect15(x,y,w,h,color)` | fill a 16-bit rectangle (fast block fill) |
 | `flip15()` | present (currently single-buffered, so drawing shows immediately) |
 
 ---

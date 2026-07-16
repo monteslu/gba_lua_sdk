@@ -45,6 +45,9 @@ static u16 *const M5_MEM = (u16 *)0x06000000;   // Mode 5 front page
 extern int gba_bitmap16_mode;
 void gba_mode15(void)
 {
+    // Mode 5's BG2 is affine-transformed — reset the BG2 matrix to identity so a
+    // leftover Mode-7 / affine-BG transform doesn't skew the framebuffer.
+    REG_BG_AFFINE[2] = bg_aff_default;
     REG_DISPCNT = DCNT_MODE5 | DCNT_BG2;   // front page (DCNT_PAGE clear)
     gba_bitmap16_mode = 1;
 }
@@ -62,6 +65,20 @@ void gba_pset15(int x, int y, int color)
 {
     if ((unsigned)x >= M5W || (unsigned)y >= M5H) return;
     M5_MEM[y * M5W + x] = (u16)color;
+}
+// fill a w x h rectangle in the 16-bit bitmap — the fast way to paint blocks
+// (a coarse plasma, tiles, gradients) without a per-pixel Lua loop.
+void gba_fillrect15(int x, int y, int w, int h, int color)
+{
+    if (w <= 0 || h <= 0) return;
+    int x1 = x + w, y1 = y + h;
+    if (x < 0) x = 0; if (y < 0) y = 0;
+    if (x1 > M5W) x1 = M5W; if (y1 > M5H) y1 = M5H;
+    u16 c = (u16)color;
+    for (int yy = y; yy < y1; yy++) {
+        u16 *row = &M5_MEM[yy * M5W];
+        for (int xx = x; xx < x1; xx++) row[xx] = c;
+    }
 }
 // present: single-buffered, so drawing already shows. Kept as a no-op verb so
 // game code can call flip15() harmlessly and stay portable if buffering changes.

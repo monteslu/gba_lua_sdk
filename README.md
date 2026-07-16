@@ -139,8 +139,13 @@ node bin/gtlua.js build --target gba mygame/main.lua \
 
 The `examples/` directory shows each subsystem in use:
 
+<p align="center">
+  <img src="docs/img/showcase.png" width="480" alt="the showcase demo: shapes, a clipped ring burst, and a line on a dark blue screen">
+</p>
+
 | example | shows |
 |---|---|
+| `showcase` | a scene-cycling tour of the whole feature set (L/R to switch scenes) |
 | `starfall` | a complete shmup - tile mode, sprite HUD, module music + SFX |
 | `effects` | `blend` / `fade` in bitmap mode |
 | `mode7` | an affine plane you rotate, zoom, and drive over |
