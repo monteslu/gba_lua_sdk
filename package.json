@@ -1,6 +1,6 @@
 {
   "name": "gbalua",
-  "version": "0.3.0",
+  "version": "0.2.1",
   "description": "Write Game Boy Advance games in a PICO-8-flavored Lua that compiles to native ARM.",
   "type": "module",
   "bin": {
@@ -25,7 +25,8 @@
   },
   "dependencies": {
     "romdev-maxmod": "0.1.0",
-    "romdev-platform-gba": "^0.11.0"
+    "romdev-platform-gba": "^0.11.0",
+    "luacretro": "github:monteslu/luacretro"
   },
   "scripts": {
     "test": "node --test 'test/**/*.test.js'"
