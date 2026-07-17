@@ -1,6 +1,6 @@
 {
   "name": "gbalua",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Write Game Boy Advance games in a PICO-8-flavored Lua that compiles to native ARM.",
   "type": "module",
   "bin": {
