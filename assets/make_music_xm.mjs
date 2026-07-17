@@ -66,11 +66,16 @@ const INST_LEAD = 1, INST_BASS = 2, INST_DRUM = 3;
 //   bar 1: F   (F2 bass; arp F3 A3 C4)
 //   bar 2: C   (C3 bass; arp C4 E4 G4)
 //   bar 3: G   (G2 bass; arp G3 B3 D4)
+// Register + arrangement match the reference: BRIGHT lead melody up in C4-C6
+// (where a square puts strong harmonics across the spectrum — the reference's
+// full, sustained sound), a bass that plays UP at A3/F3/C3/G3 (not sub-bass A2,
+// which just sits at the bottom and thins the mix), and a mid arp. The lead
+// carries the tune; each note is held (one per beat).
 const BARS = [
-  { bass: "A2", arp: ["A3","C4","E4"], lead: ["A4",0,"C5",0,"E4",0,"A4",0,"E4",0,"C5",0,"B4",0,"A4",0] },
-  { bass: "F2", arp: ["F3","A3","C4"], lead: ["C5",0,"A4",0,"F4",0,"A4",0,"C5",0,"F5",0,"E5",0,"C5",0] },
-  { bass: "C3", arp: ["C4","E4","G4"], lead: ["E5",0,"G4",0,"C5",0,"E5",0,"G5",0,"E5",0,"D5",0,"C5",0] },
-  { bass: "G2", arp: ["G3","B3","D4"], lead: ["D5",0,"B4",0,"G4",0,"B4",0,"D5",0,"G5",0,"F5",0,"D5",0] },
+  { bass: "A3", arp: ["C5","E5"], lead: ["A4","C5","E5","C5"] },
+  { bass: "F3", arp: ["A4","C5"], lead: ["C5","A4","F5","A4"] },
+  { bass: "C4", arp: ["E5","G5"], lead: ["E5","G5","C6","G5"] },
+  { bass: "G3", arp: ["B4","D5"], lead: ["D5","B4","G5","D5"] },
 ];
 
 // ── build a pattern's packed body ───────────────────────────────────
@@ -92,21 +97,22 @@ function buildPattern(barIndex) {
   const bar = BARS[barIndex];
   const rows = [];
   for (let row = 0; row < NUM_ROWS; row++) {
-    // ch0 lead
-    const ln = bar.lead[row];
-    rows.push(ln ? cell(N(ln), INST_LEAD, VOL(50)) : u8(0x80));
-    // ch1 bass — root on row 0 and 8 (half notes), sustained
+    // SPARSE + SUSTAINED, like maxmod's own reference (which plays ~5 notes, not
+    // a note every row). maxmod cuts the previous note on every retrigger, so a
+    // busy retriggering melody = constant tone-resets = perceived choppiness. We
+    // let each note RING: the lead moves on beats (every 4 rows), not every 2.
+    // ch0 lead — one bright note per beat (rows 0,4,8,12), loud, held between
+    const ln = (row % 4 === 0) ? bar.lead[(row / 4) | 0] : 0;
+    rows.push(ln ? cell(N(ln), INST_LEAD, VOL(60)) : u8(0x80));
+    // ch1 bass — root at the bar start + mid (rows 0,8), sustained (mid register)
     const bn = (row === 0 || row === 8) ? bar.bass : 0;
-    rows.push(bn ? cell(N(bn), INST_BASS, VOL(58)) : u8(0x80));
-    // ch2 harmony arpeggio — cycle the 3 chord tones every row (steps of 2)
-    const an = (row % 2 === 0) ? bar.arp[(row / 2) % 3] : 0;
-    rows.push(an ? cell(N(an), INST_LEAD, VOL(30)) : u8(0x80));
-    // ch3 drums — kick (low) on 0/8, a sparse hat on the backbeat (rows 4/12)
-    // so the groove reads clean, not a busy hash of hits on every offbeat.
-    let dn = 0, dv = 0;
-    if (row === 0 || row === 8)      { dn = N("C3"); dv = 58; }     // kick
-    else if (row === 4 || row === 12){ dn = N("C5"); dv = 18; }     // hat (backbeat)
-    rows.push(dn ? cell(dn, INST_DRUM, VOL(dv)) : u8(0x80));
+    rows.push(bn ? cell(N(bn), INST_BASS, VOL(48)) : u8(0x80));
+    // ch2 harmony — one chord tone per half-bar (rows 0,8), held pad
+    const an = (row === 0) ? bar.arp[0] : (row === 8) ? bar.arp[1] : 0;
+    rows.push(an ? cell(N(an), INST_LEAD, VOL(34)) : u8(0x80));
+    // ch3 drums — kick on the downbeats (rows 0,8) only
+    const dn = (row === 0 || row === 8) ? N("C3") : 0;
+    rows.push(dn ? cell(dn, INST_DRUM, VOL(50)) : u8(0x80));
   }
   const body = concat(...rows);
   return concat(u32(9), u8(0), u16(NUM_ROWS), u16(body.length), body);
@@ -152,44 +158,9 @@ function noiseSample(len, amp) {
   return s;
 }
 
-// Band-limit a sample with a simple `passes`-tap moving-average low-pass. A raw
-// ±amp square has infinite harmonics that alias into a harsh high-frequency
-// HASH at the mixer's finite rate — the "noisy" edge. Rounding the hard edges
-// (a few smoothing passes) keeps the chiptune character but removes the fizz.
-// Wraps at the loop boundary so a looped sample stays seamless (no per-cycle
-// click). Re-centers to preserve DC balance.
-// Band-limit a sample with a wrap-aware box low-pass of `width` taps. A raw
-// ±amp square has infinite harmonics that alias into a harsh HF hash on the
-// non-interpolated GBA mixer; a proper (wide, unweighted) moving average rounds
-// the hard edges into smooth ramps — killing the fizz AND the edge SPIKES that
-// the old 3-tap [1 2 1] filter left behind (which read as onset clicks). Wraps
-// at the loop boundary so a looped sample stays seamless; re-centers to keep DC
-// balance. Width scales the smoothing to the waveform (bigger = rounder).
-function lowpass(sample, width = 17) {
-  const n = sample.length;
-  const s = Float32Array.from(sample);
-  const out = new Float32Array(n);
-  const half = width >> 1;
-  // running sum for an O(n) box average
-  let sum = 0;
-  for (let k = -half; k <= half; k++) sum += s[(k + n) % n];
-  for (let i = 0; i < n; i++) {
-    out[i] = sum / (2 * half + 1);
-    sum += s[(i + half + 1) % n] - s[(i - half + n) % n];
-  }
-  let mean = 0;
-  for (let i = 0; i < n; i++) mean += out[i];
-  mean /= n;
-  const o = new Int8Array(n);
-  for (let i = 0; i < n; i++) {
-    const v = Math.round(out[i] - mean);
-    o[i] = v > 127 ? 127 : v < -128 ? -128 : v;
-  }
-  return o;
-}
-
-// build one instrument (with a volume envelope). `env` = [[x,y],...] points
-// (x in ticks, y in 0..64). loopType: 1 = forward loop the whole sample.
+// build one instrument. `volEnv` = [[x,y],...] envelope points (x in ticks, y
+// 0..64); omit for NO envelope (the reference-matched default — see the
+// instrument definitions below for why plain is better). loopType 1 = forward.
 function instrument(name, sampleInt8, { volEnv = [], fadeout = 0, loop = true } = {}) {
   const sampleBytes = deltaEncode(sampleInt8);
   const SAMPLE_LEN = sampleInt8.length;
@@ -246,30 +217,21 @@ function instrument(name, sampleInt8, { volEnv = [], fadeout = 0, loop = true } 
   return concat(instHeader, sampleHeader, sampleBytes);
 }
 
-// SAMPLE LENGTH MATTERS: the maxmod GBA mixer is NON-interpolated (nearest-
-// neighbor resampling — verified in mm_mixer_gba.s), so a short waveform table
-// aliases badly when pitched. maxmod's own reference chiptune uses 1024-sample
-// instruments at the 8363 Hz XM reference; we match that (1024-sample tables,
-// period 256 = 4 cycles) — 4× the source resolution of the old 256-byte tables,
-// which removes most of the nearest-neighbor grit. Then DC-balance + band-limit.
-const SLEN = 1024, SPER = 256;
-// DE-CLICK: every envelope MUST start at 0 and end at 0. maxmod does not ramp
-// note attacks/releases — an envelope that jumps to a non-zero volume at tick 0
-// (or holds volume at note-off) is an instant amplitude STEP = an audible click
-// on every note. A 1-tick ramp in/out (~2.7ms) removes the pop while staying
-// punchy. (The lead was already correct; bass + drum jumped to full volume.)
-// lead: bright 25% pulse, lightly rounded.
-const leadInst = instrument("lead", lowpass(squareSample(SLEN, SPER, 0.25, 60), 17), {
-  volEnv: [[0, 0], [1, 64], [8, 52], [40, 40], [64, 0]], fadeout: 512,
-});
-// bass: fuller 50% square, rounded harder so it's mellow, not buzzy.
-const bassInst = instrument("bass", lowpass(squareSample(SLEN, SPER, 0.5, 64), 33), {
-  volEnv: [[0, 0], [1, 60], [3, 64], [32, 50], [63, 40], [64, 0]], fadeout: 128,
-});
-// drum: a filtered noise burst, short + fast decay (ramp on/off to de-click).
-const drumInst = instrument("drum", lowpass(noiseSample(512, 52), 9), {
-  volEnv: [[0, 0], [1, 64], [4, 24], [8, 0]], fadeout: 2048, loop: false,
-});
+// AUDIO DESIGN — matches maxmod's OWN reference chiptune (romdev-maxmod/test/
+// chiptune.xm), the known-clean baseline. Decoded, the reference is: a raw ±70
+// square, PERIOD 64 (16 cycles in a 1024-sample loop), at the 8363 Hz XM
+// reference, with NO volume envelope, NO fadeout, constant volume. The maxmod
+// GBA mixer is NON-interpolated (verified in mm_mixer_gba.s), and every
+// processing layer we tried on top — band-limiting, DC-balancing, attack/
+// release envelopes, fadeouts — made it sound WORSE, not better. So the
+// instruments are plain raw waveforms, and the tune stays clean by playing a
+// bright, sustained, sparse melody (busy retriggering is what maxmod cuts into
+// choppiness). See buildPattern() for the arrangement rules.
+const SLEN = 1024, P = 64;
+const leadInst = instrument("lead", squareSample(SLEN, P, 0.5, 70), {});
+const bassInst = instrument("bass", squareSample(SLEN, P, 0.5, 70), {});
+// drum: a short noise burst, non-looped (percussion is a one-shot, no envelope).
+const drumInst = instrument("drum", noiseSample(512, 60), { loop: false });
 
 // ── file header ─────────────────────────────────────────────────────
 const id = padStr("Extended Module: ", 17);

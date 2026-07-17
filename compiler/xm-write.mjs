@@ -85,34 +85,6 @@ function noiseSample(len, amp) {
   return s;
 }
 
-// Band-limit a sample with a wrap-aware box low-pass of `width` taps. A raw
-// ±amp square aliases into a harsh HF hash on the non-interpolated GBA mixer; a
-// wide unweighted moving average rounds the hard edges into smooth ramps —
-// killing the fizz AND the edge SPIKES a naive [1 2 1] filter leaves behind
-// (which read as onset clicks). Wraps at the loop boundary (seamless loop);
-// re-centers to keep DC balance. Bigger width = rounder/mellower.
-function lowpass(sample, width = 17) {
-  const n = sample.length;
-  const s = Float32Array.from(sample);
-  const out = new Float32Array(n);
-  const half = width >> 1;
-  let sum = 0;
-  for (let k = -half; k <= half; k++) sum += s[(k + n) % n];
-  for (let i = 0; i < n; i++) {
-    out[i] = sum / (2 * half + 1);
-    sum += s[(i + half + 1) % n] - s[(i - half + n) % n];
-  }
-  let mean = 0;
-  for (let i = 0; i < n; i++) mean += out[i];
-  mean /= n;
-  const o = new Int8Array(n);
-  for (let i = 0; i < n; i++) {
-    const v = Math.round(out[i] - mean);
-    o[i] = v > 127 ? 127 : v < -128 ? -128 : v;
-  }
-  return o;
-}
-
 function buildInstrument(name, sampleInt8, { volEnv = [], fadeout = 0, loop = true } = {}) {
   const sampleBytes = deltaEncode(sampleInt8);
   const SAMPLE_LEN = sampleInt8.length;
@@ -155,22 +127,21 @@ export const XM_INSTRUMENTS = [
   { id: 5, name: "tri", synth: { type: "triangle", a: 0.01, d: 0.3, s: 0.6, r: 0.15 } },
 ];
 
-// 1024-sample tables (period 256 = 4 cycles) match maxmod's own reference
-// chiptune and give the non-interpolated GBA mixer 4× the source resolution of
-// the old 256-byte tables — far less nearest-neighbor aliasing. Each is
-// DC-balanced (squareSample) then band-limited (lowpass).
-const SLEN = 1024, SPER = 256;
-// DE-CLICK: every envelope starts AND ends at 0 with a 1-tick ramp. maxmod
-// doesn't ramp note on/off, so an envelope that jumps to a non-zero volume at
-// tick 0 (or holds volume at note-off) is an instant amplitude step = a click
-// on every note. ~1-tick fades remove the pop while staying punchy.
+// AUDIO DESIGN — matches maxmod's OWN reference chiptune (the known-clean
+// baseline): raw waveforms at PERIOD 64 (16 cycles in a 1024-sample loop, the
+// reference geometry), NO volume envelope, NO fadeout, constant volume. The
+// GBA mixer is non-interpolated, and every processing layer we tried on top
+// (band-limiting, DC-balancing, attack/release envelopes, fadeouts) made it
+// sound WORSE — the reference is a plain hard square and sounds clean. So the
+// bank is plain waveforms, differing only by duty/shape for timbre.
+const SLEN = 1024, P = 64;
 function instrumentBytes() {
   return concat(
-    buildInstrument("lead", lowpass(squareSample(SLEN, SPER, 0.25, 60), 17), { volEnv: [[0, 0], [1, 64], [8, 52], [40, 40], [64, 0]], fadeout: 512 }),
-    buildInstrument("bass", lowpass(squareSample(SLEN, SPER, 0.5, 64), 33), { volEnv: [[0, 0], [1, 60], [3, 64], [32, 50], [63, 40], [64, 0]], fadeout: 128 }),
-    buildInstrument("drum", lowpass(noiseSample(512, 58), 9), { volEnv: [[0, 0], [1, 64], [5, 30], [10, 0]], fadeout: 2048, loop: false }),
-    buildInstrument("chip", lowpass(squareSample(SLEN, SPER, 0.125, 56), 13), { volEnv: [[0, 0], [1, 64], [12, 44], [48, 36], [64, 0]], fadeout: 256 }),
-    buildInstrument("tri", lowpass(triangleSample(SLEN, SPER, 64), 9), { volEnv: [[0, 0], [2, 64], [40, 44], [63, 24], [64, 0]], fadeout: 128 }),
+    buildInstrument("lead", squareSample(SLEN, P, 0.5, 70), {}),     // bright square
+    buildInstrument("bass", squareSample(SLEN, P, 0.5, 70), {}),     // same, played low
+    buildInstrument("drum", noiseSample(512, 60), { loop: false }),  // one-shot noise
+    buildInstrument("chip", squareSample(SLEN, P, 0.25, 66), {}),    // thinner pulse
+    buildInstrument("tri", triangleSample(SLEN, P, 74), {}),          // mellow triangle
   );
 }
 
