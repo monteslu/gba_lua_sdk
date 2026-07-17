@@ -156,3 +156,23 @@ test("browser-safe importer modules use no Node built-ins", async () => {
     assert.ok(!/from\s+["']node:/.test(src), `${f} imports a node: module`);
   }
 });
+
+// ---- xm-write ------------------------------------------------------------------
+test("writeXm produces a module romdev-maxmod compiles (deterministic)", async () => {
+  const { writeXm, NOTE } = await import("../compiler/xm-write.mjs");
+  const grid = [];
+  for (let r = 0; r < 16; r++) {
+    grid.push([
+      r % 4 === 0 ? { note: NOTE["A4"], inst: 1, vol: 50 } : 0,
+      0,
+      r === 0 ? { note: NOTE["A2"], inst: 2 } : 0,
+      r % 2 ? { note: NOTE["C5"], inst: 3, vol: 20 } : 0,
+    ]);
+  }
+  const a = writeXm({ title: "t", patterns: [grid] });
+  const b = writeXm({ title: "t", patterns: [grid] });
+  assert.deepEqual(Array.from(a), Array.from(b));           // deterministic
+  const { buildSoundbank } = await import("../compiler/soundbank.mjs");
+  const { bin } = buildSoundbank([{ name: "t.xm", bytes: a }]);
+  assert.ok(bin.length > 1000);                             // real MAS soundbank out
+});

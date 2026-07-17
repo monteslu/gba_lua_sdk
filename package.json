@@ -17,7 +17,8 @@
     "./compiler/soundbank.mjs": "./compiler/soundbank.mjs",
     "./compiler/ase-import.mjs": "./compiler/ase-import.mjs",
     "./compiler/tmx-import.mjs": "./compiler/tmx-import.mjs",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./compiler/xm-write.mjs": "./compiler/xm-write.mjs"
   },
   "engines": {
     "node": ">=24"
