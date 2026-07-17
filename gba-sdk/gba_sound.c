@@ -36,7 +36,7 @@ volatile int gba_sound_busy;
 // alias vid_page. Sizes are the maxmod GBA ABI (mm_init_default.s): 40/28/24 bytes
 // per module/active/mixing channel + MM_MIXLEN for the wave + mix buffers.
 #define SND_CHANNELS  16
-#define SND_MIXLEN    MM_MIXLEN_16KHZ    // 1056 bytes
+#define SND_MIXLEN    MM_MIXLEN_31KHZ    // 2112 bytes — 31536 Hz mix (was 16KHz/15768: gritty/aliased on square chiptunes)
 #define MM_SIZEOF_MODCH 40
 #define MM_SIZEOF_ACTCH 28
 #define MM_SIZEOF_MIXCH 24
@@ -51,7 +51,7 @@ void gba_sound_init(void)
     // NOTE: mmVBlank is installed in the VBlank IRQ by gba_init() (before this),
     // matching maxmod's required order: hook mmVBlank, THEN mmInit.
     mm_gba_system sys;
-    sys.mixing_mode       = MM_MIX_16KHZ;
+    sys.mixing_mode       = MM_MIX_31KHZ;   // highest maxmod rate — cleanest, least aliasing
     sys.mod_channel_count = SND_CHANNELS;
     sys.mix_channel_count = SND_CHANNELS;
     sys.module_channels   = (mm_addr)mm_mod_channels;

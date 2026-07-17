@@ -125,11 +125,18 @@ function deltaEncode(int8) {
   return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
 }
 
-// square wave at a given duty (0..1), `len` samples, `period` samples/cycle.
+// square/pulse wave at a given duty (0..1), DC-BALANCED. A naive ±amp pulse at
+// duty d has a huge DC offset (mean = amp*(2d-1)) — at 25% duty that's -0.5*amp
+// of subsonic energy that dominates the low end and sounds like a buzzy thump,
+// not a note. Weight the high/low levels by AREA so the average is zero.
 function squareSample(len, period, duty, amp) {
   const s = new Int8Array(len);
-  const hi = Math.floor(period * duty);
-  for (let i = 0; i < len; i++) s[i] = (i % period) < hi ? amp : -amp;
+  const hi = Math.max(1, Math.floor(period * duty));
+  const d = hi / period;
+  const high = Math.round(amp * 2 * (1 - d));
+  const low = -Math.round(amp * 2 * d);
+  const clamp = (v) => (v > 127 ? 127 : v < -128 ? -128 : v);
+  for (let i = 0; i < len; i++) s[i] = clamp((i % period) < hi ? high : low);
   return s;
 }
 // pseudo-noise sample (for drums) — deterministic LFSR so it's reproducible.

@@ -52,10 +52,18 @@ function deltaEncode(int8) {
   for (let i = 0; i < int8.length; i++) { out[i] = (int8[i] - prev) & 0xff; prev = int8[i]; }
   return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
 }
+// A DC-BALANCED pulse. A naive ±amp pulse at duty d has a huge DC offset
+// (mean = amp*(2d-1)) — at 25% duty that's -0.5*amp of subsonic energy, which
+// dominates the low end and sounds like a buzzy thump, not a note. Balance it
+// by AREA: the high level and low level are weighted so the average is zero.
 function squareSample(len, period, duty, amp) {
   const s = new Int8Array(len);
-  const hi = Math.floor(period * duty);
-  for (let i = 0; i < len; i++) s[i] = (i % period) < hi ? amp : -amp;
+  const hi = Math.max(1, Math.floor(period * duty));
+  const d = hi / period;                 // actual duty after rounding
+  const high = Math.round(amp * 2 * (1 - d));   // +area
+  const low = -Math.round(amp * 2 * d);         // -area (mean high*d + low*(1-d) ≈ 0)
+  const clamp = (v) => (v > 127 ? 127 : v < -128 ? -128 : v);
+  for (let i = 0; i < len; i++) s[i] = clamp((i % period) < hi ? high : low);
   return s;
 }
 function triangleSample(len, period, amp) {
