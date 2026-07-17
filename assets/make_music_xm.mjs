@@ -101,10 +101,11 @@ function buildPattern(barIndex) {
     // ch2 harmony arpeggio — cycle the 3 chord tones every row (steps of 2)
     const an = (row % 2 === 0) ? bar.arp[(row / 2) % 3] : 0;
     rows.push(an ? cell(N(an), INST_LEAD, VOL(30)) : u8(0x80));
-    // ch3 drums — kick (low) on 0/8, hat (mid, quiet) on odd rows
+    // ch3 drums — kick (low) on 0/8, a sparse hat on the backbeat (rows 4/12)
+    // so the groove reads clean, not a busy hash of hits on every offbeat.
     let dn = 0, dv = 0;
-    if (row === 0 || row === 8) { dn = N("C3"); dv = 60; }          // kick
-    else if (row % 2 === 1)     { dn = N("C5"); dv = 22; }          // hat
+    if (row === 0 || row === 8)      { dn = N("C3"); dv = 58; }     // kick
+    else if (row === 4 || row === 12){ dn = N("C5"); dv = 18; }     // hat (backbeat)
     rows.push(dn ? cell(dn, INST_DRUM, VOL(dv)) : u8(0x80));
   }
   const body = concat(...rows);
@@ -149,6 +150,32 @@ function noiseSample(len, amp) {
     s[i] = (lfsr & 1) ? amp : -amp;
   }
   return s;
+}
+
+// Band-limit a sample with a simple `passes`-tap moving-average low-pass. A raw
+// ±amp square has infinite harmonics that alias into a harsh high-frequency
+// HASH at the mixer's finite rate — the "noisy" edge. Rounding the hard edges
+// (a few smoothing passes) keeps the chiptune character but removes the fizz.
+// Wraps at the loop boundary so a looped sample stays seamless (no per-cycle
+// click). Re-centers to preserve DC balance.
+function lowpass(sample, passes = 2) {
+  let s = Float32Array.from(sample);
+  const n = s.length;
+  for (let p = 0; p < passes; p++) {
+    const o = Float32Array.from(s);
+    for (let i = 0; i < n; i++) {
+      s[i] = (o[(i - 1 + n) % n] + 2 * o[i] + o[(i + 1) % n]) / 4;
+    }
+  }
+  let mean = 0;
+  for (let i = 0; i < n; i++) mean += s[i];
+  mean /= n;
+  const out = new Int8Array(n);
+  for (let i = 0; i < n; i++) {
+    const v = Math.round(s[i] - mean);
+    out[i] = v > 127 ? 127 : v < -128 ? -128 : v;
+  }
+  return out;
 }
 
 // build one instrument (with a volume envelope). `env` = [[x,y],...] points
@@ -209,17 +236,20 @@ function instrument(name, sampleInt8, { volEnv = [], fadeout = 0, loop = true } 
   return concat(instHeader, sampleHeader, sampleBytes);
 }
 
-// lead: bright 25% pulse with a quick attack + gentle decay envelope.
-const leadInst = instrument("lead", squareSample(256, 64, 0.25, 60), {
+// lead: bright 25% pulse, band-limited so the harmonics don't fizz. Quick
+// attack + gentle decay.
+const leadInst = instrument("lead", lowpass(squareSample(256, 64, 0.25, 60), 2), {
   volEnv: [[0, 0], [1, 64], [8, 52], [40, 40], [64, 0]], fadeout: 512,
 });
-// bass: fuller 50% square, sustained, slight decay.
-const bassInst = instrument("bass", squareSample(256, 64, 0.5, 64), {
+// bass: fuller 50% square, softened harder (more low-pass) so it's round, not
+// buzzy; sustained with a slight decay.
+const bassInst = instrument("bass", lowpass(squareSample(256, 64, 0.5, 64), 3), {
   volEnv: [[0, 48], [2, 64], [32, 50], [64, 40]], fadeout: 128,
 });
-// drum: short noise burst with a fast decay (kick/hat depending on pitch).
-const drumInst = instrument("drum", noiseSample(128, 58), {
-  volEnv: [[0, 64], [4, 30], [10, 0]], fadeout: 2048, loop: false,
+// drum: a filtered noise burst (softened so it reads as a hat/kick, not white
+// hash), short + fast decay.
+const drumInst = instrument("drum", lowpass(noiseSample(128, 52), 2), {
+  volEnv: [[0, 64], [3, 24], [8, 0]], fadeout: 2048, loop: false,
 });
 
 // ── file header ─────────────────────────────────────────────────────
