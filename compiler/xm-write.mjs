@@ -85,6 +85,30 @@ function noiseSample(len, amp) {
   return s;
 }
 
+// Band-limit a sample with a wrap-aware moving-average low-pass. The maxmod GBA
+// mixer is NON-interpolated (nearest-neighbor resampling), so a raw ±amp square
+// aliases into a harsh high-frequency HASH when pitched. Rounding the hard edges
+// (a few passes) keeps the chiptune character but removes the fizz; wrapping at
+// the loop boundary keeps a looped sample seamless; re-centering preserves the
+// DC balance.
+function lowpass(sample, passes = 2) {
+  let s = Float32Array.from(sample);
+  const n = s.length;
+  for (let p = 0; p < passes; p++) {
+    const o = Float32Array.from(s);
+    for (let i = 0; i < n; i++) s[i] = (o[(i - 1 + n) % n] + 2 * o[i] + o[(i + 1) % n]) / 4;
+  }
+  let mean = 0;
+  for (let i = 0; i < n; i++) mean += s[i];
+  mean /= n;
+  const out = new Int8Array(n);
+  for (let i = 0; i < n; i++) {
+    const v = Math.round(s[i] - mean);
+    out[i] = v > 127 ? 127 : v < -128 ? -128 : v;
+  }
+  return out;
+}
+
 function buildInstrument(name, sampleInt8, { volEnv = [], fadeout = 0, loop = true } = {}) {
   const sampleBytes = deltaEncode(sampleInt8);
   const SAMPLE_LEN = sampleInt8.length;
@@ -127,13 +151,18 @@ export const XM_INSTRUMENTS = [
   { id: 5, name: "tri", synth: { type: "triangle", a: 0.01, d: 0.3, s: 0.6, r: 0.15 } },
 ];
 
+// 1024-sample tables (period 256 = 4 cycles) match maxmod's own reference
+// chiptune and give the non-interpolated GBA mixer 4× the source resolution of
+// the old 256-byte tables — far less nearest-neighbor aliasing. Each is
+// DC-balanced (squareSample) then band-limited (lowpass).
+const SLEN = 1024, SPER = 256;
 function instrumentBytes() {
   return concat(
-    buildInstrument("lead", squareSample(256, 64, 0.25, 60), { volEnv: [[0, 0], [1, 64], [8, 52], [40, 40], [64, 0]], fadeout: 512 }),
-    buildInstrument("bass", squareSample(256, 64, 0.5, 64), { volEnv: [[0, 48], [2, 64], [32, 50], [64, 40]], fadeout: 128 }),
-    buildInstrument("drum", noiseSample(128, 58), { volEnv: [[0, 64], [4, 30], [10, 0]], fadeout: 2048, loop: false }),
-    buildInstrument("chip", squareSample(256, 64, 0.125, 56), { volEnv: [[0, 64], [12, 44], [48, 36], [64, 0]], fadeout: 256 }),
-    buildInstrument("tri", triangleSample(256, 64, 64), { volEnv: [[0, 32], [2, 64], [40, 44], [64, 24]], fadeout: 128 }),
+    buildInstrument("lead", lowpass(squareSample(SLEN, SPER, 0.25, 60), 3), { volEnv: [[0, 0], [1, 64], [8, 52], [40, 40], [64, 0]], fadeout: 512 }),
+    buildInstrument("bass", lowpass(squareSample(SLEN, SPER, 0.5, 64), 4), { volEnv: [[0, 48], [2, 64], [32, 50], [64, 40]], fadeout: 128 }),
+    buildInstrument("drum", lowpass(noiseSample(512, 58), 2), { volEnv: [[0, 64], [4, 30], [10, 0]], fadeout: 2048, loop: false }),
+    buildInstrument("chip", lowpass(squareSample(SLEN, SPER, 0.125, 56), 3), { volEnv: [[0, 64], [12, 44], [48, 36], [64, 0]], fadeout: 256 }),
+    buildInstrument("tri", lowpass(triangleSample(SLEN, SPER, 64), 2), { volEnv: [[0, 32], [2, 64], [40, 44], [64, 24]], fadeout: 128 }),
   );
 }
 

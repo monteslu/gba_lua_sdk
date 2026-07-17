@@ -236,19 +236,23 @@ function instrument(name, sampleInt8, { volEnv = [], fadeout = 0, loop = true } 
   return concat(instHeader, sampleHeader, sampleBytes);
 }
 
-// lead: bright 25% pulse, band-limited so the harmonics don't fizz. Quick
-// attack + gentle decay.
-const leadInst = instrument("lead", lowpass(squareSample(256, 64, 0.25, 60), 2), {
+// SAMPLE LENGTH MATTERS: the maxmod GBA mixer is NON-interpolated (nearest-
+// neighbor resampling — verified in mm_mixer_gba.s), so a short waveform table
+// aliases badly when pitched. maxmod's own reference chiptune uses 1024-sample
+// instruments at the 8363 Hz XM reference; we match that (1024-sample tables,
+// period 256 = 4 cycles) — 4× the source resolution of the old 256-byte tables,
+// which removes most of the nearest-neighbor grit. Then DC-balance + band-limit.
+const SLEN = 1024, SPER = 256;
+// lead: bright 25% pulse.
+const leadInst = instrument("lead", lowpass(squareSample(SLEN, SPER, 0.25, 60), 3), {
   volEnv: [[0, 0], [1, 64], [8, 52], [40, 40], [64, 0]], fadeout: 512,
 });
-// bass: fuller 50% square, softened harder (more low-pass) so it's round, not
-// buzzy; sustained with a slight decay.
-const bassInst = instrument("bass", lowpass(squareSample(256, 64, 0.5, 64), 3), {
+// bass: fuller 50% square, softened harder so it's round, not buzzy.
+const bassInst = instrument("bass", lowpass(squareSample(SLEN, SPER, 0.5, 64), 4), {
   volEnv: [[0, 48], [2, 64], [32, 50], [64, 40]], fadeout: 128,
 });
-// drum: a filtered noise burst (softened so it reads as a hat/kick, not white
-// hash), short + fast decay.
-const drumInst = instrument("drum", lowpass(noiseSample(128, 52), 2), {
+// drum: a filtered noise burst, short + fast decay.
+const drumInst = instrument("drum", lowpass(noiseSample(512, 52), 2), {
   volEnv: [[0, 64], [3, 24], [8, 0]], fadeout: 2048, loop: false,
 });
 
