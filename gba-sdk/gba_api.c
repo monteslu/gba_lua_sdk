@@ -71,7 +71,23 @@ static int cur_color = 7;
 // 60 Hz regardless of how slow the game loop is — so realframes()/realsecs() give
 // a STEADY real-time clock for pacing (auto-advancing a demo, timeouts, etc.).
 static volatile unsigned int real_frames;
-static void vcount_isr(void) { real_frames++; }
+static void vcount_isr(void)
+{
+    real_frames++;
+#ifdef GBA_HAVE_SOUND
+    // Pump the maxmod mixer here, in a TRUE-60Hz interrupt at line 200 (just
+    // after VBlank-start, where mmVBlank already swapped the DMA buffer). Doing
+    // it here instead of from the main loop keeps audio glitch-free when a heavy
+    // _draw() overruns the frame: the mixer's next buffer is always refilled on
+    // time regardless of how slow the game loop runs. (The old main-loop mmFrame
+    // starved the DMA on every dropped frame → periodic ~15ms dropouts.)
+    // A reentrancy guard: don't run mmFrame if the main thread is mid-maxmod
+    // call (mmStart/mmEffect set sound_busy) — maxmod isn't reentrant.
+    extern void gba_sound_frame(void);
+    extern volatile int gba_sound_busy;
+    if (!gba_sound_busy) gba_sound_frame();
+#endif
+}
 unsigned int gba_realframes(void) { return real_frames; }
 long gba_realsecs(void) { return (long)(((long long)real_frames << 16) / 60); }  // 16.16 seconds
 // Mode-4 double-buffer: endframe requests a flip, gba_vsync does it in vblank.
@@ -197,11 +213,9 @@ void gba_vsync(void)
         tte_get_context()->dst.data = (u8 *)vid_page;   // keep TTE on the draw page
         pending_flip = 0;
     }
-#ifdef GBA_HAVE_SOUND
-    // maxmod's mixer step MUST run once per frame from MAIN context, right after
-    // vblank — so it finishes well before the NEXT vblank IRQ (mmVBlank) fires.
-    gba_sound_frame();
-#endif
+    // NOTE: mmFrame() is NOT called here anymore. It runs from the VCOUNT IRQ
+    // (vcount_isr) at a true 60 Hz so a slow _draw() can't starve the mixer.
+    // Calling it from the main loop dropped one audio buffer per overran frame.
     key_prev = key_curr;
     key_curr = ~REG_KEYINPUT & KEY_MASK;
 }

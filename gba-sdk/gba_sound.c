@@ -19,6 +19,13 @@ extern const mm_byte soundbank_bin[];
 
 static int sound_ready;
 
+// Reentrancy guard: mmFrame() runs from the VCOUNT IRQ (see gba_api.c) so it
+// keeps mixing even when a slow _draw() overruns the frame. But maxmod is NOT
+// reentrant — if the IRQ fired while the main thread is inside mmStart/mmEffect/
+// mmStop, state would corrupt. Main-thread maxmod calls raise this flag; the
+// IRQ skips mmFrame while it's set. (volatile: shared with the ISR.)
+volatile int gba_sound_busy;
+
 // Maxmod working memory — STATICALLY allocated (no heap). WHY not mmInitDefault:
 // mmInitDefault() calloc()s these buffers, and on this toolchain the heap returned
 // a block that OVERLAPPED libtonc's `vid_page` global (both at 0x03001F70). The
@@ -57,7 +64,8 @@ void gba_sound_init(void)
     sound_ready = 1;
 }
 
-// called every frame from gba_endframe (maxmod requires mmFrame each frame).
+// The maxmod mixer step. Called from the VCOUNT IRQ (gba_api.c vcount_isr) at a
+// true 60 Hz — NOT from the main loop — so heavy _draw() frames can't starve it.
 void gba_sound_frame(void)
 {
     if (sound_ready) mmFrame();
@@ -68,10 +76,12 @@ void gba_sound_frame(void)
 void gba_music(int n, int loop)
 {
     if (!sound_ready) return;
-    if (n < 0) { mmStop(); return; }
-    mmStart((mm_word)n, loop ? MM_PLAY_LOOP : MM_PLAY_ONCE);
+    gba_sound_busy = 1;   // block the IRQ's mmFrame while we touch maxmod state
+    if (n < 0) mmStop();
+    else mmStart((mm_word)n, loop ? MM_PLAY_LOOP : MM_PLAY_ONCE);
+    gba_sound_busy = 0;
 }
-void gba_music_stop(void) { if (sound_ready) mmStop(); }
+void gba_music_stop(void) { if (sound_ready) { gba_sound_busy = 1; mmStop(); gba_sound_busy = 0; } }
 void gba_music_volume(int vol) { if (sound_ready) mmSetModuleVolume((mm_word)(vol < 0 ? 0 : vol > 1024 ? 1024 : vol)); }
 
 // sfx(n): play sample effect n (a soundbank SFX_* id) at defaults. maxmod picks
@@ -79,7 +89,7 @@ void gba_music_volume(int vol) { if (sound_ready) mmSetModuleVolume((mm_word)(vo
 void gba_sfx(int n, int ch)
 {
     (void)ch;
-    if (sound_ready) mmEffect((mm_word)n);
+    if (sound_ready) { gba_sound_busy = 1; mmEffect((mm_word)n); gba_sound_busy = 0; }
 }
 
 // sfx_ex(n, vol, pan, pitch): play effect n with per-shot volume (0..255),
@@ -95,7 +105,7 @@ void gba_sfx_ex(int n, int vol, int pan, long pitch)
     fx.handle  = 0;
     fx.volume  = (mm_byte)((vol < 0) ? 255 : vol > 255 ? 255 : vol);
     fx.panning = (mm_byte)((pan < 0) ? 128 : pan > 255 ? 255 : pan);
-    mmEffectEx(&fx);
+    gba_sound_busy = 1; mmEffectEx(&fx); gba_sound_busy = 0;
 }
 
 // sfx_volume(vol): master volume for ALL sample effects (0..1024).
