@@ -156,13 +156,17 @@ export const XM_INSTRUMENTS = [
 // the old 256-byte tables — far less nearest-neighbor aliasing. Each is
 // DC-balanced (squareSample) then band-limited (lowpass).
 const SLEN = 1024, SPER = 256;
+// DE-CLICK: every envelope starts AND ends at 0 with a 1-tick ramp. maxmod
+// doesn't ramp note on/off, so an envelope that jumps to a non-zero volume at
+// tick 0 (or holds volume at note-off) is an instant amplitude step = a click
+// on every note. ~1-tick fades remove the pop while staying punchy.
 function instrumentBytes() {
   return concat(
     buildInstrument("lead", lowpass(squareSample(SLEN, SPER, 0.25, 60), 3), { volEnv: [[0, 0], [1, 64], [8, 52], [40, 40], [64, 0]], fadeout: 512 }),
-    buildInstrument("bass", lowpass(squareSample(SLEN, SPER, 0.5, 64), 4), { volEnv: [[0, 48], [2, 64], [32, 50], [64, 40]], fadeout: 128 }),
-    buildInstrument("drum", lowpass(noiseSample(512, 58), 2), { volEnv: [[0, 64], [4, 30], [10, 0]], fadeout: 2048, loop: false }),
-    buildInstrument("chip", lowpass(squareSample(SLEN, SPER, 0.125, 56), 3), { volEnv: [[0, 64], [12, 44], [48, 36], [64, 0]], fadeout: 256 }),
-    buildInstrument("tri", lowpass(triangleSample(SLEN, SPER, 64), 2), { volEnv: [[0, 32], [2, 64], [40, 44], [64, 24]], fadeout: 128 }),
+    buildInstrument("bass", lowpass(squareSample(SLEN, SPER, 0.5, 64), 4), { volEnv: [[0, 0], [1, 60], [3, 64], [32, 50], [63, 40], [64, 0]], fadeout: 128 }),
+    buildInstrument("drum", lowpass(noiseSample(512, 58), 2), { volEnv: [[0, 0], [1, 64], [5, 30], [10, 0]], fadeout: 2048, loop: false }),
+    buildInstrument("chip", lowpass(squareSample(SLEN, SPER, 0.125, 56), 3), { volEnv: [[0, 0], [1, 64], [12, 44], [48, 36], [64, 0]], fadeout: 256 }),
+    buildInstrument("tri", lowpass(triangleSample(SLEN, SPER, 64), 2), { volEnv: [[0, 0], [2, 64], [40, 44], [63, 24], [64, 0]], fadeout: 128 }),
   );
 }
 

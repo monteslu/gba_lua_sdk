@@ -243,17 +243,22 @@ function instrument(name, sampleInt8, { volEnv = [], fadeout = 0, loop = true } 
 // period 256 = 4 cycles) — 4× the source resolution of the old 256-byte tables,
 // which removes most of the nearest-neighbor grit. Then DC-balance + band-limit.
 const SLEN = 1024, SPER = 256;
+// DE-CLICK: every envelope MUST start at 0 and end at 0. maxmod does not ramp
+// note attacks/releases — an envelope that jumps to a non-zero volume at tick 0
+// (or holds volume at note-off) is an instant amplitude STEP = an audible click
+// on every note. A 1-tick ramp in/out (~2.7ms) removes the pop while staying
+// punchy. (The lead was already correct; bass + drum jumped to full volume.)
 // lead: bright 25% pulse.
 const leadInst = instrument("lead", lowpass(squareSample(SLEN, SPER, 0.25, 60), 3), {
   volEnv: [[0, 0], [1, 64], [8, 52], [40, 40], [64, 0]], fadeout: 512,
 });
 // bass: fuller 50% square, softened harder so it's round, not buzzy.
 const bassInst = instrument("bass", lowpass(squareSample(SLEN, SPER, 0.5, 64), 4), {
-  volEnv: [[0, 48], [2, 64], [32, 50], [64, 40]], fadeout: 128,
+  volEnv: [[0, 0], [1, 60], [3, 64], [32, 50], [63, 40], [64, 0]], fadeout: 128,
 });
-// drum: a filtered noise burst, short + fast decay.
+// drum: a filtered noise burst, short + fast decay (ramp on/off to de-click).
 const drumInst = instrument("drum", lowpass(noiseSample(512, 52), 2), {
-  volEnv: [[0, 64], [3, 24], [8, 0]], fadeout: 2048, loop: false,
+  volEnv: [[0, 0], [1, 64], [4, 24], [8, 0]], fadeout: 2048, loop: false,
 });
 
 // ── file header ─────────────────────────────────────────────────────
