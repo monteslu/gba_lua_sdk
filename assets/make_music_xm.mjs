@@ -158,24 +158,34 @@ function noiseSample(len, amp) {
 // (a few smoothing passes) keeps the chiptune character but removes the fizz.
 // Wraps at the loop boundary so a looped sample stays seamless (no per-cycle
 // click). Re-centers to preserve DC balance.
-function lowpass(sample, passes = 2) {
-  let s = Float32Array.from(sample);
-  const n = s.length;
-  for (let p = 0; p < passes; p++) {
-    const o = Float32Array.from(s);
-    for (let i = 0; i < n; i++) {
-      s[i] = (o[(i - 1 + n) % n] + 2 * o[i] + o[(i + 1) % n]) / 4;
-    }
+// Band-limit a sample with a wrap-aware box low-pass of `width` taps. A raw
+// ±amp square has infinite harmonics that alias into a harsh HF hash on the
+// non-interpolated GBA mixer; a proper (wide, unweighted) moving average rounds
+// the hard edges into smooth ramps — killing the fizz AND the edge SPIKES that
+// the old 3-tap [1 2 1] filter left behind (which read as onset clicks). Wraps
+// at the loop boundary so a looped sample stays seamless; re-centers to keep DC
+// balance. Width scales the smoothing to the waveform (bigger = rounder).
+function lowpass(sample, width = 17) {
+  const n = sample.length;
+  const s = Float32Array.from(sample);
+  const out = new Float32Array(n);
+  const half = width >> 1;
+  // running sum for an O(n) box average
+  let sum = 0;
+  for (let k = -half; k <= half; k++) sum += s[(k + n) % n];
+  for (let i = 0; i < n; i++) {
+    out[i] = sum / (2 * half + 1);
+    sum += s[(i + half + 1) % n] - s[(i - half + n) % n];
   }
   let mean = 0;
-  for (let i = 0; i < n; i++) mean += s[i];
+  for (let i = 0; i < n; i++) mean += out[i];
   mean /= n;
-  const out = new Int8Array(n);
+  const o = new Int8Array(n);
   for (let i = 0; i < n; i++) {
-    const v = Math.round(s[i] - mean);
-    out[i] = v > 127 ? 127 : v < -128 ? -128 : v;
+    const v = Math.round(out[i] - mean);
+    o[i] = v > 127 ? 127 : v < -128 ? -128 : v;
   }
-  return out;
+  return o;
 }
 
 // build one instrument (with a volume envelope). `env` = [[x,y],...] points
@@ -248,16 +258,16 @@ const SLEN = 1024, SPER = 256;
 // (or holds volume at note-off) is an instant amplitude STEP = an audible click
 // on every note. A 1-tick ramp in/out (~2.7ms) removes the pop while staying
 // punchy. (The lead was already correct; bass + drum jumped to full volume.)
-// lead: bright 25% pulse.
-const leadInst = instrument("lead", lowpass(squareSample(SLEN, SPER, 0.25, 60), 3), {
+// lead: bright 25% pulse, lightly rounded.
+const leadInst = instrument("lead", lowpass(squareSample(SLEN, SPER, 0.25, 60), 17), {
   volEnv: [[0, 0], [1, 64], [8, 52], [40, 40], [64, 0]], fadeout: 512,
 });
-// bass: fuller 50% square, softened harder so it's round, not buzzy.
-const bassInst = instrument("bass", lowpass(squareSample(SLEN, SPER, 0.5, 64), 4), {
+// bass: fuller 50% square, rounded harder so it's mellow, not buzzy.
+const bassInst = instrument("bass", lowpass(squareSample(SLEN, SPER, 0.5, 64), 33), {
   volEnv: [[0, 0], [1, 60], [3, 64], [32, 50], [63, 40], [64, 0]], fadeout: 128,
 });
 // drum: a filtered noise burst, short + fast decay (ramp on/off to de-click).
-const drumInst = instrument("drum", lowpass(noiseSample(512, 52), 2), {
+const drumInst = instrument("drum", lowpass(noiseSample(512, 52), 9), {
   volEnv: [[0, 0], [1, 64], [4, 24], [8, 0]], fadeout: 2048, loop: false,
 });
 

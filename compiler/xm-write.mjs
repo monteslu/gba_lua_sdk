@@ -85,28 +85,32 @@ function noiseSample(len, amp) {
   return s;
 }
 
-// Band-limit a sample with a wrap-aware moving-average low-pass. The maxmod GBA
-// mixer is NON-interpolated (nearest-neighbor resampling), so a raw ±amp square
-// aliases into a harsh high-frequency HASH when pitched. Rounding the hard edges
-// (a few passes) keeps the chiptune character but removes the fizz; wrapping at
-// the loop boundary keeps a looped sample seamless; re-centering preserves the
-// DC balance.
-function lowpass(sample, passes = 2) {
-  let s = Float32Array.from(sample);
-  const n = s.length;
-  for (let p = 0; p < passes; p++) {
-    const o = Float32Array.from(s);
-    for (let i = 0; i < n; i++) s[i] = (o[(i - 1 + n) % n] + 2 * o[i] + o[(i + 1) % n]) / 4;
+// Band-limit a sample with a wrap-aware box low-pass of `width` taps. A raw
+// ±amp square aliases into a harsh HF hash on the non-interpolated GBA mixer; a
+// wide unweighted moving average rounds the hard edges into smooth ramps —
+// killing the fizz AND the edge SPIKES a naive [1 2 1] filter leaves behind
+// (which read as onset clicks). Wraps at the loop boundary (seamless loop);
+// re-centers to keep DC balance. Bigger width = rounder/mellower.
+function lowpass(sample, width = 17) {
+  const n = sample.length;
+  const s = Float32Array.from(sample);
+  const out = new Float32Array(n);
+  const half = width >> 1;
+  let sum = 0;
+  for (let k = -half; k <= half; k++) sum += s[(k + n) % n];
+  for (let i = 0; i < n; i++) {
+    out[i] = sum / (2 * half + 1);
+    sum += s[(i + half + 1) % n] - s[(i - half + n) % n];
   }
   let mean = 0;
-  for (let i = 0; i < n; i++) mean += s[i];
+  for (let i = 0; i < n; i++) mean += out[i];
   mean /= n;
-  const out = new Int8Array(n);
+  const o = new Int8Array(n);
   for (let i = 0; i < n; i++) {
-    const v = Math.round(s[i] - mean);
-    out[i] = v > 127 ? 127 : v < -128 ? -128 : v;
+    const v = Math.round(out[i] - mean);
+    o[i] = v > 127 ? 127 : v < -128 ? -128 : v;
   }
-  return out;
+  return o;
 }
 
 function buildInstrument(name, sampleInt8, { volEnv = [], fadeout = 0, loop = true } = {}) {
@@ -162,11 +166,11 @@ const SLEN = 1024, SPER = 256;
 // on every note. ~1-tick fades remove the pop while staying punchy.
 function instrumentBytes() {
   return concat(
-    buildInstrument("lead", lowpass(squareSample(SLEN, SPER, 0.25, 60), 3), { volEnv: [[0, 0], [1, 64], [8, 52], [40, 40], [64, 0]], fadeout: 512 }),
-    buildInstrument("bass", lowpass(squareSample(SLEN, SPER, 0.5, 64), 4), { volEnv: [[0, 0], [1, 60], [3, 64], [32, 50], [63, 40], [64, 0]], fadeout: 128 }),
-    buildInstrument("drum", lowpass(noiseSample(512, 58), 2), { volEnv: [[0, 0], [1, 64], [5, 30], [10, 0]], fadeout: 2048, loop: false }),
-    buildInstrument("chip", lowpass(squareSample(SLEN, SPER, 0.125, 56), 3), { volEnv: [[0, 0], [1, 64], [12, 44], [48, 36], [64, 0]], fadeout: 256 }),
-    buildInstrument("tri", lowpass(triangleSample(SLEN, SPER, 64), 2), { volEnv: [[0, 0], [2, 64], [40, 44], [63, 24], [64, 0]], fadeout: 128 }),
+    buildInstrument("lead", lowpass(squareSample(SLEN, SPER, 0.25, 60), 17), { volEnv: [[0, 0], [1, 64], [8, 52], [40, 40], [64, 0]], fadeout: 512 }),
+    buildInstrument("bass", lowpass(squareSample(SLEN, SPER, 0.5, 64), 33), { volEnv: [[0, 0], [1, 60], [3, 64], [32, 50], [63, 40], [64, 0]], fadeout: 128 }),
+    buildInstrument("drum", lowpass(noiseSample(512, 58), 9), { volEnv: [[0, 0], [1, 64], [5, 30], [10, 0]], fadeout: 2048, loop: false }),
+    buildInstrument("chip", lowpass(squareSample(SLEN, SPER, 0.125, 56), 13), { volEnv: [[0, 0], [1, 64], [12, 44], [48, 36], [64, 0]], fadeout: 256 }),
+    buildInstrument("tri", lowpass(triangleSample(SLEN, SPER, 64), 9), { volEnv: [[0, 0], [2, 64], [40, 44], [63, 24], [64, 0]], fadeout: 128 }),
   );
 }
 
