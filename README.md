@@ -41,7 +41,7 @@ end
 ```
 
 <p align="center">
-  <img src="docs/img/hello.png" width="480" alt="a yellow smiley face and 'hello gba' text on a dark blue 240x160 screen">
+  <img src="https://raw.githubusercontent.com/monteslu/gba_lua_sdk/main/docs/img/hello.png" width="480" alt="a yellow smiley face and 'hello gba' text on a dark blue 240x160 screen">
 </p>
 
 Build it to a `.gba` ROM:
@@ -148,7 +148,7 @@ node bin/gbalua.js build --target gba mygame/main.lua \
 The `examples/` directory shows each subsystem in use:
 
 <p align="center">
-  <img src="docs/img/showcase.png" width="480" alt="the showcase demo: shapes, a clipped ring burst, and a line on a dark blue screen">
+  <img src="https://raw.githubusercontent.com/monteslu/gba_lua_sdk/main/docs/img/showcase.png" width="480" alt="the showcase demo: shapes, a clipped ring burst, and a line on a dark blue screen">
 </p>
 
 | example | shows |
