@@ -20,7 +20,7 @@ const EX = path.join(ROOT, "examples");
 
 // Per-SDK compile opts. gtlua's emit is gametank-only (no target read); the
 // other SDKs pass a target. Synthetic fixtures exercise paths no example hits.
-const OPTS = { target: "gba" };  // gbalua: dual-target emit, select gba
+const OPTS = {};  // the SDK's compile() supplies the gba target descriptor
 
 // Synthetic Lua fixtures: exercise codegen branches examples miss. Keyed name.
 const SYNTH = {
