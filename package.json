@@ -31,5 +31,39 @@
   },
   "scripts": {
     "test": "node --test 'test/**/*.test.js'"
+  },
+  "keywords": [
+    "lua",
+    "pico-8",
+    "pico8",
+    "gamedev",
+    "game-development",
+    "retro",
+    "retrogaming",
+    "homebrew",
+    "rom",
+    "wasm",
+    "webassembly",
+    "ahead-of-time",
+    "aot",
+    "gba",
+    "game-boy-advance",
+    "gameboy-advance",
+    "nintendo",
+    "arm",
+    "libtonc",
+    "maxmod",
+    "mgba",
+    "32-bit",
+    "sprites",
+    "mode7"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/monteslu/gba_lua_sdk.git"
+  },
+  "homepage": "https://github.com/monteslu/gba_lua_sdk#readme",
+  "bugs": {
+    "url": "https://github.com/monteslu/gba_lua_sdk/issues"
   }
 }
