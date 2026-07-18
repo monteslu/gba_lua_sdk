@@ -1,6 +1,6 @@
 # GBA Lua SDK
 
-[![npm version](https://img.shields.io/npm/v/gbalua.svg)](https://www.npmjs.com/package/gbalua) [![npm downloads](https://img.shields.io/npm/dm/gbalua.svg)](https://www.npmjs.com/package/gbalua)
+[![npm version](https://img.shields.io/npm/v/gbalua.svg)](https://www.npmjs.com/package/gbalua)
 
 Make games for the **Game Boy Advance** by writing a **PICO-8-flavored Lua**
 instead of C or ARM assembly.
