@@ -23,25 +23,45 @@ back end to native ARM.
 
 ## Your first game
 
-A complete GBA game - one `main.lua`, no assets:
+This is `examples/starfall` - a complete little shmup (hardware sprites, a
+scrolling starfield, music + sfx, a HUD, win/lose states) written in one
+`main.lua`. That's what this SDK is for:
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/monteslu/gba_lua_sdk/main/examples/starfall/screenshot.png" width="480" alt="the starfall shmup: a player ship firing at a formation of alien sprites over a starfield, with a SCORE/LIVES HUD, on the GBA">
+</p>
+
+```sh
+node bin/gbalua.js build examples/starfall/main.lua \
+  --sheet examples/starfall/shmup_sheet.png \
+  --map examples/starfall/space_bg.png -o starfall.gba
+```
+
+Start smaller, though. Here's `examples/hello` - a hardware sprite you move
+with the d-pad, plus a greeting, no asset files at all. `_update60` runs the
+movement 60 times a second; `_draw` redraws the sprite every frame:
 
 ```lua
--- The screen is 240x160. cls clears it; print and the shapes draw on top.
--- Colors are PICO-8-style indices 0-15 (0 black, 1 dark-blue, 10 yellow, 14 pink).
+-- The screen is 240x160. spr uses the built-in default sheet, so no art file
+-- is needed. Colors are PICO-8-style indices 0-15 (1 dark-blue, 14 pink).
+local x, y = 112, 72
+
+function _update60()               -- 60fps input + movement
+  if (btn(1)) then x += 2 end      -- right
+  if (btn(0)) then x -= 2 end      -- left
+  if (btn(3)) then y += 2 end      -- down
+  if (btn(2)) then y -= 2 end      -- up
+end
+
 function _draw()
-  cls(1)                                -- dark blue background
-
-  print("hello gba", 100, 24, 14)       -- title text, pink, near the top
-
-  circfill(120, 92, 38, 10)             -- head: a big yellow circle
-  rectfill(106, 76, 113, 86, 0)         -- left eye: a black square
-  rectfill(127, 76, 134, 86, 0)         -- right eye
-  circfill(120, 104, 11, 0)             -- mouth: a black circle
+  cls(1)                           -- dark-blue background layer
+  print("hello gba", 88, 24, 14)   -- greeting near the top, pink
+  spr(0, x, y, 2, 2)               -- the hardware sprite, redrawn every frame
 end
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/monteslu/gba_lua_sdk/main/docs/img/hello.png" width="480" alt="a yellow smiley face and 'hello gba' text on a dark blue 240x160 screen">
+  <img src="https://raw.githubusercontent.com/monteslu/gba_lua_sdk/main/examples/hello/screenshot.png" width="480" alt="a small critter hardware sprite and 'hello gba' text on a dark blue 240x160 GBA screen">
 </p>
 
 Build it to a `.gba` ROM:

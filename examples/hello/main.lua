@@ -1,15 +1,22 @@
--- hello: the smallest real GBA game - no assets, just code.
--- The screen is 240x160. cls clears it; print and the shape calls draw on top.
--- Colors are PICO-8-style indices 0-15 (0 black, 1 dark-blue, 10 yellow, 14 pink).
+-- hello gba: a hardware sprite you move with the d-pad, plus a greeting.
+--
+-- This is how you actually make a GBA game. The screen is 240x160. cls paints
+-- a hardware background layer that stays put; the sprite is a real hardware OBJ
+-- (spr uses the built-in default sheet, so no asset file is needed). _update60
+-- moves it on the d-pad every frame, _draw redraws it every frame - sprites are
+-- cheap, you don't repaint the whole screen to move one.
+
+local x, y = 112, 72
+
+function _update60()               -- 60fps input + movement
+  if (btn(1)) then x += 2 end      -- right
+  if (btn(0)) then x -= 2 end      -- left
+  if (btn(3)) then y += 2 end      -- down
+  if (btn(2)) then y -= 2 end      -- up
+end
 
 function _draw()
-  cls(1)                                -- dark blue background
-
-  print("hello gba", 100, 24, 14)       -- title text, pink, near the top
-
-  -- a smiley face, drawn entirely with shapes (no sprite sheet needed)
-  circfill(120, 92, 38, 10)             -- head: a big yellow circle
-  rectfill(106, 76, 113, 86, 0)         -- left eye: a black square
-  rectfill(127, 76, 134, 86, 0)         -- right eye
-  circfill(120, 104, 11, 0)             -- mouth: a black circle
+  cls(1)                           -- dark-blue background layer
+  print("hello gba", 88, 24, 14)   -- greeting near the top, pink
+  spr(0, x, y, 2, 2)               -- the hardware sprite, redrawn every frame
 end
