@@ -37,7 +37,7 @@ for (const ex of ["starfall", "effects", "mode7", "windows", "anim", "hwtest", "
 
 test("// is a comment, backslash is floor division", () => {
   const c = cOf("local x = 8 // like this\nfunction _update60()\n  x = x \\ 2\nend\n" + "function _draw()\nend\n");
-  assert.match(c, /gtl_x/);
+  assert.match(c, /lcl_x/);
 });
 
 test("!= is ~=", () => {
@@ -82,7 +82,7 @@ test("one-line if shorthand", () => {
 
 test("if cond do ... end : minifier's 'do' is accepted as 'then'", () => {
   const c = cOf("local x = 0\nfunction _update60()\n  if x < 1 do x = 1 end\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gtl_x/);
+  assert.match(c, /lcl_x/);
 });
 
 test("one-line while shorthand", () => {
@@ -121,19 +121,19 @@ test("sspr() emits the sheet blit with dw/dh defaulting to source size", () => {
 
 test("map() draws the imported tilemap; mget() reads a cell", () => {
   const c = cOf("local v = 0\nfunction _update60()\n  v = mget(1, 2)\nend\nfunction _draw()\n  map()\nend\n");
-  assert.match(c, /gtl_v/);
+  assert.match(c, /lcl_v/);
 });
 
 // ---- data model ------------------------------------------------------------------
 
 test("constant array table {1,2,3} becomes a fixed C array", () => {
   const c = cOf("local a = {1, 2, 3}\n" + LOOP);
-  assert.match(c, /gtl_a\[3\] = \{\s*1, 2, 3\s*\}/);
+  assert.match(c, /lcl_a\[3\] = \{\s*1, 2, 3\s*\}/);
 });
 
 test("array table with fractional values is a fixed array", () => {
   const c = cOf("local a = {1.5, 2.5}\n" + LOOP);
-  assert.match(c, /gtl_a/);
+  assert.match(c, /lcl_a/);
 });
 
 test("bitwise function forms alias the operators (band/bor/shl/shr)", () => {
@@ -146,18 +146,18 @@ test("bitwise function forms alias the operators (band/bor/shl/shr)", () => {
 
 test("multiple assignment (x, y = a, b) evaluates RHS first (swap-safe)", () => {
   const c = cOf("local x = 1\nlocal y = 2\nfunction _update60()\n  x, y = y, x\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gtl_x/);
-  assert.match(c, /gtl_y/);
+  assert.match(c, /lcl_x/);
+  assert.match(c, /lcl_y/);
 });
 
 test("multiple return: return a,b,c and destructure a,b,c = f()", () => {
   const c = cOf("function f()\n  return 1, 2, 3\nend\nlocal x = 0\nlocal y = 0\nlocal z = 0\nfunction _update60()\n  x, y, z = f()\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gtl_f/);
+  assert.match(c, /lcl_f/);
 });
 
 test("array8 declares byte elements and reads back as ints", () => {
   const c = cOf("local a = array8(4)\nlocal v = 0\nfunction _update60()\n  v = a[1]\nend\nfunction _draw()\nend\n");
-  assert.match(c, /unsigned char gtl_a\[4\]/);
+  assert.match(c, /unsigned char lcl_a\[4\]/);
 });
 
 test("array8 rejects fixed stores loudly", () => {
@@ -193,8 +193,8 @@ test("music(n, false) passes a non-loop flag", () => {
 
 test("save/load compile to gba_save/gba_load with an array8", () => {
   const c = cOf("local st = array8(8)\nfunction _init()\n  if load(0, st, 8) > 0 then end\nend\nfunction _update60()\n  save(0, st, 8)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gba_load\(0, gtl_st, 8\)/);
-  assert.match(c, /gba_save\(0, gtl_st, 8\)/);
+  assert.match(c, /gba_load\(0, lcl_st, 8\)/);
+  assert.match(c, /gba_save\(0, lcl_st, 8\)/);
 });
 
 test("sprr emits the affine rotate+scale sprite", () => {
@@ -204,7 +204,7 @@ test("sprr emits the affine rotate+scale sprite", () => {
 
 test("gt.* is refused loudly (GameTank-only namespace)", () => {
   const errs = errorsOf("function _update60()\n  gt.rgb(255, 0, 0)\nend\nfunction _draw()\nend\n");
-  assert.ok(errs.some((m) => /GameTank-only/.test(m)), errs.join("; "));
+  assert.ok(errs.some((m) => /engine-extras verb and isn.t available/.test(m)), errs.join("; "));
 });
 
 // ---- harness ---------------------------------------------------------------------

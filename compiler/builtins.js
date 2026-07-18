@@ -12,15 +12,15 @@
 
 export const BUILTINS = {
   // ---- graphics -------------------------------------------------------------
-  cls:      { params: [["color", true]], ret: "void", c: "gt_p8_cls" },
-  camera:   { params: [["coord", true], ["coord", true]], ret: "void", c: "gt_p8_camera" },
-  color:    { params: [["color", false]], ret: "void", c: "gt_p8_color" },
-  pset:     { params: [["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_pset" },
-  rect:     { params: [["coord", false], ["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_rect" },
-  rectfill: { params: [["coord", false], ["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_rectfill" },
-  circ:     { params: [["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_circ" },
-  circfill: { params: [["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_circfill" },
-  line:     { params: [["coord", false], ["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_line" },
+  cls:      { params: [["color", true]], ret: "void", c: "lc_cls" },
+  camera:   { params: [["coord", true], ["coord", true]], ret: "void", c: "lc_camera" },
+  color:    { params: [["color", false]], ret: "void", c: "lc_color" },
+  pset:     { params: [["coord", false], ["coord", false], ["color", true]], ret: "void", c: "lc_pset" },
+  rect:     { params: [["coord", false], ["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "lc_rect" },
+  rectfill: { params: [["coord", false], ["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "lc_rectfill" },
+  circ:     { params: [["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "lc_circ" },
+  circfill: { params: [["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "lc_circfill" },
+  line:     { params: [["coord", false], ["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "lc_line" },
   // clip(x,y,w,h): restrict all subsequent bitmap drawing to a rectangle (HUD
   // panels, masked regions). clip() with no args resets to full screen; cls()
   // also resets it. PICO-8 semantics.
@@ -30,7 +30,7 @@ export const BUILTINS = {
   // procedural sprite art.
   pget:     { params: [["coord", false], ["coord", false]], ret: "int", c: "gba_pget", gbaOnly: true },
   sset:     { params: [["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gba_sset", gbaOnly: true },
-  spr:      { params: [["int", false], ["coord", false], ["coord", false], ["int", true], ["int", true], ["flip", true], ["flip", true]], ret: "void", c: "gt_p8_spr" },
+  spr:      { params: [["int", false], ["coord", false], ["coord", false], ["int", true], ["int", true], ["flip", true], ["flip", true]], ret: "void", c: "lc_spr" },
   // GBA-only: rotated+scaled hardware sprite. sprr(n, x, y, angle, [scale]).
   // angle is PICO-8 turns (0..1, like sin/cos); scale is a fixed multiplier
   // (default 1.0). Uses a real OBJ affine matrix — the GBA affine hardware the
@@ -186,31 +186,31 @@ export const BUILTINS = {
   // run()/reset() restart the cart from power-on: a full crt0 reset that reruns
   // copydata (restores every top-level initializer), zeroes BSS, and re-enters
   // main() - not just the game's _init(), which would leave top-level state and
-  // the runtime stale. gt_p8_run() jumps to the reset entry (never returns).
-  run:      { params: [], ret: "void", c: "gt_p8_run" },
-  reset:    { params: [], ret: "void", c: "gt_p8_run" },
+  // the runtime stale. lc_run() jumps to the reset entry (never returns).
+  run:      { params: [], ret: "void", c: "lc_run" },
+  reset:    { params: [], ret: "void", c: "lc_run" },
   // PICO-8 sspr(sx,sy,sw,sh, dx,dy, [dw,dh], [flip_x,flip_y]): scaled sheet blit.
   // dw/dh default to sw/sh (unscaled). Software nearest-neighbor, rounded to an
-  // integer scale and cached in GRAM (see gt_p8_sspr). flips pack into one arg.
+  // integer scale and cached in GRAM (see lc_sspr). flips pack into one arg.
   sspr:     { params: [["int", false], ["int", false], ["int", false], ["int", false],
                        ["coord", false], ["coord", false], ["int", true], ["int", true],
                        ["flip", true], ["flip", true]], ret: "void", special: "sspr" },
 
   // ---- input ---------------------------------------------------------------
-  btn:      { params: [["int", false], ["int", true]], ret: "bool", c: "gt_p8_btn" },
-  btnp:     { params: [["int", false], ["int", true]], ret: "bool", c: "gt_p8_btnp" },
+  btn:      { params: [["int", false], ["int", true]], ret: "bool", c: "lc_btn" },
+  btnp:     { params: [["int", false], ["int", true]], ret: "bool", c: "lc_btnp" },
 
   // ---- sound (maxmod: module music + sample SFX) ---------------------------
   // sfx(n, [ch]) - fire sampled effect n; ch is accepted but ignored.
   // music(n, [loop]) - start module n; music(-1) stops. loop defaults on.
   // `audio` links maxmod + the soundbank at build time.
-  sfx:   { params: [["int", false], ["int", true]], ret: "void", c: "gt_sfx", audio: true },
+  sfx:   { params: [["int", false], ["int", true]], ret: "void", c: "lc_sfx", audio: true },
   // sfx_ex(n, [vol], [pan], [pitch]): per-shot volume 0..1024, pan 0..255 (128=center),
   // pitch 16.16 (1.0=normal). sfx_volume(0..1024): master effect volume.
   sfx_ex:     { params: [["int", false], ["int", true], ["int", true], ["num", true]], ret: "void", c: "gba_sfx_ex", gbaOnly: true },
   sfx_volume: { params: [["int", false]], ret: "void", c: "gba_sfx_volume", gbaOnly: true },
   // `loop` is a truthy flag (default on): music(0) loops, music(0,false) plays once.
-  music: { params: [["int", false], ["flip", true]], ret: "void", c: "gt_music", audio: true },
+  music: { params: [["int", false], ["flip", true]], ret: "void", c: "lc_music", audio: true },
 
   // ---- math ------------------------------------------------------------------
   flr:   { params: [["num", false]], ret: "int", c: null, special: "flr" },
@@ -220,10 +220,10 @@ export const BUILTINS = {
   min:   { params: [["num", false], ["num", true]], ret: "same", c: null, special: "min" },
   max:   { params: [["num", false], ["num", true]], ret: "same", c: null, special: "max" },
   mid:   { params: [["num", false], ["num", false], ["num", false]], ret: "same", c: null, special: "mid" },
-  sqrt:  { params: [["num", false]], ret: "fixed", c: "gt_fsqrt" },
-  sin:   { params: [["num", false]], ret: "fixed", c: "gt_fsin" },
-  cos:   { params: [["num", false]], ret: "fixed", c: "gt_fcos" },
-  atan2: { params: [["num", false], ["num", false]], ret: "fixed", c: "gt_fatan2" },
+  sqrt:  { params: [["num", false]], ret: "fixed", c: "lc_fsqrt" },
+  sin:   { params: [["num", false]], ret: "fixed", c: "lc_fsin" },
+  cos:   { params: [["num", false]], ret: "fixed", c: "lc_fcos" },
+  atan2: { params: [["num", false], ["num", false]], ret: "fixed", c: "lc_fatan2" },
 
   // PICO-8 bitwise FUNCTION forms - exact aliases of the operators gbalua already
   // has (a & b, a | b, ...). Carts use both spellings interchangeably. Emitted
@@ -236,10 +236,10 @@ export const BUILTINS = {
   shl:   { params: [["num", false], ["num", false]], ret: "same", c: null, special: "bitop", op: "<<" },
   shr:   { params: [["num", false], ["num", false]], ret: "same", c: null, special: "bitop", op: ">>" },
   lshr:  { params: [["num", false], ["num", false]], ret: "same", c: null, special: "bitop", op: ">>>" },
-  rnd:   { params: [["num", true]], ret: "fixed", c: "gt_p8_rnd" },
-  srand: { params: [["num", false]], ret: "void", c: "gt_p8_srand" },
-  t:     { params: [], ret: "fixed", c: "gt_p8_time", isValue: false },
-  time:  { params: [], ret: "fixed", c: "gt_p8_time" },
+  rnd:   { params: [["num", true]], ret: "fixed", c: "lc_rnd" },
+  srand: { params: [["num", false]], ret: "void", c: "lc_srand" },
+  t:     { params: [], ret: "fixed", c: "lc_time", isValue: false },
+  time:  { params: [], ret: "fixed", c: "lc_time" },
 
   // fixed-capacity numeric array (v0.3): `local pool = array(16)`.
   // Top-level only; 1-based indexing; #a is the capacity. Checker handles it.
