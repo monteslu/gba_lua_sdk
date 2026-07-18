@@ -23,23 +23,9 @@ back end to native ARM.
 
 ## Your first game
 
-This is `examples/starfall` - a complete little shmup (hardware sprites, a
-scrolling starfield, music + sfx, a HUD, win/lose states) written in one
-`main.lua`. That's what this SDK is for:
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/monteslu/gba_lua_sdk/main/examples/starfall/screenshot.png" width="480" alt="the starfall shmup: a player ship firing at a formation of alien sprites over a starfield, with a SCORE/LIVES HUD, on the GBA">
-</p>
-
-```sh
-node bin/gbalua.js build examples/starfall/main.lua \
-  --sheet examples/starfall/shmup_sheet.png \
-  --map examples/starfall/space_bg.png -o starfall.gba
-```
-
-Start smaller, though. Here's `examples/hello` - a hardware sprite you move
-with the d-pad, plus a greeting, no asset files at all. `_update60` runs the
-movement 60 times a second; `_draw` redraws the sprite every frame:
+The whole hello, one `main.lua` with no asset files: a greeting plus a hardware
+sprite you move with the d-pad. `_update60` runs the movement 60 times a second;
+`_draw` redraws the sprite every frame (`examples/hello/main.lua`):
 
 ```lua
 -- The screen is 240x160. spr uses the built-in default sheet, so no art file
@@ -77,6 +63,22 @@ ship it.
 Colors are PICO-8-style indices `0-15` (`0` black, `1` dark-blue, `10` yellow,
 `14` pink); `pal()` / `spr_col()` reach the full 15-bit BGR555 palette (32768
 colors) at runtime when you want more.
+
+## Featured example: a full shmup
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/monteslu/gba_lua_sdk/main/examples/starfall/screenshot.png" width="480" alt="the starfall shmup: a player ship firing at a formation of alien sprites over a starfield, with a SCORE/LIVES HUD, on the GBA">
+</p>
+
+[`examples/starfall`](examples/starfall) is a complete little shmup - hardware
+sprites, a scrolling starfield, music + sfx, a HUD, win/lose states - in one
+`main.lua`. That's what this SDK is for:
+
+```sh
+node bin/gbalua.js build examples/starfall/main.lua \
+  --sheet examples/starfall/shmup_sheet.png \
+  --map examples/starfall/space_bg.png -o starfall.gba
+```
 
 ## Requirements
 
