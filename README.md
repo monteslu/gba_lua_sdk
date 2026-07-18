@@ -5,9 +5,9 @@
 Make games for the **Game Boy Advance** by writing a **PICO-8-flavored Lua**
 instead of C or ARM assembly.
 
-The SDK compiles your Lua to C, builds it with a bundled ARM toolchain against a
-libtonc + maxmod runtime, and produces a `.gba` ROM that runs in
-[mGBA](https://mgba.io/) and on real hardware. No interpreter, no VM: your Lua
+The SDK **ahead-of-time compiles** your Lua to C, builds it with a bundled ARM
+toolchain against a libtonc + maxmod runtime, and produces a `.gba` ROM that runs
+in [mGBA](https://mgba.io/) and on real hardware. No interpreter, no VM: your Lua
 becomes native ARM machine code.
 
 If you know PICO-8 you'll feel at home (`spr`/`btn`/`_init`/`_update`/`_draw`,
