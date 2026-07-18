@@ -50,15 +50,22 @@ end
   <img src="https://raw.githubusercontent.com/monteslu/gba_lua_sdk/main/examples/hello/screenshot.png" width="480" alt="a small critter hardware sprite and 'hello gba' text on a dark blue 240x160 GBA screen">
 </p>
 
-Build it to a `.gba` ROM:
+Build it and play it in a window - no external emulator needed:
+
+```sh
+node bin/gbalua.js run examples/hello/main.lua
+```
+
+`gbalua run` opens a window over the bundled mGBA core (arrows = d-pad, Z/X =
+B/A, Enter = START), via the shared [`romdev-core-runner`](https://www.npmjs.com/package/romdev-core-runner)
+SDL host. Or build a `.gba` ROM to ship:
 
 ```sh
 node bin/gbalua.js build examples/hello/main.lua -o hello.gba
 ```
 
-Then run `hello.gba` in [mGBA](https://mgba.io/) (or any GBA emulator), or flash
-it to a cartridge. That's the whole loop: write `main.lua`, build the `.gba`,
-ship it.
+Run `hello.gba` in [mGBA](https://mgba.io/) (or any GBA emulator) or flash it to
+a cartridge. That's the whole loop: write `main.lua`, `run` it, ship the `.gba`.
 
 Colors are PICO-8-style indices `0-15` (`0` black, `1` dark-blue, `10` yellow,
 `14` pink); `pal()` / `spr_col()` reach the full 15-bit BGR555 palette (32768
@@ -93,6 +100,14 @@ The build runs the WASM toolchain in-process (`cc1-arm` → `as` → `ld` →
 `objcopy`) — no server, no daemons. It can also talk to a running romdev
 server instead (`GBALUA_BACKEND=mcp`, faster for rapid rebuilds since the
 server keeps warm toolchain workers). See `compiler/build-gba.mjs`.
+
+`gbalua run` opens the window through
+[`romdev-core-runner`](https://www.npmjs.com/package/romdev-core-runner) (the
+one SDL host shared across the whole SDK family and the romdev playtest tool).
+The window needs `@kmamal/sdl`, an *optional* dependency of the runner (pulled
+by `npm install`, prebuilt for the common platforms); on a headless box or
+unsupported platform, `run` prints a clear message and you build a `.gba` for
+an external emulator instead. `build` never needs it.
 
 ## The screen and the two rendering modes
 
