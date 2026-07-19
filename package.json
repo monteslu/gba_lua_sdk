@@ -1,24 +1,18 @@
 {
   "name": "gbalua",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Write Game Boy Advance games in a PICO-8-flavored Lua that compiles to native ARM.",
   "type": "module",
   "bin": {
     "gbalua": "bin/gbalua.js"
   },
   "exports": {
-    "./compiler/index.js": "./compiler/index.js",
-    "./compiler/peephole.js": "./compiler/peephole.js",
-    "./compiler/builtins.js": "./compiler/builtins.js",
-    "./compiler/build-gba.mjs": "./compiler/build-gba.mjs",
-    "./compiler/png-tiles.mjs": "./compiler/png-tiles.mjs",
-    "./compiler/png-encode.mjs": "./compiler/png-encode.mjs",
-    "./compiler/asset-headers.mjs": "./compiler/asset-headers.mjs",
-    "./compiler/soundbank.mjs": "./compiler/soundbank.mjs",
-    "./compiler/ase-import.mjs": "./compiler/ase-import.mjs",
-    "./compiler/tmx-import.mjs": "./compiler/tmx-import.mjs",
-    "./package.json": "./package.json",
-    "./compiler/xm-write.mjs": "./compiler/xm-write.mjs"
+    ".": "./compiler/index.js",
+    "./compiler/*": "./compiler/*",
+    "./build": "./compiler/build-gba.mjs",
+    "./bin/*": "./bin/*",
+    "./gba-sdk/*": "./gba-sdk/*",
+    "./package.json": "./package.json"
   },
   "engines": {
     "node": ">=24"
