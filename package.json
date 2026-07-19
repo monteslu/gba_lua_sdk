@@ -18,7 +18,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "luacretro": "^0.1.0",
+    "luacretro": "^0.1.1",
     "romdev-core-runner": "0.1.0",
     "romdev-maxmod": "0.1.0",
     "romdev-platform-gba": "^0.11.0"
