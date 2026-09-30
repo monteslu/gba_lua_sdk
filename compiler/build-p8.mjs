@@ -8,6 +8,7 @@
 // GBA extras), this runs unmodified PICO-8 carts: 128x128 in the middle of the
 // screen, PICO-8 audio, cartdata in SRAM.
 
+import { existsSync, readFileSync } from "node:fs";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -29,7 +30,7 @@ const CC1 = ["-O2", "-mthumb", "-mthumb-interwork", "-ffunction-sections", "-fda
  */
 export async function buildGbaCart(cartPath, outPath, opts = {}) {
   const bytes = new Uint8Array(await readFile(cartPath));
-  const r = compileCart(bytes, path.basename(cartPath), { debugLines: opts.debugLines });
+  const r = compileCart(bytes, path.basename(cartPath), { debugLines: opts.debugLines, resolveInclude: (p) => { const f = path.resolve(path.dirname(cartPath), p); return existsSync(f) ? readFileSync(f) : null; } });
   if (!r.ok) return { ok: false, stage: "compile", diagnostics: r.diagnostics };
   const sources = { "cart.c": r.c, "lc_gba.c": await readFile(path.join(SDK_DIR, "lc_gba.c"), "utf8") };
   for (const s of RUNTIME_SOURCES) sources[s] = await readFile(path.join(RUNTIME_DIR, s), "utf8");
