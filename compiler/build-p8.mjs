@@ -21,7 +21,12 @@ const RUNTIME_DIR = path.dirname(fileURLToPath(import.meta.resolve("luacretro/ru
 // cc1 flags: buildGbaC's defaults plus the runtime placement/config defines
 const CC1 = ["-O2", "-mthumb", "-mthumb-interwork", "-ffunction-sections", "-fdata-sections", "-Wall",
   "-Wno-unused-parameter", "-DLC_P8_MEMSIZE=0x10000u", "-DLC_BIGDATA=__attribute__((section(\".sbss\")))",
-  "-DLC_CO_REGION=16384", "-DLC_CO_VREGION=1024"];
+  "-DLC_CO_REGION=16384", "-DLC_CO_VREGION=1024",
+  // the fast synth (luacretro lc_p8snd_fast.c): output straight at the DirectSound
+  // rate, per-sample and per-block code in IWRAM as ARM, walk tables in EWRAM
+  "-DLC_P8SND_FAST", "-DLC_P8SND_RATE=13379",
+  "-DLC_P8SND_HOT=__attribute__((section(\".iwram\"), long_call, target(\"arm\")))",
+  "-DLC_P8SND_BSS=__attribute__((section(\".sbss\")))"];
 
 /**
  * @param {string} cartPath

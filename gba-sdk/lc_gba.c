@@ -208,6 +208,7 @@ int main(void) {
   char base;
   irq_init(NULL);
   irq_add(II_VBLANK, NULL);
+  REG_WAITCNT = 0x4317;   // ROM 3/1 wait states + prefetch (every cart and flash cart supports it)
   for (int b = 0; b < 256; b++) pair16[b] = (u16)((b & 15) | ((b >> 4) << 8));
   // border: palette index 16, black, on both pages
   pal_bg_mem[16] = 0;
