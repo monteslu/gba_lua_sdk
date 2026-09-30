@@ -12,13 +12,14 @@
     "./build": "./compiler/build-gba.mjs",
     "./bin/*": "./bin/*",
     "./gba-sdk/*": "./gba-sdk/*",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./build-p8": "./compiler/build-p8.mjs"
   },
   "engines": {
     "node": ">=24"
   },
   "dependencies": {
-    "luacretro": "^0.1.1",
+    "luacretro": "file:../luacretro",
     "romdev-core-runner": "0.1.0",
     "romdev-maxmod": "0.1.0",
     "romdev-platform-gba": "^0.11.0"
