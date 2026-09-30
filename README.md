@@ -244,8 +244,8 @@ dynamic tier to C and links against luacretro's PICO-8 runtime plus
 npx gbalua pico8 cart.p8.png -o game.gba
 ```
 
-The 128x128 screen sits 1:1 in the middle of the GBA screen. PICO-8 audio is
-synthesized and played through DirectSound; `cartdata` saves to SRAM. The
+The 128x128 screen sits 1:1 in the middle of the GBA screen. PICO-8 audio comes
+from luacretro's fast synth (exact sequencer, wavetable voices) on DirectSound; `cartdata` saves to SRAM. The
 heap is 120 KB of EWRAM, which fits most carts; CPU is the limit (16.8 MHz),
 so light carts run at full speed and heavy ones slow down.
 
