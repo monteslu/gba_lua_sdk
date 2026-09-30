@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0
+
+- `gbalua pico8 <cart>`: build unmodified PICO-8 carts (`.p8`, `.p8.png`)
+  to a .gba through luacretro 0.2.0's dynamic tier (`compiler/build-p8.mjs`,
+  `gba-sdk/lc_gba.c`): 1:1 screen, PICO-8 audio on DirectSound, SRAM cartdata.
+- Needs luacretro 0.2.0 (currently a `file:` dependency until it is published).
+
 ## 0.3.0
 
 ### Audio

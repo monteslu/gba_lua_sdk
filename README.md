@@ -231,6 +231,26 @@ truthy, C doesn't, and the compiler refuses to guess). No `nil`, closures,
 metatables, coroutines, string concatenation, or `goto`. Every unsupported
 feature is a compile-time error that says what to write instead.
 
+## Real PICO-8 carts (full language)
+
+`gbalua build` compiles the static PICO-8-flavored dialect described above.
+`gbalua pico8` compiles **unmodified PICO-8 carts** instead: `.p8`,
+`.p8.png`, or a `.lua` file using the whole PICO-8 language (tables,
+closures, metatables, coroutines, strings). The cart goes through luacretro's
+dynamic tier to C and links against luacretro's PICO-8 runtime plus
+`gba-sdk/lc_gba.c`; there is still no interpreter on the console.
+
+```bash
+npx gbalua pico8 cart.p8.png -o game.gba
+```
+
+The 128x128 screen sits 1:1 in the middle of the GBA screen. PICO-8 audio is
+synthesized and played through DirectSound; `cartdata` saves to SRAM. The
+heap is 120 KB of EWRAM, which fits most carts; CPU is the limit (16.8 MHz),
+so light carts run at full speed and heavy ones slow down.
+
+See luacretro's DYNAMIC.md for what is supported and known differences.
+
 ## Repo layout
 
 `compiler/` Lua→C compiler + the GBA build driver (`build-gba.mjs`) and PNG

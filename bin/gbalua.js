@@ -34,6 +34,7 @@ function compileLuaCli(entry) {
 const USAGE =
   "usage: gbalua build <main.lua> [--sheet sprites.png] [--map level.png] [--mode7 plane.png]\n" +
   "                    [--music song.xm]... [--soundbank bank.bin] [-o game.gba]\n" +
+  "       gbalua pico8 <cart.p8|cart.p8.png> [-o game.gba]  a real PICO-8 cart (full language)\n" +
   "       gbalua run   <main.lua|game.gba>             build + play in a window (bundled mGBA)\n" +
   "       gbalua c     <main.lua>                      print the generated C (debugging)\n" +
   "\n" +
@@ -42,7 +43,22 @@ const USAGE =
 
 const [, , cmd, ...rest] = process.argv;
 
-if (cmd === "build") {
+if (cmd === "pico8") {
+  // a real PICO-8 cart (.p8 / .p8.png, or .lua in the full PICO-8 language)
+  // through luacretro's dynamic tier
+  const entry = rest.find((a, i) => !a.startsWith("-") && rest[i - 1] !== "-o");
+  if (!entry) fail("usage: gbalua pico8 <cart.p8|cart.p8.png|main.lua> [-o game.gba]");
+  const oi = rest.indexOf("-o");
+  const out = oi >= 0 ? rest[oi + 1] : entry.replace(/\.p8(\.png)?$|\.lua$/i, "") + ".gba";
+  const { buildGbaCart } = await import("../compiler/build-p8.mjs");
+  const r = await buildGbaCart(entry, out);
+  if (!r.ok) {
+    if (r.diagnostics?.length) fail(formatDiagnostics(r.diagnostics));
+    if (r.log) console.error(r.log.split("\n").filter((l) => /error|undefined/i.test(l)).slice(0, 40).join("\n"));
+    fail(`gbalua: pico8 ${r.stage ?? "build"} failed`);
+  }
+  console.log(`${r.outPath} (GBA ROM, PICO-8 cart)`);
+} else if (cmd === "build") {
   // options that take one value; --music may repeat.
   const opts = { musicPaths: [] };
   const positional = [];
